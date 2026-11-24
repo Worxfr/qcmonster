@@ -28,15 +28,14 @@ export const COST_STOP_ALL_EUR = 18;
 export const METRIC_NAMESPACE = 'QCMonster';
 export const METRIC_COST_MONTH = 'CostMonthToDateEur';
 
-/** Role d'evaluation: seul a lire le coffre du jeu cache (cree par la stack Data). */
 /** Handlers du workflow (L2a/L2b, design-v2 4.1). Une seule Lambda de verification enchaine les etapes 7 a 10. */
 export const WORKFLOW_HANDLERS = { verify: 'verify-run', consume: 'quota-consume', scanCheck: 'scan-check', stateMachine: 'process' } as const;
 /** Fonctions et machine d'etats: qcm-<env>-<nom>. */
 export const stateMachineName = (env: Env) => `qcm-${env}-${WORKFLOW_HANDLERS.stateMachine}`;
-/** Detail-type de l'evenement EventBridge emis par S3 (Object Created) sur le bucket des scans. */
+/** Prefixe de cle S3 des photos deposees; la regle EventBridge (Object Created) de L2a filtre dessus. */
 export const SCAN_EVENT_PREFIX = 'scans/';
 
-/** Garde cout des essais en dev (decision du proprietaire, 2026-11-24): le compteur COST#dev bloque tout appel Bedrock au-dela. */
+/** Garde cout des essais en dev (decision du proprietaire, 2026-11-24): le CUMUL `COST#dev / TOTAL` (toute la phase dev, jamais remis a zero) bloque tout appel Bedrock au-dela. */
 export const DEV_TRIAL_CAP_EUR = 12;
 /** Mise au point: echantillon de 10 pages; au plus 2 passages complets par lot (cout estime en 4.6 / docs/cost-guard.md). */
 export const TRIAL_TUNING_PAGES = 10;
@@ -44,6 +43,7 @@ export const TRIAL_MAX_FULL_RUNS_PER_LOT = 2;
 /** Plafond par job (design-v2 4.1): au-dela, les affirmations restantes sont non_verifiable. */
 export const JOB_COST_CAP_EUR = 0.25;
 
+/** Role d'evaluation: seul a lire le coffre du jeu cache (cree par la stack Data). */
 export const evalRoleName = (env: Env) => `qcm-${env}-eval-role`;
 
 /** Modeles (design-v2 4.6): profil systeme UE copie en profil d'application, un par modele et par environnement. */

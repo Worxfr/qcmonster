@@ -3,10 +3,14 @@
 // (4) ajout au compteur IMMEDIATEMENT apres la reponse (un Retry Step Functions ne perd jamais un cout).
 // Mode `mock` par defaut (QCM_BEDROCK absent ou 'mock'): aucun appel reseau, aucun cout. L'appel reel exige QCM_BEDROCK=real.
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { addCost, costGateFor, readCost } from './cost.js';
-import { JOB_COST_CAP_EUR, REGION, type Env } from './names.js';
+import { addCost, costGateFor, readCost, type CostTotals } from './cost.js';
+import { monthParis } from './ddb/keys.js';
+import { ENVS, JOB_COST_CAP_EUR, REGION, type Env } from './names.js';
 import { costEur, type ModelKey, type Usage } from './pricing.js';
 import { log } from './log/index.js';
+
+/** Bornes d'une requete: un seul appel ne peut pas depasser le plafond d'un job (0,25 EUR) par construction. */
+export const LIMITS = { maxTokens: 8192, maxImages: 10, maxImageBytes: 5 * 1024 * 1024, maxPromptChars: 400_000 } as const;
 
 export interface ModelRequest {
   /** ARN du profil d'application (arn:aws:bedrock:eu-west-3:...), jamais un profil systeme. */
@@ -26,19 +30,26 @@ export interface ModelPort {
   converse(req: ModelRequest): Promise<ModelResponse>;
 }
 
-/** Compteur de cout du mois (COST#<env>). */
+/** Compteurs de cout (mois et cumul). L'environnement et le mois NE sont PAS des parametres de l'appelant. */
 export interface CostStore {
-  read(): Promise<number>;
-  add(eur: number): Promise<number>;
+  read(): Promise<CostTotals>;
+  add(eur: number): Promise<CostTotals>;
 }
 
-export const costStoreFromDynamo = (client: DynamoDBDocumentClient, table: string, env: Env, month: string): CostStore => ({
-  read: () => readCost(client, table, env, month),
-  add: (eur) => addCost(client, table, env, month, eur),
+/** Environnement du deploiement, pose par CDK dans la configuration de la fonction (QCM_ENV). Jamais un parametre d'appel. */
+export function currentEnv(): Env {
+  const v = process.env.QCM_ENV;
+  if (!ENVS.includes(v as Env)) throw new Error('QCM_ENV absent ou invalide (dev|prod)');
+  return v as Env;
+}
+
+export const costStoreFromDynamo = (client: DynamoDBDocumentClient, table: string, now: () => Date = () => new Date()): CostStore => ({
+  read: () => readCost(client, table, currentEnv(), monthParis(now())),
+  add: (eur) => addCost(client, table, currentEnv(), monthParis(now()), eur),
 });
 
 export class CostBlockedError extends Error {
-  constructor(readonly gate: 'block_new' | 'stop_all', readonly totalEur: number) {
+  constructor(readonly gate: 'block_new' | 'stop_all', readonly totals: CostTotals) {
     super(`appel Bedrock bloque par la garde de cout (${gate})`);
   }
 }
@@ -49,46 +60,76 @@ export class JobBudgetExceededError extends Error {
 }
 
 export interface InvokeOptions {
-  env: Env;
   model: ModelKey;
   jobId: string;
   step: string;
   request: ModelRequest;
   store: CostStore;
   port: ModelPort;
-  /** Deja depense sur ce job, en euros (le plafond par job est JOB_COST_CAP_EUR par defaut). */
-  jobSpentEur?: number;
+  /** OBLIGATOIRE: deja depense sur ce job, en euros (somme des `costEur` des appels precedents, tenue par l'appelant dans l'element Job). */
+  jobSpentEur: number;
   jobCapEur?: number;
+  /** Pauses entre les essais d'ecriture du compteur (ms); `[0, 0, 0]` dans les tests. */
+  retryDelaysMs?: number[];
 }
 export interface InvokeResult {
   text: string;
   costEur: number;
-  monthTotalEur: number;
+  /** false si le compteur n'a pas pu etre ecrit apres 3 essais (le cout est alors dans le journal, a rattraper). */
+  counted: boolean;
 }
+
+const APP_PROFILE = new RegExp(`^arn:aws:bedrock:${REGION}:\\d{12}:application-inference-profile/[A-Za-z0-9._-]+$`);
 
 /** L'ARN passe a Bedrock doit etre un profil d'application de la region (test CI du design 4.6). */
 export function assertApplicationProfileArn(arn: string): void {
-  if (!arn.startsWith(`arn:aws:bedrock:${REGION}:`) || !arn.includes(':application-inference-profile/')) {
-    throw new Error('modelArn doit etre un profil d\'inference d\'application (jamais un profil systeme)');
-  }
+  if (!APP_PROFILE.test(arn)) throw new Error("modelArn doit etre un profil d'inference d'application (jamais un profil systeme)");
 }
+
+function assertRequestBounds(r: ModelRequest): void {
+  if (!Number.isInteger(r.maxTokens) || r.maxTokens < 1 || r.maxTokens > LIMITS.maxTokens) throw new RangeError('maxTokens hors bornes');
+  if (r.prompt.length + (r.system?.length ?? 0) > LIMITS.maxPromptChars) throw new RangeError('prompt trop long');
+  const imgs = r.images ?? [];
+  if (imgs.length > LIMITS.maxImages || imgs.some((i) => i.bytes.byteLength > LIMITS.maxImageBytes)) throw new RangeError('images hors bornes');
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export async function invokeModel(o: InvokeOptions): Promise<InvokeResult> {
   assertApplicationProfileArn(o.request.modelArn);
-  // Garde 1: plafond du job. Garde 2: compteur du mois (15/18 EUR, ou 12 EUR en dev).
-  if ((o.jobSpentEur ?? 0) >= (o.jobCapEur ?? JOB_COST_CAP_EUR)) throw new JobBudgetExceededError();
+  assertRequestBounds(o.request);
+  if (!Number.isFinite(o.jobSpentEur) || o.jobSpentEur < 0) throw new RangeError('jobSpentEur obligatoire (nombre >= 0)');
+  const env = currentEnv();
+  // Garde 1: plafond du job. Garde 2: compteurs (cumul dev 12 EUR; mois 15/18 EUR). Compteur illisible: l'appel est refuse.
+  if (o.jobSpentEur >= (o.jobCapEur ?? JOB_COST_CAP_EUR)) throw new JobBudgetExceededError();
   const before = await o.store.read();
-  const gate = costGateFor(o.env, before);
+  const gate = costGateFor(env, before);
   if (gate !== 'ok') {
-    log({ jobId: o.jobId, step: o.step, status: 'rejected', costEur: before });
+    log({ jobId: o.jobId, step: o.step, status: 'rejected', costEur: before.monthEur });
     throw new CostBlockedError(gate, before);
   }
   const t0 = Date.now();
   const res = await o.port.converse(o.request);
-  const eur = costEur(o.model, res.usage);
-  const total = await o.store.add(eur); // immediatement apres la reponse
-  log({ jobId: o.jobId, step: o.step, status: 'ok', durationMs: Date.now() - t0, tokensIn: res.usage.inputTokens, tokensOut: res.usage.outputTokens, costEur: eur });
-  return { text: res.text, costEur: eur, monthTotalEur: total };
+  let eur = costEur(o.model, res.usage);
+  if (!Number.isFinite(eur) || eur < 0) {
+    // usage illisible: on compte le pire cas (entree estimee a 1 token pour 2 caracteres, sortie = maxTokens), jamais 0.
+    eur = costEur(o.model, { inputTokens: Math.ceil((o.request.prompt.length + (o.request.system?.length ?? 0)) / 2), outputTokens: o.request.maxTokens });
+    log({ jobId: o.jobId, step: o.step, status: 'error', costEur: eur });
+  }
+  // Ajout IMMEDIATEMENT apres la reponse, avec 3 essais. Si tout echoue: journal d'erreur avec le cout (rattrapage), pas d'exception
+  // (un Retry Step Functions rappellerait le modele et doublerait la facture).
+  const delays = o.retryDelaysMs ?? [100, 400, 1600];
+  let counted = false;
+  for (let attempt = 0; attempt < 3 && !counted; attempt++) {
+    try {
+      await o.store.add(eur);
+      counted = true;
+    } catch {
+      if (attempt < 2) await sleep(delays[attempt] ?? 0);
+    }
+  }
+  log({ jobId: o.jobId, step: o.step, status: counted ? 'ok' : 'error', durationMs: Date.now() - t0, tokensIn: res.usage.inputTokens, tokensOut: res.usage.outputTokens, costEur: eur });
+  return { text: res.text, costEur: eur, counted };
 }
 
 /** Faux modele deterministe: aucun reseau, aucun cout (mode par defaut des tests). */

@@ -146,7 +146,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** L'eleve a lu la fiche jusqu'au bout (XP de lecture, une fois par jour par fiche; handler docs-seen, L3) */
+        /** L'eleve a lu la fiche jusqu'au bout (XP de lecture, une fois par jour par fiche; handler docs-mark-read, L3) */
         post: operations["markDocRead"];
         delete?: never;
         options?: never;

@@ -25,7 +25,7 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | XP du jour | `STUDENT#<sid>` | `DAY#<aaaa-mm-jj>` | XP gagne, pages payees, jour valide | L3 |
 | Tentative | `STUDENT#<sid>` | `ATT#<questionId>#<aaaa-mm-jj>` | choix, juste, `shownAt`, `answeredAt` | L3 |
 | Classement | `FAMILY#<fid>` | `WEEK#<aaaa-Www>#<sid>` | XP de la semaine, jours actifs | L3 |
-| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` | `cents`, `pages` | `shared/cost.ts` (L1); lu par L2a, L2b |
+| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` et `TOTAL` | `micros` (micro-euros entiers), `pages`. `TOTAL` = cumul depuis le debut de la phase dev (plafond d'essais 12 EUR) | `shared/cost.ts` (L1); lu par L2a, L2b |
 | Invitation | `INVITE#<hache>` | `META` | `utilisee`, `utiliseeLe`, `creeLe` | `scripts/create-invite.ts` + `api/src/auth/pre-signup.ts` (L1) |
 | Activation | `ACTIVATION#<hache>` | `META` | `sid`, expiration. TTL 24 h | L3 |
 
@@ -56,3 +56,4 @@ Noms generes par CDK, publies dans SSM: `/qcm/<env>/data/scansBucket`, `/qcm/<en
 - **Suppression en cascade**: `shared/delete-tree.ts` (`deleteDocTree`, `deleteStudentTree`, `deleteFamilyTree`). « Effacer » est permis a travers les proprietaires; chaque nouveau type d'element doit etre ajoute a ces fonctions (leur test compte les elements avant et apres).
 - **Couts**: tout appel Bedrock passe par `shared/bedrock.ts` (garde de cout, plafond du job, compteur). Voir `docs/cost-guard.md`.
 - **Evenement de depot**: le bucket des scans envoie ses evenements a EventBridge; la regle qui demarre le workflow (prefixe `scans/`) est creee par `pipeline-stack.ts` (L2a).
+- **Nommage**: le contrat expose `Job.costCents`; l'element DynamoDB porte `coutCentimes`. Le handler L2a fait le mapping explicitement (`costCents = coutCentimes`). Le compteur applicatif est en micro-euros (`micros`), le job en centimes.

@@ -33,6 +33,8 @@ export const keys = {
   attempt: (sid: string, questionId: string, date: string): Key => ({ PK: `STUDENT#${sid}`, SK: `ATT#${questionId}#${date}` }),
   week: (fid: string, week: string, sid: string): Key => ({ PK: `FAMILY#${fid}`, SK: `WEEK#${week}#${sid}` }),
   cost: (env: Env, month: string): Key => ({ PK: `COST#${env}`, SK: `MONTH#${month}` }),
+  /** Cumul depuis le debut de la phase dev (plafond d'essais de 12 EUR, jamais remis a zero). */
+  costTotal: (env: Env): Key => ({ PK: `COST#${env}`, SK: 'TOTAL' }),
   /** code = code d'invitation en clair; seul son hache est stocke. */
   invite: (code: string): Key => ({ PK: `INVITE#${sha256(code)}`, SK: 'META' }),
   /** token = jeton d'activation en clair; seul son hache est stocke. */

@@ -65,7 +65,7 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'DELETE /family', handler: 'family-admin', throttle: { rate: 1, burst: 2 } },
   // contract-v1.1 (L1c)
   { route: 'POST /activation', handler: 'activation-post', public: true, throttle: { rate: 1, burst: 3 } },
-  { route: 'POST /docs/{docId}/read', handler: 'docs-seen', throttle: { rate: 5, burst: 10 } },
+  { route: 'POST /docs/{docId}/read', handler: 'docs-mark-read', throttle: { rate: 5, burst: 10 } },
   { route: 'POST /family', handler: 'family-create', throttle: { rate: 1, burst: 2 } },
 ];
 
@@ -74,7 +74,7 @@ export const HANDLER_LOT: Record<string, 'L2a' | 'L3'> = {
   'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3',
-  'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-seen': 'L3', 'family-create': 'L3',
+  'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-mark-read': 'L3', 'family-create': 'L3',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */

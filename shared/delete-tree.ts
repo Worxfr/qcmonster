@@ -9,34 +9,58 @@ export interface TreeDb {
   remove(keys: Key[]): Promise<void>;
 }
 
+const ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** Identifiants valides: ni vide, ni `#`, ni separateur (evite qu'un id vide ou piege elargisse une suppression). */
+function assertIds(...ids: string[]): void {
+  for (const id of ids) if (!ID.test(id)) throw new RangeError('identifiant invalide');
+}
+
 async function removeAll(db: TreeDb, ks: Key[]): Promise<number> {
   if (ks.length) await db.remove(ks);
   return ks.length;
 }
 
-/** Fiche: elle-meme, ses CLAIM, VERDICT, QCM, GAP. Renvoie le nombre d'elements supprimes. */
+/**
+ * Fiche: elle-meme, ses CLAIM, VERDICT, QCM, GAP. Renvoie le nombre d'elements supprimes.
+ * Controle d'appartenance: si la fiche n'est pas liee a l'eleve (`STUDENT#<sid>` / `DOC#<docId>`), ne supprime RIEN et renvoie 0
+ * (un handler qui passe un docId pris dans l'URL ne peut pas effacer la fiche d'un autre eleve).
+ */
 export async function deleteDocTree(db: TreeDb, sid: string, docId: string): Promise<number> {
+  assertIds(sid, docId);
+  const link = (await db.list(`STUDENT#${sid}`, `DOC#${docId}`)).filter((k) => k.SK === `DOC#${docId}`);
+  if (link.length === 0) return 0;
   let n = await removeAll(db, await db.list(`DOC#${docId}`));
-  n += await removeAll(db, [{ PK: `STUDENT#${sid}`, SK: `DOC#${docId}` }]);
+  n += await removeAll(db, link);
   return n;
 }
 
-/** Eleve: ses fiches (arbres complets), jobs et transcriptions, profil, jours, tentatives, compteurs, puis les quotas et classements de la famille. */
+/** Elements de la famille qui portent l'identifiant de l'eleve: lien eleve, quotas et classements, par PREFIXE explicite. */
+const FAMILY_STUDENT_PREFIXES = ['QUOTA#', 'WEEK#'] as const;
+const isFamilyStudentItem = (k: Key, sid: string): boolean =>
+  k.SK === `STUDENT#${sid}` || (FAMILY_STUDENT_PREFIXES.some((p) => k.SK.startsWith(p)) && k.SK.endsWith(`#${sid}`));
+
+/**
+ * Eleve: ses fiches (arbres complets), jobs et transcriptions, profil, jours, tentatives, compteurs, puis ses quotas et classements.
+ * Ne fait rien (renvoie 0) si l'eleve n'appartient pas a la famille. Ne touche ni Cognito ni S3 ni PASSAGE#/CLAIMCACHE#
+ * (partages): le handler (L3) supprime l'utilisateur Cognito.
+ */
 export async function deleteStudentTree(db: TreeDb, familyId: string, sid: string): Promise<number> {
+  assertIds(familyId, sid);
+  const fam = await db.list(`FAMILY#${familyId}`);
+  if (!fam.some((k) => k.SK === `STUDENT#${sid}`)) return 0;
   let n = 0;
-  const own = await db.list(`STUDENT#${sid}`);
-  for (const k of own) {
+  for (const k of await db.list(`STUDENT#${sid}`)) {
     if (k.SK.startsWith('DOC#')) n += await deleteDocTree(db, sid, k.SK.slice(4));
     if (k.SK.startsWith('JOB#')) n += await removeAll(db, await db.list(`JOB#${k.SK.slice(4)}`)); // TEXT#
   }
   n += await removeAll(db, (await db.list(`STUDENT#${sid}`)).filter((k) => !k.SK.startsWith('DOC#')));
-  const fam = await db.list(`FAMILY#${familyId}`);
-  n += await removeAll(db, fam.filter((k) => k.SK === `STUDENT#${sid}` || k.SK.endsWith(`#${sid}`)));
+  n += await removeAll(db, (await db.list(`FAMILY#${familyId}`)).filter((k) => isFamilyStudentItem(k, sid)));
   return n;
 }
 
 /** Famille: tous ses eleves, puis ce qui reste sous FAMILY#. */
 export async function deleteFamilyTree(db: TreeDb, familyId: string): Promise<number> {
+  assertIds(familyId);
   let n = 0;
   const fam = await db.list(`FAMILY#${familyId}`);
   for (const k of fam.filter((x) => x.SK.startsWith('STUDENT#'))) n += await deleteStudentTree(db, familyId, k.SK.slice(8));
@@ -44,7 +68,7 @@ export async function deleteFamilyTree(db: TreeDb, familyId: string): Promise<nu
   return n;
 }
 
-export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string): TreeDb {
+export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): TreeDb {
   return {
     async list(pk, skPrefix) {
       const out: Key[] = [];
@@ -57,6 +81,7 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string): Tre
             ExpressionAttributeValues: skPrefix ? { ':p': pk, ':s': skPrefix } : { ':p': pk },
             ProjectionExpression: 'PK, SK',
             ExclusiveStartKey: start,
+            ConsistentRead: true, // un element ecrit juste avant ne doit pas echapper a une suppression (RGPD)
           }),
         );
         for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string });
@@ -67,7 +92,8 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string): Tre
     async remove(ks) {
       for (let i = 0; i < ks.length; i += 25) {
         let req: Record<string, { DeleteRequest: { Key: Key } }[]> = { [table]: ks.slice(i, i + 25).map((Key) => ({ DeleteRequest: { Key } })) };
-        for (let attempt = 0; attempt < 5 && Object.keys(req).length; attempt++) {
+        for (let attempt = 0; attempt < 6 && Object.keys(req).length; attempt++) {
+          if (attempt > 0) await sleep(50 * 2 ** attempt); // backoff exponentiel sur les elements non traites
           const r = await client.send(new BatchWriteCommand({ RequestItems: req }));
           req = (r.UnprocessedItems ?? {}) as typeof req;
         }

@@ -206,7 +206,7 @@ paths:
     post:
       operationId: markDocRead
       tags: [game]
-      summary: L'eleve a lu la fiche jusqu'au bout (XP de lecture, une fois par jour par fiche; handler docs-seen, L3)
+      summary: L'eleve a lu la fiche jusqu'au bout (XP de lecture, une fois par jour par fiche; handler docs-mark-read, L3)
       parameters: [{ $ref: '#/components/parameters/DocId' }]
       responses:
         '200':
@@ -649,7 +649,7 @@ components:
       required: [xpGained, badges, progress]
       properties:
         xpGained: { type: integer, minimum: 0 }
-        badges: { type: array, items: { type: string } }
+        badges: { type: array, items: { type: string, pattern: '^[a-z0-9_]{1,40}$' } }
         progress: { $ref: '#/components/schemas/Progress' }
     ActivationRequest:
       type: object

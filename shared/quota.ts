@@ -118,17 +118,18 @@ export function dynamoQuotaDb(client: DynamoDBDocumentClient, table: string): Qu
                 values[`:v${i}`] = v;
                 return `#a${i} :v${i}`;
               });
-              let cond: string | undefined;
+              const conds: string[] = [];
               if (u.requireAtLeast) {
                 names['#req'] = u.requireAtLeast.attr;
                 values[':min'] = u.requireAtLeast.value;
-                cond = 'attribute_exists(PK) AND #req >= :min';
+                conds.push('#req >= :min');
               }
               if (u.requireEquals) {
                 names['#eq'] = u.requireEquals.attr;
                 values[':eq'] = u.requireEquals.value;
-                cond = 'attribute_exists(PK) AND #eq = :eq';
+                conds.push('#eq = :eq');
               }
+              const cond = conds.length ? ['attribute_exists(PK)', ...conds].join(' AND ') : undefined; // les deux conditions se cumulent
               return {
                 Update: {
                   TableName: table,
