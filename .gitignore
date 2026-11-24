@@ -1,0 +1,14 @@
+node_modules/
+cdk.out/
+dist/
+coverage/
+*.js.map
+.env
+.env.*
+# Jeu d'essai prive et secrets: JAMAIS dans git
+samples/
+golden/hidden/
+*.pem
+*.key
+.DS_Store
+infra/cdk.context.json
