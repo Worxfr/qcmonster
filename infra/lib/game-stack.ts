@@ -34,7 +34,7 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'reports-validate', role: 'play' },
   { name: 'students-create', role: 'account', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
   { name: 'family-create', role: 'account', needs: ['USER_POOL_ID'] },
-  { name: 'students-link', role: 'manage', needs: ['WEB_ORIGIN'] },
+  { name: 'students-link', role: 'manage', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
   { name: 'students-update', role: 'manage', needs: ['USER_POOL_ID'] },
   { name: 'students-delete', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET'] },
   { name: 'family-admin', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET'] },

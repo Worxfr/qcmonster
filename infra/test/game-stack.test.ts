@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
@@ -122,5 +123,17 @@ describe('Api: les routes du lot L3 pointent vers les fonctions de la stack Game
     const routes = Object.values(api.findResources('AWS::ApiGatewayV2::Route')) as { Properties: { RouteKey: string; AuthorizationType?: string } }[];
     expect(routes.find((r) => r.Properties.RouteKey === 'POST /activation')?.Properties.AuthorizationType).toBe('NONE');
     expect(routes.filter((r) => r.Properties.AuthorizationType === 'NONE')).toHaveLength(1);
+  });
+});
+
+describe('variables d\'environnement des handlers', () => {
+  it('un handler qui construit familyDeps() recoit USER_POOL_ID; ceux qui creent un lien recoivent WEB_ORIGIN; ceux qui suppriment SCANS_BUCKET', () => {
+    for (const h of GAME_HANDLERS) {
+      const src = readFileSync(new URL(`../../api/src/handlers/${h.name}.ts`, import.meta.url), 'utf8');
+      const needs = h.needs ?? [];
+      if (/familyDeps\(/.test(src)) expect(needs, h.name).toContain('USER_POOL_ID');
+      if (/createStudent|createLink/.test(src)) expect(needs, h.name).toContain('WEB_ORIGIN');
+      if (/deleteStudent|deleteFamily/.test(src)) expect(needs, h.name).toContain('SCANS_BUCKET');
+    }
   });
 });
