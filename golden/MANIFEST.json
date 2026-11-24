@@ -46,6 +46,7 @@
    "claims": 11,
    "nonFactual": 1,
    "image": "pages/synth-fr-02.jpg",
+   "twinImage": "pages/synth-fr-02.clean.jpg",
    "annotation": "annotations/synth-fr-02.json",
    "passages": "passages/synth-fr-02.json"
   },
@@ -63,6 +64,7 @@
    "claims": 12,
    "nonFactual": 1,
    "image": "pages/synth-fr-03.jpg",
+   "twinImage": "pages/synth-fr-03.clean.jpg",
    "annotation": "annotations/synth-fr-03.json",
    "passages": "passages/synth-fr-03.json"
   },
@@ -97,6 +99,7 @@
    "claims": 9,
    "nonFactual": 1,
    "image": "pages/synth-hist-01.jpg",
+   "twinImage": "pages/synth-hist-01.clean.jpg",
    "annotation": "annotations/synth-hist-01.json",
    "passages": "passages/synth-hist-01.json"
   },
@@ -182,6 +185,7 @@
    "claims": 10,
    "nonFactual": 1,
    "image": "pages/synth-maths-02.jpg",
+   "twinImage": "pages/synth-maths-02.clean.jpg",
    "annotation": "annotations/synth-maths-02.json",
    "passages": "passages/synth-maths-02.json"
   },
@@ -267,6 +271,7 @@
    "claims": 11,
    "nonFactual": 1,
    "image": "pages/synth-phys-01.jpg",
+   "twinImage": "pages/synth-phys-01.clean.jpg",
    "annotation": "annotations/synth-phys-01.json",
    "passages": "passages/synth-phys-01.json"
   },
@@ -332,7 +337,7 @@
    "injectionPassage": false,
    "persons": true,
    "errors": 3,
-   "claims": 12,
+   "claims": 11,
    "nonFactual": 1,
    "image": "pages/synth-svt-01.jpg",
    "annotation": "annotations/synth-svt-01.json",
@@ -352,6 +357,7 @@
    "claims": 9,
    "nonFactual": 1,
    "image": "pages/synth-svt-02.jpg",
+   "twinImage": "pages/synth-svt-02.clean.jpg",
    "annotation": "annotations/synth-svt-02.json",
    "passages": "passages/synth-svt-02.json"
   },

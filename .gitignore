@@ -13,3 +13,4 @@ golden/hidden/
 .DS_Store
 infra/cdk.context.json
 eval/report.json
+eval/fidelity-sample.json

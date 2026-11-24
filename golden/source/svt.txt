@@ -12,7 +12,6 @@ T: Génétique et hérédité
 + Chez l'humain, une femme possède deux chromosomes sexuels X.
 + La mitose produit deux cellules filles identiques à la cellule mère.
 + Une mutation est une modification de la séquence de l'ADN.
-+ Les mutations sont une source de diversité génétique.
 + Les cellules de la peau d'un humain contiennent 23 paires de chromosomes.
 ! L'espèce humaine possède 48 chromosomes. => L'espèce humaine possède 46 chromosomes.
 ! Les gamètes humains contiennent 46 chromosomes. => Les gamètes humains contiennent 23 chromosomes.

@@ -8,9 +8,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadAnnotation, loadImage, loadManifest, totals, type Golden } from './golden.js';
+import { loadAnnotation, loadImage, loadManifest, totals, verifyCounters, type Golden } from './golden.js';
 import { computeReport, type PageInput, type Review } from './metrics.js';
 import { apiRunner, oracleRunner, type Runner } from './runners.js';
+import { drawSample, SAMPLE_SEED } from './sample.js';
 
 const MAX_HIDDEN_RUNS = 3;
 
@@ -22,6 +23,11 @@ async function main() {
   const runner: Runner = args.includes('--oracle')
     ? oracleRunner({ missEvery: 5 })
     : apiRunner(process.env.EVAL_API_URL ?? 'http://localhost:4010', process.env.EVAL_API_TOKEN ?? 'x', process.env.EVAL_MODE === 'real' ? 'real' : 'mock');
+
+  if (privateDir) {
+    const bad = verifyCounters(g);
+    if (bad.length) throw new Error(`compteurs du manifeste différents des annotations:\n${bad.join('\n')}`);
+  }
 
   let hiddenRuns: number | null = null;
   if (withHidden && !args.includes('--oracle')) {
@@ -38,7 +44,10 @@ async function main() {
     if (page.hidden && !withHidden) { skipped.push(page.id); continue; }
     if (!page.image && !privateDir) { skipped.push(page.id); continue; }
     const ann = loadAnnotation(g, page);
-    inputs.push({ page, ann, run: await runner.run({ id: page.id, image: loadImage(g, page), ann }) });
+    const input: PageInput = { page, ann, run: await runner.run({ id: page.id, image: loadImage(g, page), ann }) };
+    if (page.twinImage) input.twin = await runner.run({ id: page.id, image: loadImage(g, { id: page.id, image: page.twinImage }), ann });
+    if (page.injectionPassage && runner.passageTwin) input.passageTwin = await runner.run({ id: page.id, image: loadImage(g, page), ann, cleanPassages: true });
+    inputs.push(input);
   }
   const negatives: { refused: boolean }[] = [];
   for (const n of g.manifest.negatives) {
@@ -48,6 +57,12 @@ async function main() {
   const reviewFile = process.env.EVAL_REVIEW_FILE;
   const review: Review = reviewFile ? JSON.parse(readFileSync(reviewFile, 'utf8')) : {};
 
+  // Tirage des 50 affirmations produites à relire, graine fixe. Le fichier peut contenir du texte de cours: dossier privé, sinon fichier ignoré par git.
+  const produced = inputs.flatMap((i) => i.run.claims.map((c, k) => ({ page: i.page.id, n: k + 1, text: c.text, status: c.status })));
+  const sample = drawSample(produced, 50);
+  const sampleFile = privateDir ? join(privateDir, 'annotations', 'fidelity-sample.json') : join(dirname(fileURLToPath(import.meta.url)), 'fidelity-sample.json');
+  writeFileSync(sampleFile, JSON.stringify({ seed: SAMPLE_SEED, claims: sample.map((c) => ({ ...c, faithful: null })) }, null, 1), { mode: 0o600 });
+
   const report = {
     generatedAt: new Date().toISOString(),
     mode: runner.mode,
@@ -55,6 +70,7 @@ async function main() {
     warning: runner.mode === 'real' ? undefined : "Mesures sans valeur: le pipeline réel n'existe pas encore (mode " + runner.mode + ').',
     hiddenRuns,
     skipped,
+    fidelitySample: { n: sample.length, seed: SAMPLE_SEED, privateFile: Boolean(privateDir) },
     goldenTotals: totals(g.manifest),
     ...computeReport(inputs, negatives, review),
   };

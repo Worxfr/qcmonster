@@ -171,6 +171,14 @@ def make_synthetic(p, out_img, out_ann_dir, out_pass_dir):
         img = degrade(img, rnd)
     out_img.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out_img, "JPEG", quality=55 if degraded else 80)
+    if "inj-course" in p["flags"]:
+        # Page témoin: même texte sans la phrase d'injection (comparaison des verdicts, design 10.3 L2b).
+        clean = [s for s in sents if s["kind"] != "injection"]
+        twin_rnd = random.Random(p["id"])
+        timg = render(p["title"], clean, twin_rnd)
+        if degraded:
+            timg = degrade(timg, twin_rnd)
+        timg.convert("RGB").save(out_img.with_name(out_img.stem + ".clean.jpg"), "JPEG", quality=55 if degraded else 80)
     transcription = "\n".join([p["title"]] + [s["text"] for s in sents])
     ann = {
         "id": p["id"], "title": p["title"], "transcription": transcription, "sentences": sents,
@@ -195,6 +203,8 @@ def entry(p, ann, degraded, hidden, kind):
          "injectionCourse": ann["injection"]["course"], "injectionPassage": ann["injection"]["passage"], "persons": ann["persons"], **counts(ann)}
     if not hidden:
         e["image"] = f"pages/{p['id']}.jpg"
+        if ann["injection"]["course"]:
+            e["twinImage"] = f"pages/{p['id']}.clean.jpg"
         e["annotation"] = f"annotations/{p['id']}.json"
         if kind == "synthetic":
             e["passages"] = f"passages/{p['id']}.json"

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GOLDEN_DIR, loadAnnotation, loadManifest, totals } from '../eval/golden.js';
+import { GOLDEN_DIR, loadAnnotation, loadManifest, totals, verifyCounters } from '../eval/golden.js';
 
 const m = loadManifest();
 const t = totals(m);
@@ -22,7 +22,7 @@ describe('effectifs minimaux du jeu doré (design 10.3 L2c)', () => {
   ])('%s: %i >= %i', (_n, got, min) => expect(got).toBeGreaterThanOrEqual(min));
 
   it('les minimums du manifeste ne sont pas abaissés', () => {
-    expect(m.minimums).toMatchObject({ pages: 50, tuning: 38, hidden: 12, errors: 75, claims: 400, hiddenErrors: 20, hiddenClaims: 100 });
+    expect(m.minimums).toMatchObject({ pages: 50, tuning: 38, hidden: 12, errors: 75, claims: 400, hiddenErrors: 20, hiddenClaims: 100, injectionCourse: 5, injectionPassage: 5, persons: 5, degraded: 20 });
   });
 
   it('toutes les matières et au moins 3 niveaux', () => {
@@ -45,6 +45,7 @@ describe('cohérence du dépôt', () => {
       expect(a.sentences.filter((s) => s.kind === 'error').length, p.id).toBe(p.errors);
       expect(a.sentences.filter((s) => s.kind === 'correct').length, p.id).toBe(p.claims);
       expect(a.sentences.some((s) => s.kind === 'injection'), p.id).toBe(p.injectionCourse);
+      expect(p.twinImage !== undefined && existsSync(join(GOLDEN_DIR, p.twinImage)), p.id).toBe(p.injectionCourse);
     }
   });
 
@@ -62,5 +63,12 @@ describe('cohérence du dépôt', () => {
     for (const f of walk(GOLDEN_DIR).filter((x) => /\.(json|txt|py|ts)$/.test(x) && !x.endsWith('golden.test.ts'))) {
       expect(bad.test(readFileSync(f, 'utf8')), f).toBe(false);
     }
+  });
+});
+
+// Avec le dossier privé, les compteurs publiés (effectifs minimaux) doivent égaler ceux des annotations privées.
+describe.skipIf(!process.env.GOLDEN_PRIVATE_DIR)('compteurs privés', () => {
+  it('le manifeste égale les annotations des pages réelles et cachées', () => {
+    expect(verifyCounters({ manifest: m, privateDir: process.env.GOLDEN_PRIVATE_DIR })).toEqual([]);
   });
 });

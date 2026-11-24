@@ -3,7 +3,9 @@ import type { PageRun, Status } from './metrics.js';
 
 export interface Runner {
   mode: 'oracle' | 'mock' | 'real';
-  run(input: { id: string; image: Buffer; ann: Annotation; expectedRefused?: boolean }): Promise<PageRun>;
+  /** Vrai si le runner peut rejouer une page avec des passages sans injection (test A7). L'API publique ne le permet pas. */
+  passageTwin: boolean;
+  run(input: { id: string; image: Buffer; ann: Annotation; expectedRefused?: boolean; cleanPassages?: boolean }): Promise<PageRun>;
 }
 
 /** Pipeline imaginaire pour les tests de l'outil: lit les annotations, rate une erreur sur `missEvery`. Ne mesure rien du vrai pipeline. */
@@ -11,6 +13,7 @@ export function oracleRunner(opts: { missEvery?: number } = {}): Runner {
   let n = 0;
   return {
     mode: 'oracle',
+    passageTwin: true,
     async run({ ann, expectedRefused }) {
       if (expectedRefused) return { refused: true, transcript: '', claims: [] };
       const claims = ann.sentences
@@ -53,6 +56,7 @@ export function apiRunner(baseUrl: string, token: string, mode: 'mock' | 'real')
   };
   return {
     mode,
+    passageTwin: false,
     async run({ image }) {
       const scan = await call<{ jobId: string; upload: { url: string; fields: Record<string, string> } }>('POST', '/scans', { pages: 1, contentType: 'image/jpeg' });
       if (mode === 'mock') {

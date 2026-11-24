@@ -19,6 +19,7 @@ export const PageEntry = z.object({
   claims: z.number().int().min(0),
   nonFactual: z.number().int().min(0),
   image: z.string().optional(),
+  twinImage: z.string().optional(),
   annotation: z.string().optional(),
   passages: z.string().optional(),
 });
@@ -80,4 +81,16 @@ export function totals(m: Manifest) {
     levels: new Set(m.pages.map((p) => p.level)).size,
     subjects: new Set(m.pages.map((p) => p.subject)).size,
   };
+}
+
+/** Les compteurs du manifeste doivent égaler ceux des annotations (privées comprises). Renvoie les écarts. */
+export function verifyCounters(g: Golden): string[] {
+  const bad: string[] = [];
+  for (const p of g.manifest.pages) {
+    const a = loadAnnotation(g, p);
+    const n = (k: Sentence['kind']) => a.sentences.filter((s) => s.kind === k).length;
+    const got = { errors: n('error'), claims: n('correct'), nonFactual: n('non_factual') };
+    for (const k of ['errors', 'claims', 'nonFactual'] as const) if (got[k] !== p[k]) bad.push(`${p.id}.${k}: manifeste ${p[k]}, annotation ${got[k]}`);
+  }
+  return bad;
 }
