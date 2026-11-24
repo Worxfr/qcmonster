@@ -78,6 +78,13 @@ describe('Api', () => {
     // CloudFormation exige des noms de champs en PascalCase (un nom en camelCase fait echouer le deploiement)
     expect(stage.Properties.RouteSettings['POST /scans']).toEqual({ ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 });
   });
+  it('l\'etape depend de toutes les routes (sinon CloudFormation refuse les reglages par route)', () => {
+    const tj = t.toJSON().Resources as Record<string, { Type: string; DependsOn?: string[] }>;
+    const stage = Object.values(tj).find((r) => r.Type === 'AWS::ApiGatewayV2::Stage')!;
+    const routeIds = Object.entries(tj).filter(([, r]) => r.Type === 'AWS::ApiGatewayV2::Route').map(([id]) => id);
+    expect(routeIds.length).toBe(contract.length);
+    for (const id of routeIds) expect(stage.DependsOn).toContain(id);
+  });
   it('les squelettes repondent 501', () => {
     t.hasResourceProperties('AWS::Lambda::Function', { Code: { ZipFile: Match.stringLikeRegexp('statusCode: 501') } });
   });
