@@ -3,7 +3,7 @@
 ## AWS (Amazon Web Services)
 
 - **Rôle** : sous-traitant d'hébergement et d'inférence. Stockage, calcul, authentification (Cognito), base de données, machines à états, modèles d'IA (Amazon Bedrock).
-- **Localisation** : région de Paris pour l'hébergement ; modèles d'IA via profils d'inférence de l'UE.
+- **Localisation** : stockage à Paris. Les modèles d'IA sont appelés par des profils d'inférence de l'UE : l'analyse peut se faire dans une autre région de l'UE que Paris. Liste des régions de destination à relever au lot 1.
 - **Contrat** : conditions d'AWS, dont l'accord de traitement des données (DPA). *Non relu pour ce document.*
 
 ## Le fournisseur du modèle a-t-il accès aux données ?

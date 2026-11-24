@@ -14,7 +14,7 @@ Voir `registre.md` (traitements T1 à T7) et `politique-confidentialite.md`.
 
 - Seules les données utiles sont collectées : pseudo, indicateur d'âge, cours, résultats.
 - Pas d'e-mail ni de date de naissance pour les élèves.
-- Images supprimées après analyse. Durées courtes pour les jobs (7 jours) et passages (30 jours).
+- Images supprimées à la confirmation du texte par l'élève, au plus tard après 1 jour. Durées courtes pour les jobs (7 jours) et les extraits de sources web (30 jours). Journaux 14 jours, historique Step Functions 90 jours sans texte de cours.
 - Fiches conservées jusqu'à suppression, à la demande du parent ou de l'élève.
 - Aucun profilage publicitaire, aucune revente.
 
@@ -28,12 +28,13 @@ Voir `registre.md` (traitements T1 à T7) et `politique-confidentialite.md`.
 | Contenu de cours dans les journaux | Moyenne | Faible | Utilitaire de log restreint, test CI « aucun contenu », journalisation des invocations Bedrock désactivée | À évaluer |
 | Erreur de l'IA (faux faits) présentée à un enfant | Moyenne | Moyenne | Vérification de sources par liste blanche, jeu d'essai | À évaluer |
 | Perte de données (pas de PITR) | Faible | Faible | Risque accepté : rescanner les cours | Accepté |
-| Document hors cours (photo de personne, document privé) | Moyenne | Faible | Type `autre` refusé, image supprimée | À évaluer |
+| Document hors cours (photo de personne, document privé) | Moyenne | Faible | Type `autre` refusé, image supprimée au plus tard après 1 jour | À évaluer |
+| Analyse par l'IA dans une autre région de l'UE que Paris | Faible | Moyenne | Profils d'inférence UE ; liste des régions à relever (lot 1) | À évaluer |
 | Consentement parental non vérifié | Moyenne | Moyenne | Case d'autorité parentale, invitation seulement, parent seul créateur du compte élève | À évaluer |
 
 ## 5. Points ouverts pour la personne compétente
 
-- Base légale et âge du consentement numérique (15 ans en France).
+- Base légale et âge du consentement numérique (15 ans en France). Le parent crée toujours le compte, y compris pour un élève de 15 ans et plus.
 - Vérification réelle de l'autorité parentale.
 - Information adaptée aux mineurs.
 - Nécessité de consulter la CNIL.

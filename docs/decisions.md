@@ -11,5 +11,5 @@
 | D7 | Compte AWS | Confirmé par le propriétaire, stocké en secret GitHub. |
 | D8 | Région | Paris (UE). Modèles Claude sur Bedrock via profils d'inférence UE. |
 | D9 | Comptes | Comptes élève et parent liés (Cognito). Le parent valide la création du compte élève. |
-| D10 | Images | Supprimées après analyse. |
+| D10 | Images | Supprimées à la confirmation du texte par l'élève, au plus tard après 1 jour. |
 | D11 | Déploiement | GitHub vers AWS par OIDC. Le propriétaire lance lui-même le script d'amorçage. |
