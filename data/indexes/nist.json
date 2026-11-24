@@ -1,0 +1,13 @@
+{
+  "site": "NIST (constantes physiques fondamentales)",
+  "niveau": 1,
+  "entrees": [
+    { "titre": "Vitesse de la lumière dans le vide", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["vitesse", "lumiere", "vide", "celerite", "c"], "texte": "La vitesse de la lumière dans le vide vaut exactement 299 792 458 mètres par seconde." },
+    { "titre": "Constante de Planck", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["constante", "planck", "h"], "texte": "La constante de Planck vaut exactement 6,626 070 15 × 10^-34 joule seconde." },
+    { "titre": "Charge élémentaire", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["charge", "elementaire", "electron", "proton", "e"], "texte": "La charge élémentaire vaut exactement 1,602 176 634 × 10^-19 coulomb." },
+    { "titre": "Constante de Boltzmann", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["constante", "boltzmann", "k"], "texte": "La constante de Boltzmann vaut exactement 1,380 649 × 10^-23 joule par kelvin." },
+    { "titre": "Constante d'Avogadro", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["constante", "avogadro", "mole", "n"], "texte": "La constante d'Avogadro vaut exactement 6,022 140 76 × 10^23 par mole." },
+    { "titre": "Constante de gravitation", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["constante", "gravitation", "gravitationnelle", "newton", "g"], "texte": "La constante de gravitation universelle vaut 6,674 30 × 10^-11 mètre cube par kilogramme et par seconde carrée, avec une incertitude relative d'environ 2,2 × 10^-5." },
+    { "titre": "Accélération normale de la pesanteur", "url": "https://physics.nist.gov/cuu/Constants/", "motsCles": ["acceleration", "pesanteur", "normale", "standard", "gravite", "g"], "texte": "L'accélération normale de la pesanteur vaut exactement 9,806 65 mètres par seconde carrée." }
+  ]
+}
