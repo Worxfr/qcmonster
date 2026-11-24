@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
+process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' });
 const { buildApp } = await import('../bin/app.js');
 import { missingTags } from './tags.js';
 import type { Env } from '../../shared/names.js';

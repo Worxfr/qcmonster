@@ -1,6 +1,6 @@
 // Genere un code d'invitation parent a usage unique (design-v2 4.7). Seul le HACHE va dans DynamoDB.
 // Par defaut: simulation (affiche le code et l'element, n'ecrit rien). --apply ecrit dans la table qcm-<env>.
-// Lance par ALEXIS dans son terminal avec ses identifiants AWS: l'agent ne l'execute jamais avec --apply.
+// Lance par le proprietaire dans son terminal avec ses identifiants AWS: l'agent ne l'execute jamais avec --apply.
 import { randomBytes } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';

@@ -26,7 +26,14 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Invitation | `INVITE#<hache>` | `META` | `utilisee`, `utiliseeLe`, `creeLe` | `scripts/create-invite.ts` + `api/src/auth/pre-signup.ts` (L1) |
 | Activation | `ACTIVATION#<hache>` | `META` | `sid`, expiration. TTL 24 h | L3 |
 
-Index secondaire `GSI1`: `GSI1PK = FAMILY#<fid>`, `GSI1SK = DOC#<date>` pour lister les fiches de la famille cote parent (sans le texte du cours). Pas d'autre index en v1. Pas de PITR (suppression effective immediatement).
+Index secondaire `GSI1`: `GSI1PK = FAMILY#<fid>`, `GSI1SK = DOC#<date>` pour lister les fiches de la famille cote parent (sans le texte du cours). Pas d'autre index en v1. Pas de PITR (suppression effective immediatement). Facturation a la demande. Attribut TTL: `ttl` (secondes epoch), pose sur Job, Transcription, Passage, Verdict en cache et Activation.
+
+## Buckets S3 (stack Data)
+
+Noms generes par CDK, publies dans SSM: `/qcm/<env>/data/scansBucket`, `/qcm/<env>/data/vaultBucket`, `/qcm/<env>/data/tableName`.
+
+- **Scans**: photos de cours envoyees par POST pre-signe. Expiration par cycle de vie: S3 arrondit au minuit UTC suivant, donc 1 a 2 jours en pratique; la garantie reelle est la suppression par le workflow (30 min, lot L2a). Chiffre, acces public bloque, TLS exige, CORS limite a l'origine du front (`-c webOrigin=...`).
+- **Coffre**: pages cachees du jeu dore. Conserve a la suppression de la stack. Lecture refusee a toute identite sauf le role `qcm-<env>-eval-role`.
 
 ## Ecart par rapport au design
 

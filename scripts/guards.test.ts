@@ -63,3 +63,12 @@ describe('aucun ID de compte AWS dans le depot', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('aucun prenom du proprietaire dans le depot', () => {
+  const NAME = new RegExp(['Ale', 'xis'].join(''), 'i'); // ecrit en deux morceaux pour que ce fichier ne se declenche pas lui-meme
+  it('ecrire « le proprietaire »', () => {
+    const list = execFileSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+    const bad = list.filter((f) => f !== 'package-lock.json' && !/\.(png|jpe?g|webp|ico|woff2?)$/.test(f) && NAME.test(readFileSync(join(ROOT, f), 'utf8')));
+    expect(bad).toEqual([]);
+  });
+});

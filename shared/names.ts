@@ -27,3 +27,14 @@ export const COST_BLOCK_NEW_EUR = 15;
 export const COST_STOP_ALL_EUR = 18;
 export const METRIC_NAMESPACE = 'QCMonster';
 export const METRIC_COST_MONTH = 'CostMonthToDateEur';
+
+/** Role d'evaluation: seul a lire le coffre du jeu cache (cree par la stack Data). */
+export const evalRoleName = (env: Env) => `qcm-${env}-eval-role`;
+
+/** Modeles (design-v2 4.6): profil systeme UE copie en profil d'application, un par modele et par environnement. */
+export const MODEL_KEYS = ['haiku', 'sonnet'] as const;
+export type ModelKey = (typeof MODEL_KEYS)[number];
+export const modelProfileName = (env: Env, model: ModelKey) => `qcm-${env}-${model}`;
+
+/** Role GitHub Actions cree par infra-bootstrap/setup-oidc.sh. */
+export const DEPLOY_ROLE_NAME = 'QCMonster-GitHubActions-Deploy';

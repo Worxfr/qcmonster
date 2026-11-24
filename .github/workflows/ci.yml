@@ -35,7 +35,7 @@ jobs:
         run: |
           cd infra
           npx cdk synth -c env=dev --quiet
-          npx cdk synth -c env=prod --quiet
+          npx cdk synth -c env=prod -c webOrigin=https://front.example.invalid --quiet
       - name: Build du front
         run: npm run build:web
       - name: API simulee repond sur chaque route
