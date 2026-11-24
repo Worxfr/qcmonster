@@ -1,0 +1,75 @@
+name: eval
+# Evaluation manuelle (design-v2 10.1). Appel mince: tout est dans `npm run eval` (eval/run.ts).
+# - oracle / mock: aucun appel Bedrock, aucun cout (pour essayer l'outil, mesures sans valeur).
+# - real: appelle l'API deployee en dev, donc Bedrock. Garde cout: le compteur COST#dev bloque tout appel au-dela de 12 EUR
+#   (shared/bedrock.ts, docs/cost-guard.md). Lancement explicite seulement, jamais sur push ni sur pull request.
+# Les pages cachees ne sont JAMAIS evaluees ici (elles ne quittent pas le coffre prive).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Mode d'evaluation
+        type: choice
+        options: [oracle, mock, real]
+        default: oracle
+      confirm_cost:
+        description: "Pour 'real' seulement: ecrire exactement 'depenser-des-euros-en-dev'"
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: eval
+  cancel-in-progress: false
+jobs:
+  eval-local:
+    if: inputs.mode != 'real'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Evaluation oracle
+        if: inputs.mode == 'oracle'
+        run: npm run eval -- --oracle
+      - name: Evaluation contre l'API simulee
+        if: inputs.mode == 'mock'
+        run: |
+          npm run mock > /tmp/prism.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:4010/me -H 'authorization: Bearer x' && break; sleep 1; done
+          npm run eval
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eval-report
+          path: eval/report.json
+  eval-real:
+    if: inputs.mode == 'real' && inputs.confirm_cost == 'depenser-des-euros-en-dev' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: dev
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: API de dev et jeton presents
+        env:
+          EVAL_API_URL: ${{ vars.EVAL_API_URL }}
+          EVAL_API_TOKEN: ${{ secrets.EVAL_API_TOKEN }}
+        run: test -n "$EVAL_API_URL" && test -n "$EVAL_API_TOKEN" || { echo "Variable EVAL_API_URL ou secret EVAL_API_TOKEN (environnement dev) manquant"; exit 1; }
+      - name: Evaluation reelle (pages publiques seulement)
+        env:
+          EVAL_MODE: real
+          EVAL_API_URL: ${{ vars.EVAL_API_URL }}
+          EVAL_API_TOKEN: ${{ secrets.EVAL_API_TOKEN }}
+        run: npm run eval
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eval-report
+          path: eval/report.json

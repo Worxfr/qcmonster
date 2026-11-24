@@ -1,7 +1,7 @@
 // Quota de pages (design-v2 4.7). Reservation ATOMIQUE: une transaction DynamoDB met a jour le compteur de l'eleve
 // ET celui de la famille; chacun a un attribut `restant` (= limite + bonus - utilise - reserve) avec la condition
 // restant >= pages (DynamoDB n'a pas d'arithmetique dans les conditions, d'ou `restant`).
-import { DynamoDBDocumentClient, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { keys, type Key } from './ddb/keys.js';
 
 export interface QuotaItem extends Key {
@@ -16,11 +16,14 @@ export interface TxUpdate {
   key: Key;
   add: Record<string, number>;
   requireAtLeast?: { attr: string; value: number };
+  /** Verrou optimiste: la mise a jour n'a lieu que si l'attribut vaut exactement `value`. */
+  requireEquals?: { attr: string; value: number };
 }
 
 /** Port minimal: l'implementation DynamoDB est la vraie, la memoire sert aux tests unitaires. */
 export interface QuotaDb {
   putIfAbsent(item: QuotaItem): Promise<void>;
+  get(key: Key): Promise<Record<string, number | string> | undefined>;
   /** Applique toutes les mises a jour ou aucune. Renvoie false si une condition echoue. */
   transact(updates: TxUpdate[]): Promise<boolean>;
 }
@@ -65,6 +68,31 @@ export async function consumePages(db: QuotaDb, s: QuotaScope, pages: number): P
   await db.transact(both(k, { reserve: -pages, utilise: pages }));
 }
 
+/** Ajoute des pages bonus a l'eleve (serie de 7 jours: +2). Atomique: `bonus` et `restant` bougent ensemble. */
+export async function addBonus(db: QuotaDb, s: QuotaScope, pages: number): Promise<void> {
+  if (!Number.isInteger(pages) || pages < 1) throw new RangeError('pages doit etre un entier >= 1');
+  const k = await ensure(db, s);
+  await db.transact([{ key: k.student, add: { bonus: pages, restant: pages } }]);
+}
+
+/**
+ * Change le plafond mensuel d'un eleve (PATCH /students). `limite` et `restant` bougent du meme delta, avec un verrou
+ * optimiste sur l'ancienne limite (reessaye 3 fois si un autre appel change la limite en meme temps).
+ * Le plafond de la famille n'est pas touche ici.
+ */
+export async function setLimit(db: QuotaDb, s: QuotaScope, limit: number): Promise<void> {
+  if (!Number.isInteger(limit) || limit < 0) throw new RangeError('limit doit etre un entier >= 0');
+  const k = await ensure(db, s);
+  for (let i = 0; i < 3; i++) {
+    const cur = await db.get(k.student);
+    const old = (cur?.limite as number | undefined) ?? 0;
+    const delta = limit - old;
+    if (delta === 0) return;
+    if (await db.transact([{ key: k.student, add: { limite: delta, restant: delta }, requireEquals: { attr: 'limite', value: old } }])) return;
+  }
+  throw new Error('setLimit: conflit persistant');
+}
+
 export function dynamoQuotaDb(client: DynamoDBDocumentClient, table: string): QuotaDb {
   return {
     async putIfAbsent(item) {
@@ -73,6 +101,10 @@ export function dynamoQuotaDb(client: DynamoDBDocumentClient, table: string): Qu
       } catch (e) {
         if ((e as { name?: string }).name !== 'ConditionalCheckFailedException') throw e;
       }
+    },
+    async get(key) {
+      const r = await client.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }));
+      return r.Item as Record<string, number | string> | undefined;
     },
     async transact(updates) {
       try {
@@ -86,12 +118,18 @@ export function dynamoQuotaDb(client: DynamoDBDocumentClient, table: string): Qu
                 values[`:v${i}`] = v;
                 return `#a${i} :v${i}`;
               });
-              let cond: string | undefined;
+              const conds: string[] = [];
               if (u.requireAtLeast) {
                 names['#req'] = u.requireAtLeast.attr;
                 values[':min'] = u.requireAtLeast.value;
-                cond = 'attribute_exists(PK) AND #req >= :min';
+                conds.push('#req >= :min');
               }
+              if (u.requireEquals) {
+                names['#eq'] = u.requireEquals.attr;
+                values[':eq'] = u.requireEquals.value;
+                conds.push('#eq = :eq');
+              }
+              const cond = conds.length ? ['attribute_exists(PK)', ...conds].join(' AND ') : undefined; // les deux conditions se cumulent
               return {
                 Update: {
                   TableName: table,
@@ -124,10 +162,16 @@ export function memoryQuotaDb(): QuotaDb & { items: Map<string, Record<string, n
       await Promise.resolve();
       if (!items.has(id(item))) items.set(id(item), { ...item });
     },
+    async get(key) {
+      await Promise.resolve();
+      const it = items.get(id(key));
+      return it ? { ...it } : undefined;
+    },
     async transact(updates) {
       await Promise.resolve();
       for (const u of updates) {
         const it = items.get(id(u.key));
+        if (u.requireEquals && (!it || it[u.requireEquals.attr] !== u.requireEquals.value)) return false;
         if (u.requireAtLeast && (!it || (it[u.requireAtLeast.attr] as number) < u.requireAtLeast.value)) return false;
       }
       for (const u of updates) {

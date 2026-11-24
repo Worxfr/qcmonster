@@ -66,6 +66,9 @@ export class DataStack extends Stack {
     const webOrigin = webOriginFor(this, envName);
     this.scansBucket = new s3.Bucket(this, 'Scans', {
       ...common,
+      // Evenements vers EventBridge: la regle qui demarre le workflow (etape 2) est creee par pipeline-stack (L2a),
+      // car CDK n'ajoute pas de notification a un bucket importe par nom.
+      eventBridgeEnabled: true,
       removalPolicy: RemovalPolicy.DESTROY,
       lifecycleRules: [{ id: 'expire-1-day', enabled: true, expiration: Duration.days(1), abortIncompleteMultipartUploadAfter: Duration.days(1) }],
       cors: [{ allowedMethods: [s3.HttpMethods.POST], allowedOrigins: [webOrigin], allowedHeaders: ['*'], maxAge: 600 }],

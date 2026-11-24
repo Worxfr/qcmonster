@@ -7,22 +7,25 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Type | PK | SK | Attributs principaux | Ecrit par |
 |---|---|---|---|---|
 | Famille | `FAMILY#<fid>` | `META` | plafond pages famille, date de creation | L3 |
-| Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | pseudo, niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub` | L3 |
+| Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | pseudo, niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub`, `quotaPages` (L2a le lit pour `reservePages`; defaut `quotaDefaults(env)`) | L3 |
 | Quota mensuel (eleve) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#<sid>` | `limite`, `utilise`, `reserve`, `bonus`, `restant` | `shared/quota.ts` (L1); lu par L2a, L3 |
 | Quota mensuel (famille) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#FAMILY` | memes attributs, `limite` = plafond famille | `shared/quota.ts` (L1) |
-| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, nb de pages, cout en centimes, horodatages, erreur. TTL 7 jours | L2a |
+| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |
 | Transcription | `JOB#<jobId>` | `TEXT#<page>` | phrases numerotees. TTL 7 jours | L2a |
-| Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, empreinte normalisee, date | L2a |
-| Affirmation | `DOC#<docId>` | `CLAIM#<nn>` | texte, origine (page, `phrase_id`, extrait), type, statut, `a_risque`, `sources[]` | L2b |
-| QCM | `DOC#<docId>` | `QCM#<nn>` | enonce, 4 choix, `claimId`, cle (reservee au serveur) | L2a |
-| Trou | `DOC#<docId>` | `GAP#<nn>` | phrase a trous, mot attendu, `claimId` | L2a |
+| Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, `empreinteMinHash` (64 entiers), `pagesConsommees`, `doublon`, date, GSI1 | L2a |
+| Affirmation | `DOC#<docId>` | `CLAIM#<nn>` | texte, origine (page, `phrase_id`, extrait), type, `a_risque`. Jamais modifiee ensuite | L2a (seul) |
+| QCM | `DOC#<docId>` | `QCM#<nn>` | `questionId` (`<docId>:qcm:<nn>`), enonce, 4 choix, `claimId`, cle (reservee au serveur) | L2a |
+| Trou | `DOC#<docId>` | `GAP#<nn>` | `questionId` (`<docId>:gap:<nn>`), phrase a trous, mot attendu, `claimId` | L2a |
+| Verdict | `DOC#<docId>` | `VERDICT#<nn>` | `statut`, `niveau`, `secondeLecture`, `sources[]` (`passageId`, `url`, `site`, `titre`, `extrait`, `niveau`) | L2b (seul) |
+| Signalement | `FAMILY#<fid>` | `REPORT#<reportId>` | `docId`, `claimId`, `commentaire`, `statut` (`ouvert`, `valide`, `rejete`) | L2a (creation par `docs-report`); L3 change `statut` |
+| Compteur de transcriptions | `STUDENT#<sid>` | `TRANSCR#<aaaa-mm-jj>` | nombre du jour (plafond 10). TTL 2 jours | L2a |
 | Passage | `PASSAGE#<hash>` | `META` | texte brut, URL, site, titre, niveau, date. TTL 30 jours | L2b |
 | Verdict en cache | `CLAIMCACHE#<empreinte>` | `META` | statut, `passageIds`, date. TTL 30 jours | L2b |
 | Profil de jeu | `STUDENT#<sid>` | `PROFILE` | XP total, niveau, serie, gels, badges, stade | L3 |
 | XP du jour | `STUDENT#<sid>` | `DAY#<aaaa-mm-jj>` | XP gagne, pages payees, jour valide | L3 |
 | Tentative | `STUDENT#<sid>` | `ATT#<questionId>#<aaaa-mm-jj>` | choix, juste, `shownAt`, `answeredAt` | L3 |
 | Classement | `FAMILY#<fid>` | `WEEK#<aaaa-Www>#<sid>` | XP de la semaine, jours actifs | L3 |
-| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` | `cents`, `pages` | `shared/cost.ts` (L1); lu par L2a, L2b |
+| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` et `TOTAL` | `micros` (micro-euros entiers), `pages`. `TOTAL` = cumul depuis le debut de la phase dev (plafond d'essais 12 EUR) | `shared/cost.ts` (L1); lu par L2a, L2b |
 | Invitation | `INVITE#<hache>` | `META` | `utilisee`, `utiliseeLe`, `creeLe` | `scripts/create-invite.ts` + `api/src/auth/pre-signup.ts` (L1) |
 | Activation | `ACTIVATION#<hache>` | `META` | `sid`, expiration. TTL 24 h | L3 |
 
@@ -45,3 +48,12 @@ Noms generes par CDK, publies dans SSM: `/qcm/<env>/data/scansBucket`, `/qcm/<en
 - Mois des quotas: `monthParis()` (fuseau Europe/Paris, remise a zero le 1er).
 - Aucun texte de cours dans les journaux ni dans l'etat Step Functions (design 4.1, 4.9).
 - Pour changer une cle ou un type: PR sur `shared/ddb/keys.ts` et ce fichier, relue par le proprietaire du lot 1.
+
+## Ajouts L1c
+
+- **Un type, un ecrivain.** Affirmation (`CLAIM#`, L2a) et Verdict (`VERDICT#`, L2b) sont deux elements: plus de mise a jour croisee. `docs-read` (L2a) assemble les deux pour la reponse `Doc`.
+- **Schemas Zod** de ces elements et de l'interface L2a -> L2b (`verify-run`: entree `{ jobId, docId, budgetRestantCentimes }`, sortie `{ coutCentimes, nbVerifiees, nbErreurs, nbNonVerifiables }`, aucun texte dans l'etat Step Functions): `shared/items.ts`.
+- **Suppression en cascade**: `shared/delete-tree.ts` (`deleteDocTree`, `deleteStudentTree`, `deleteFamilyTree`). « Effacer » est permis a travers les proprietaires; chaque nouveau type d'element doit etre ajoute a ces fonctions (leur test compte les elements avant et apres).
+- **Couts**: tout appel Bedrock passe par `shared/bedrock.ts` (garde de cout, plafond du job, compteur). Voir `docs/cost-guard.md`.
+- **Evenement de depot**: le bucket des scans envoie ses evenements a EventBridge; la regle qui demarre le workflow (prefixe `scans/`) est creee par `pipeline-stack.ts` (L2a).
+- **Nommage**: le contrat expose `Job.costCents`; l'element DynamoDB porte `coutCentimes`. Le handler L2a fait le mapping explicitement (`costCents = coutCentimes`). Le compteur applicatif est en micro-euros (`micros`), le job en centimes.

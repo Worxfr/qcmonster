@@ -12,6 +12,7 @@ export const UNTAGGABLE = new Set([
   'AWS::Cognito::UserPoolGroup',
   'AWS::SNS::Subscription',
   'AWS::S3::BucketPolicy',
+  'Custom::S3BucketNotifications',
   'AWS::ApiGatewayV2::Authorizer',
   'AWS::ApiGatewayV2::Integration',
   'AWS::ApiGatewayV2::Route',

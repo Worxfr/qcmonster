@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    Contrat d'API QCMonster (contract-v1.0). Fixe par le lot 1 (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
-    Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire du lot 1.
+    Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
   - url: http://localhost:4010
     description: API simulee (npm run mock)
@@ -202,6 +202,23 @@ paths:
               schema: { $ref: '#/components/schemas/Report' }
               example: { reportId: 01JEXAMPLE0RPT0000000000AA, status: ouvert }
         '404': { $ref: '#/components/responses/NotFound' }
+  /docs/{docId}/read:
+    post:
+      operationId: markDocRead
+      tags: [game]
+      summary: L'eleve a lu la fiche jusqu'au bout (XP de lecture, une fois par jour par fiche; handler docs-mark-read, L3)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '200':
+          description: XP de lecture accorde (ou 0 si deja pris ce jour)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadResult' }
+              example:
+                xpGained: 10
+                badges: []
+                progress: { xp: 120, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01', badges: [premier_scan] }
+        '404': { $ref: '#/components/responses/NotFound' }
   /docs/{docId}/session:
     get:
       operationId: getSession
@@ -248,6 +265,22 @@ paths:
                 badges: []
                 progress: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01' }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /activation:
+    post:
+      operationId: activateStudent
+      tags: [family]
+      summary: L'eleve active son compte avec le jeton du lien et choisit son mot de passe. Route PUBLIQUE, sans JWT (handler activation-post, L3)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivationRequest' }
+            example: { token: exemple-de-jeton-a-usage-unique-0123456789abcdef, password: Un-mot-de-passe-long-1 }
+      responses:
+        '204': { description: Compte active, l'eleve peut se connecter }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /me:
     get:
       operationId: getMe
@@ -407,6 +440,18 @@ paths:
               example: { familyId: 01JEXAMPLE0FAM0000000000AA, exportedAt: '2026-12-01T10:00:00Z', students: [], docs: [] }
         '403': { $ref: '#/components/responses/Forbidden' }
   /family:
+    post:
+      operationId: createFamily
+      tags: [family]
+      summary: Premiere connexion d'un parent invite - cree la famille, pose famille_id et le groupe parent. Le jeton deja emis ne les contient pas, le front se reconnecte (handler family-create, L3)
+      responses:
+        '201':
+          description: Famille creee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+              example: { userId: 7b0f6c1e-0000-4000-8000-00000000a002, role: parent, familyId: 01JEXAMPLE0FAM0000000000AA }
+        '409': { $ref: '#/components/responses/Conflict' }
     delete:
       operationId: deleteFamily
       tags: [family]
@@ -457,6 +502,7 @@ components:
         pages: { type: integer, minimum: 1, maximum: 10 }
         createdAt: { type: string, format: date-time }
         durationSeconds: { type: integer, minimum: 0 }
+        costCents: { type: integer, minimum: 0, description: Cout Bedrock du traitement en centimes d'euro (mesure, pas estime) }
         docId: { type: string, description: Present quand state = termine }
         message: { type: string, maxLength: 500 }
     ScanCreateRequest:
@@ -561,6 +607,8 @@ components:
       required: [reportId, status]
       properties:
         reportId: { type: string }
+        docId: { type: string }
+        claimId: { type: string }
         status: { type: string, enum: [ouvert, valide, rejete] }
     Question:
       description: Jamais de cle de reponse dans une question (test L3/L4).
@@ -595,6 +643,20 @@ components:
         pagesRemaining: { type: integer, minimum: 0 }
         pagesLimit: { type: integer, minimum: 0 }
         resetDate: { type: string, format: date }
+        badges: { type: array, items: { type: string, pattern: '^[a-z0-9_]{1,40}$' }, description: Identifiants de badges obtenus; catalogue dans docs/game-rules.md }
+    ReadResult:
+      type: object
+      required: [xpGained, badges, progress]
+      properties:
+        xpGained: { type: integer, minimum: 0 }
+        badges: { type: array, items: { type: string, pattern: '^[a-z0-9_]{1,40}$' } }
+        progress: { $ref: '#/components/schemas/Progress' }
+    ActivationRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string, minLength: 20, maxLength: 200 }
+        password: { type: string, minLength: 12, maxLength: 128 }
     AnswerResult:
       type: object
       required: [correct, xpGained, badges, progress]

@@ -39,6 +39,15 @@ describe('aucun modelId systeme', () => {
   });
 });
 
+describe('Bedrock: un seul client', () => {
+  it('le SDK client-bedrock-runtime n\'est importe que par shared/bedrock.ts', () => {
+    const bad = files(['api', 'shared', 'infra', 'eval', 'e2e', 'scripts'])
+      .filter((f) => !rel(f).endsWith('shared/bedrock.ts'))
+      .filter((f) => /client-bedrock-runtime/.test(readFileSync(f, 'utf8')));
+    expect(bad.map(rel)).toEqual([]);
+  });
+});
+
 describe('pas de console.*', () => {
   it('api, shared et infra utilisent log() (scripts/ et tests exclus)', () => {
     const bad = files(['api', 'shared', 'infra']).filter((f) => /\bconsole\s*\./.test(readFileSync(f, 'utf8')));
@@ -69,6 +78,16 @@ describe('aucun prenom du proprietaire dans le depot', () => {
   it('ecrire « le proprietaire »', () => {
     const list = execFileSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
     const bad = list.filter((f) => f !== 'package-lock.json' && !/\.(png|jpe?g|webp|ico|woff2?)$/.test(f) && NAME.test(readFileSync(join(ROOT, f), 'utf8')));
+    expect(bad).toEqual([]);
+  });
+});
+
+describe('aucune photo ni PDF hors des dossiers prevus', () => {
+  // Regle RGPD: pas de vraie photo de cours dans git. Seules les pages synthetiques du jeu dore et les icones du front sont permises.
+  const ALLOWED = [/^golden\/pages\//, /^golden\/source\//, /^web\/public\/icons\//];
+  it('jpg, png, webp, heic, pdf seulement dans golden/pages, golden/source, web/public/icons', () => {
+    const list = execFileSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
+    const bad = list.filter((f) => /\.(jpe?g|png|webp|heic|pdf)$/i.test(f) && !ALLOWED.some((r) => r.test(f)));
     expect(bad).toEqual([]);
   });
 });

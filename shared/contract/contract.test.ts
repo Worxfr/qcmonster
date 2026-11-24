@@ -22,6 +22,8 @@ const EXPECTED = [
   'GET /docs', 'GET /docs/{docId}', 'DELETE /docs/{docId}', 'POST /docs/{docId}/report', 'GET /docs/{docId}/session', 'POST /answers',
   'GET /me', 'GET /me/progress', 'POST /students', 'POST /students/{sid}/activation-link', 'PATCH /students/{sid}', 'DELETE /students/{sid}',
   'GET /family/dashboard', 'GET /family/leaderboard', 'POST /reports/{id}/validate', 'GET /family/export', 'DELETE /family',
+  // contract-v1.1 (L1c)
+  'POST /activation', 'POST /docs/{docId}/read', 'POST /family',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -31,10 +33,12 @@ describe('contrat OpenAPI', () => {
   it('contient exactement les routes du design (section 6)', () => {
     expect(ops.map((o) => o.key).sort()).toEqual([...EXPECTED].sort());
   });
-  it('chaque operation a un operationId unique et est protegee par JWT', () => {
+  it('chaque operation a un operationId unique et est protegee par JWT, sauf POST /activation (publique)', () => {
     const ids = ops.map((o) => o.op.operationId);
     expect(new Set(ids).size).toBe(ids.length);
     expect(spec.security).toEqual([{ bearerAuth: [] }]);
+    const publicOps = ops.filter((o) => (o.op as { security?: unknown[] }).security?.length === 0).map((o) => o.key);
+    expect(publicOps).toEqual(['POST /activation']);
   });
   it.each(ops.map((o) => [o.key, o.op] as const))('%s: exemple de succes valide', async (_k, op) => {
     const deref = (await $RefParser.dereference(structuredClone(spec))) as typeof spec;

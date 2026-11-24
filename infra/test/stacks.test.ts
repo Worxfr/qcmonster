@@ -6,7 +6,7 @@ process.env.QCM_NO_AUTORUN = '1';
 process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' }); // prod exige webOrigin
 
 const { buildApp } = await import('../bin/app.js');
-const { ROUTES } = await import('../lib/api-stack.js');
+const { ROUTES, ApiStack } = await import('../lib/api-stack.js');
 import { App } from 'aws-cdk-lib';
 import { webOriginFor } from '../lib/data-stack.js';
 import { ENVS, stackName } from '../../shared/names.js';
@@ -64,10 +64,10 @@ describe('Api', () => {
     expect(ROUTES.map((r) => r.route).sort()).toEqual(contract);
   });
   const t = tpl('dev', 'api');
-  it('chaque route est protegee par l\'autorisateur JWT', () => {
+  it('chaque route est protegee par l\'autorisateur JWT, sauf POST /activation', () => {
     const routes = Object.values(t.findResources('AWS::ApiGatewayV2::Route')) as { Properties: { AuthorizationType: string; RouteKey: string } }[];
     expect(routes).toHaveLength(contract.length);
-    for (const r of routes) expect(r.Properties.AuthorizationType).toBe('JWT');
+    for (const r of routes) expect(r.Properties.AuthorizationType).toBe(r.Properties.RouteKey === 'POST /activation' ? 'NONE' : 'JWT');
   });
   it('CORS restreint a une origine, jamais *', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', { CorsConfiguration: Match.objectLike({ AllowOrigins: ['https://front.example.invalid'] }) });
@@ -110,5 +110,30 @@ describe('role d\'evaluation', () => {
     const doc = JSON.stringify(role.Properties.AssumeRolePolicyDocument);
     expect(doc).toContain('role/QCMonster-GitHubActions-Deploy');
     expect(doc).not.toContain(':root');
+  });
+});
+
+describe('Api: mecanisme owner', () => {
+  it('une ligne non skeleton ne cree ni fonction ni permission, mais garde route, autorisateur et limitation', () => {
+    const app = new App({ context: { webOrigin: 'https://front.example.invalid' } });
+    const routes = ROUTES.map((r) => (r.handler === 'scans-create' ? { ...r, owner: 'pipeline' as const } : r));
+    const st = new ApiStack(app, 'api-owner-test', { envName: 'dev', routes });
+    const t = Template.fromStack(st);
+    const fnNames = Object.values(t.findResources('AWS::Lambda::Function')).map((f) => (f as { Properties: { FunctionName: string } }).Properties.FunctionName);
+    expect(fnNames).not.toContain('qcm-dev-scans-create');
+    expect(fnNames).toContain('qcm-dev-jobs-get');
+    const perms = JSON.stringify(t.findResources('AWS::Lambda::Permission'));
+    expect(perms).not.toContain('scans-create');
+    const stage = Object.values(t.findResources('AWS::ApiGatewayV2::Stage'))[0] as { Properties: { RouteSettings: Record<string, unknown> } };
+    expect(stage.Properties.RouteSettings['POST /scans']).toBeDefined();
+    expect(JSON.stringify(t.findResources('AWS::ApiGatewayV2::Integration'))).toContain('qcm-dev-scans-create');
+    const route = Object.values(t.findResources('AWS::ApiGatewayV2::Route')).find((r) => (r as { Properties: { RouteKey: string } }).Properties.RouteKey === 'POST /scans') as { Properties: { AuthorizationType: string } };
+    expect(route.Properties.AuthorizationType).toBe('JWT');
+  });
+});
+
+describe('Data: evenements S3', () => {
+  it('EventBridge active sur le bucket des scans', () => {
+    tpl('dev', 'data').hasResourceProperties('Custom::S3BucketNotifications', { NotificationConfiguration: { EventBridgeConfiguration: {} } });
   });
 });

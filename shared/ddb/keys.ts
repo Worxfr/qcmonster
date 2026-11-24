@@ -20,6 +20,12 @@ export const keys = {
   claim: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `CLAIM#${String(nn).padStart(2, '0')}` }),
   qcm: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `QCM#${String(nn).padStart(2, '0')}` }),
   gap: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `GAP#${String(nn).padStart(2, '0')}` }),
+  /** Verdict de verification d'une affirmation (ecrit par L2b seul; CLAIM# est ecrit par L2a seul). */
+  verdict: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `VERDICT#${String(nn).padStart(2, '0')}` }),
+  /** Signalement d'une erreur de fiche (ecrit par L2a via docs-report, traite par L3). */
+  report: (familyId: string, reportId: string): Key => ({ PK: `FAMILY#${familyId}`, SK: `REPORT#${reportId}` }),
+  /** Compteur de transcriptions du jour (plafond 10), ecrit par L2a. */
+  transcriptions: (sid: string, date: string): Key => ({ PK: `STUDENT#${sid}`, SK: `TRANSCR#${date}` }),
   passage: (hash: string): Key => ({ PK: `PASSAGE#${hash}`, SK: 'META' }),
   claimCache: (fingerprint: string): Key => ({ PK: `CLAIMCACHE#${fingerprint}`, SK: 'META' }),
   profile: (sid: string): Key => ({ PK: `STUDENT#${sid}`, SK: 'PROFILE' }),
@@ -27,6 +33,8 @@ export const keys = {
   attempt: (sid: string, questionId: string, date: string): Key => ({ PK: `STUDENT#${sid}`, SK: `ATT#${questionId}#${date}` }),
   week: (fid: string, week: string, sid: string): Key => ({ PK: `FAMILY#${fid}`, SK: `WEEK#${week}#${sid}` }),
   cost: (env: Env, month: string): Key => ({ PK: `COST#${env}`, SK: `MONTH#${month}` }),
+  /** Cumul depuis le debut de la phase dev (plafond d'essais de 12 EUR, jamais remis a zero). */
+  costTotal: (env: Env): Key => ({ PK: `COST#${env}`, SK: 'TOTAL' }),
   /** code = code d'invitation en clair; seul son hache est stocke. */
   invite: (code: string): Key => ({ PK: `INVITE#${sha256(code)}`, SK: 'META' }),
   /** token = jeton d'activation en clair; seul son hache est stocke. */
