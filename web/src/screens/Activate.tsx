@@ -13,7 +13,7 @@ export function passwordProblem(p: string): string | null {
 }
 
 export function Activate({ onDone }: { onDone: () => void }) {
-  const [token] = useState(takeActivationToken);
+  const [token, setToken] = useState(takeActivationToken);
   const [pass, setPass] = useState('');
   const [again, setAgain] = useState('');
   const [show, setShow] = useState(false);
@@ -33,10 +33,11 @@ export function Activate({ onDone }: { onDone: () => void }) {
       await api.activate(token, pass);
       setPass('');
       setAgain('');
+      setToken(null); // le jeton est à usage unique: on ne le garde pas en mémoire après succès
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setError("Ce lien n'est plus valable : il a déjà servi ou il a expiré. Demande un nouveau lien à ton parent.");
-      else if (err instanceof ApiError && err.status === 400) setError('Ce mot de passe est refusé. Essaie-en un plus long, avec majuscule, minuscule et chiffre.');
+      else if (err instanceof ApiError && err.status === 400) setError('Ça ne marche pas. Vérifie ton mot de passe (12 caractères, majuscule, minuscule, chiffre) ou demande un nouveau lien à ton parent.');
       else setError('Impossible de joindre le serveur. Réessaie dans un instant.');
     } finally {
       setBusy(false);
@@ -70,7 +71,7 @@ export function Activate({ onDone }: { onDone: () => void }) {
             <input type={show ? 'text' : 'password'} autoComplete="new-password" value={again} maxLength={128} required
               aria-invalid={mismatch} aria-describedby="pw-same" onChange={(e) => setAgain(e.target.value)} />
           </label>
-          <p id="pw-same" className={mismatch ? 'muted warn-text' : 'sr-only'}>{mismatch ? 'Les deux mots de passe ne sont pas les mêmes.' : ''}</p>
+          <p id="pw-same" aria-live="polite" className={mismatch ? 'muted warn-text' : 'sr-only'}>{mismatch ? 'Les deux mots de passe ne sont pas les mêmes.' : ''}</p>
           <label className="check"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Montrer le mot de passe</label>
           <ErrorBox message={error} />
           <button className="btn btn-big" disabled={busy || !ready}>{busy ? 'Un instant…' : 'Activer mon compte'}</button>

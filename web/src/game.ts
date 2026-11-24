@@ -43,13 +43,13 @@ export const JOB_FINAL: JobState[] = ['termine', 'rejete', 'echec', 'expire'];
  * (L3) ne publie pas son catalogue; un identifiant inconnu s'affiche quand meme (repli sur l'identifiant lisible).
  */
 export const BADGES: { id: string; icon: string; label: string; hint: string }[] = [
-  { id: 'premier_scan', icon: '📷', label: 'Premier scan', hint: 'Lis ta première fiche' },
-  { id: 'serie_7', icon: '🔥', label: 'Série de 7 jours', hint: '7 jours de suite' },
-  { id: 'serie_30', icon: '🌋', label: 'Série de 30 jours', hint: '30 jours de suite' },
-  { id: 'cent_bonnes_reponses', icon: '💯', label: '100 bonnes réponses', hint: '100 bonnes réponses' },
-  { id: 'serie_parfaite_x5', icon: '🎯', label: 'Cinq séries parfaites', hint: '5 séries sans faute' },
+  { id: 'premier_scan', icon: '📷', label: 'Premier scan', hint: "Lis ta première fiche jusqu'au bout" },
+  { id: 'serie_7', icon: '🔥', label: 'Série de 7 jours', hint: 'Reviens 7 jours de suite' },
+  { id: 'serie_30', icon: '🌋', label: 'Série de 30 jours', hint: 'Reviens 30 jours de suite' },
+  { id: 'cent_bonnes_reponses', icon: '💯', label: '100 bonnes réponses', hint: 'Réponds juste 100 fois' },
+  { id: 'serie_parfaite_x5', icon: '🎯', label: 'Cinq séries parfaites', hint: 'Fais 5 séries sans faute' },
   { id: 'chasseur_d_erreurs', icon: '🔎', label: "Chasseur d'erreurs", hint: 'Un signalement validé par ton parent' },
-  { id: 'explorateur', icon: '🧭', label: 'Explorateur', hint: '5 matières différentes dans le mois' },
+  { id: 'explorateur', icon: '🧭', label: 'Explorateur', hint: 'Travaille 5 matières dans le mois' },
   { id: 'maitre_maths', icon: '➗', label: 'Maître des maths', hint: '500 XP en maths' },
   { id: 'maitre_physique', icon: '⚗️', label: 'Maître de la physique', hint: '500 XP en physique-chimie' },
   { id: 'maitre_svt', icon: '🌱', label: 'Maître des SVT', hint: '500 XP en SVT' },

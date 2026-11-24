@@ -55,8 +55,8 @@ function Shell() {
       },
       (e) => {
         if (!live) return;
-        // Parent invité qui n'a pas encore de famille: le profil est refusé (403) ou absent (404).
-        if (e instanceof ApiError && (e.status === 403 || e.status === 404)) setNoFamily(true);
+        // Parent invité qui n'a pas encore de famille: le profil est absent (404). Un 403 reste une erreur affichée (compte suspendu ou sans droit).
+        if (e instanceof ApiError && e.status === 404) setNoFamily(true);
         else setError(errMsg(e));
       },
     );

@@ -9,6 +9,7 @@ import { errMsg } from '../hooks';
 export function CreateFamily({ onReady }: { onReady: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [relogin, setRelogin] = useState(false);
 
   async function create() {
     setBusy(true);
@@ -19,7 +20,15 @@ export function CreateFamily({ onReady }: { onReady: () => void }) {
       } catch (e) {
         if (!(e instanceof ApiError && e.status === 409)) throw e; // 409: la famille existe déjà, seul le jeton est périmé
       }
-      await refreshSession();
+      try {
+        await refreshSession();
+      } catch {
+        // La famille existe, mais les jetons n'ont pas pu être renouvelés: une nouvelle connexion les met à jour.
+        setRelogin(true);
+        setError('Ta famille est créée. Reconnecte-toi pour continuer.');
+        setBusy(false);
+        return;
+      }
       onReady();
     } catch (e) {
       setError(e instanceof ApiError && e.status === 403 ? "Ce compte ne peut pas créer de famille. Il faut une invitation." : errMsg(e));
@@ -34,8 +43,14 @@ export function CreateFamily({ onReady }: { onReady: () => void }) {
       <p className="lead">Crée l'espace de ta famille pour inviter tes enfants.</p>
       <p className="muted">Tu pourras ensuite ajouter chaque élève, suivre ses progrès et régler ses pages du mois.</p>
       <ErrorBox message={error} />
-      <button className="btn btn-big" onClick={create} disabled={busy}>{busy ? 'Création…' : 'Créer ma famille'}</button>
-      <button className="link" onClick={signOut}>Se déconnecter</button>
+      {relogin ? (
+        <button className="btn btn-big" onClick={signOut}>Se reconnecter</button>
+      ) : (
+        <>
+          <button className="btn btn-big" onClick={create} disabled={busy}>{busy ? 'Création…' : 'Créer ma famille'}</button>
+          <button className="link" onClick={signOut}>Se déconnecter</button>
+        </>
+      )}
     </main>
   );
 }

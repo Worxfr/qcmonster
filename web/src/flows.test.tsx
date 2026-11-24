@@ -13,6 +13,7 @@ const realFetch = globalThis.fetch;
 let uploads = 0;
 let jobState: string | null = null;
 let noFamily = false;
+let noFamilyStatus = 404;
 let progressBadges: string[] | null = null;
 const calls: { url: string; method: string; auth: string | null; body: string | null }[] = [];
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
@@ -29,7 +30,7 @@ beforeAll(async () => {
     }
     const method = init?.method ?? 'GET';
     calls.push({ url, method, auth: new Headers(init?.headers).get('authorization'), body: typeof init?.body === 'string' ? init.body : null });
-    if (noFamily && url.endsWith('/me') && method === 'GET') return json({ code: 'interdit', message: 'Pas de famille' }, 403);
+    if (noFamily && url.endsWith('/me') && method === 'GET') return json({ code: noFamilyStatus === 404 ? 'introuvable' : 'interdit', message: 'Pas de famille' }, noFamilyStatus);
     if (noFamily && url.endsWith('/family') && method === 'POST') {
       noFamily = false;
       return json({ userId: 'u1', role: 'parent', familyId: 'f1' }, 201);
@@ -48,6 +49,7 @@ afterAll(() => {
 beforeEach(() => {
   jobState = null;
   noFamily = false;
+  noFamilyStatus = 404;
   progressBadges = null;
   calls.length = 0;
   uploads = 0;
@@ -228,6 +230,15 @@ describe('activation et famille', () => {
     expect(window.location.pathname).toBe('/');
   });
 
+  it('activation: jeton trop court = lien incomplet, aucun appel', async () => {
+    window.history.replaceState(null, '', '/activer#token=court');
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/incomplet/);
+    expect(calls.some((x) => x.url.endsWith('/activation'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: /connexion/ }));
+  });
+
   it('activation: lien sans jeton, aucun appel', async () => {
     window.history.replaceState(null, '', '/activer');
     const user = userEvent.setup();
@@ -246,10 +257,21 @@ describe('activation et famille', () => {
   });
 });
 
+describe('famille: cas limites', () => {
+  it('403 sur /me: erreur affichee, pas d\'ecran de creation', async () => {
+    noFamily = true;
+    noFamilyStatus = 403;
+    await enter('parent');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Pas de famille/);
+    expect(screen.queryByRole('button', { name: 'Créer ma famille' })).toBeNull();
+  });
+});
+
 describe('catalogue de badges', () => {
   it('libelles lisibles, repli sur l\'identifiant', () => {
     expect(badgeLabel('chasseur_d_erreurs')).toBe("Chasseur d'erreurs");
     expect(badgeLabel('nouveau_truc')).toBe('nouveau truc');
+    expect(BADGES.every((b) => b.hint !== b.label)).toBe(true);
     expect(BADGES.map((b) => b.id)).toContain('maitre_histoire_geo');
   });
   it('regle du mot de passe', () => {
