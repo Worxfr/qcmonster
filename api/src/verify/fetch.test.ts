@@ -54,6 +54,21 @@ describe('lecture sortante gardee', () => {
     expect(await refused(guardedGetJson(U, { fetchImpl: (async () => new Response('x', { status: 500 })) as never }))).toBe('status');
     expect(await refused(guardedGetJson(U, { fetchImpl: (async () => new Response('<html>', { status: 200 })) as never }))).toBe('format');
   });
+  it("User-Agent: le contact est obligatoire en production, repli hors production", () => {
+    const env = { ...process.env };
+    try {
+      delete process.env.QCM_UA_CONTACT;
+      process.env.QCM_ENV = 'prod';
+      expect(() => userAgent()).toThrow(/QCM_UA_CONTACT/);
+      process.env.QCM_UA_CONTACT = 'equipe@example.invalid';
+      expect(userAgent()).toContain('equipe@example.invalid');
+      delete process.env.QCM_UA_CONTACT;
+      process.env.QCM_ENV = 'dev';
+      expect(userAgent()).toMatch(/^QCMonsterVerifyBot\/1\.0 \(.+\) /);
+    } finally {
+      process.env = env;
+    }
+  });
   it("n'envoie aucun en-tete d'identification, un User-Agent descriptif avec contact", async () => {
     const f = vi.fn(async () => jsonResponse({ ok: true }));
     await guardedGetJson(U, { fetchImpl: f as never });

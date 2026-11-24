@@ -16,11 +16,11 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Affirmation | `DOC#<docId>` | `CLAIM#<nn>` | texte, origine (page, `phrase_id`, extrait), type, `a_risque`. Jamais modifiee ensuite | L2a (seul) |
 | QCM | `DOC#<docId>` | `QCM#<nn>` | `questionId` (`<docId>:qcm:<nn>`), enonce, 4 choix, `claimId`, cle (reservee au serveur) | L2a |
 | Trou | `DOC#<docId>` | `GAP#<nn>` | `questionId` (`<docId>:gap:<nn>`), phrase a trous, mot attendu, `claimId` | L2a |
-| Verdict | `DOC#<docId>` | `VERDICT#<nn>` | `statut`, `niveau`, `secondeLecture`, `sources[]` (`passageId`, `url`, `site`, `titre`, `extrait`, `niveau`) | L2b (seul) |
+| Verdict | `DOC#<docId>` | `VERDICT#<nn>` | `statut`, `niveau`, `secondeLecture`, `sources[]` (`passageId`, `url`, `site`, `titre`, `extrait`, `niveau`), `coutMicros` (facultatif: cout en micro-euros des appels du lot, porte par le premier verdict du lot, pour cumuler le plafond du job entre tentatives; non expose par `docs-read`) | L2b (seul) |
 | Signalement | `FAMILY#<fid>` | `REPORT#<reportId>` | `docId`, `claimId`, `commentaire`, `statut` (`ouvert`, `valide`, `rejete`) | L2a (creation par `docs-report`); L3 change `statut` |
 | Compteur de transcriptions | `STUDENT#<sid>` | `TRANSCR#<aaaa-mm-jj>` | nombre du jour (plafond 10). TTL 2 jours | L2a |
-| Passage | `PASSAGE#<hash>` | `META` | texte brut, URL, site, titre, niveau, date. TTL 30 jours | L2b |
-| Verdict en cache | `CLAIMCACHE#<empreinte>` | `META` | statut, `passageIds`, date. TTL 30 jours | L2b |
+| Passage | `PASSAGE#<hash>` | `META` | `texte` (brut, nettoye), `url`, `site`, `titre`, `niveau`, `date`, `ttl`. `<hash>` = 24 premiers caracteres hex de SHA-256(`url` + saut de ligne + `texte`). TTL 30 jours | L2b |
+| Verdict en cache | `CLAIMCACHE#<empreinte>` | `META` | `statut` (`verifiee` ou `erreur` seulement), `niveau`, `secondeLecture`, `passageIds`, `sources[]` (memes champs que le verdict), `date`, `ttl`. `<empreinte>` = SHA-256 du texte normalise (minuscules, sans accents ni ponctuation). Reutilise seulement si les passages cites existent encore. TTL 30 jours | L2b |
 | Profil de jeu | `STUDENT#<sid>` | `PROFILE` | XP total, niveau, serie, gels, badges, stade | L3 |
 | XP du jour | `STUDENT#<sid>` | `DAY#<aaaa-mm-jj>` | XP gagne, pages payees, jour valide | L3 |
 | Tentative | `STUDENT#<sid>` | `ATT#<questionId>#<aaaa-mm-jj>` | choix, juste, `shownAt`, `answeredAt` | L3 |

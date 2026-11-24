@@ -20,7 +20,7 @@ export const CLAIMS_PER_CALL = 25;
 export const CACHE_TTL_DAYS = 30;
 
 /** Espace de temps entre deux requetes sortantes d'une instance, serialisees (MediaWiki recommande des requetes en serie). */
-export function createRateLimiter(intervalMs: number, now: () => number = Date.now, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): () => Promise<void> {
+export function createRateLimiter(intervalMs: number, now: () => number = () => Date.now(), sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): () => Promise<void> {
   let next = 0;
   return async () => {
     const t = now();
@@ -29,3 +29,9 @@ export function createRateLimiter(intervalMs: number, now: () => number = Date.n
     if (start > t) await sleep(start - t);
   };
 }
+
+/**
+ * Limiteur UNIQUE par conteneur Lambda (niveau du module): deux invocations successives sur un conteneur chaud partagent les creneaux,
+ * donc une instance ne depasse jamais 2 requetes par seconde meme a la jonction de deux invocations.
+ */
+export const sharedLimiter = createRateLimiter(minIntervalMs());

@@ -34,6 +34,7 @@ export class VerifyStack extends Stack {
       if (dep instanceof Stack) this.addStackDependency(dep);
     }
     const profileArn = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'models/sonnet'));
+    const uaContact = this.node.tryGetContext('uaContact') as string | undefined; // -c uaContact=...; obligatoire a l'execution en prod
     const table = tableName(envName);
     const tableArn = this.formatArn({ service: 'dynamodb', resource: 'table', resourceName: table });
 
@@ -44,6 +45,8 @@ export class VerifyStack extends Stack {
     // DynamoDB: seulement les partitions utilisees. Lecture: affirmations, passages, cache, compteur. Ecriture: verdicts (DOC#), passages, cache.
     const leading = (...pks: string[]) => ({ 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': pks } });
     role.addToPolicy(new iam.PolicyStatement({ sid: 'ReadOwnPartitions', actions: ['dynamodb:GetItem', 'dynamodb:BatchGetItem', 'dynamodb:Query'], resources: [tableArn], conditions: leading('DOC#*', 'PASSAGE#*', 'CLAIMCACHE#*', `COST#${envName}`) }));
+    // shortcut: IAM ne separe pas CLAIM# de VERDICT# (LeadingKeys ne filtre que la cle de partition DOC#<docId>, dynamodb:Attributes pas la cle de tri):
+    // ce role POURRAIT ecrire CLAIM#. « Jamais CLAIM# » repose sur le code (store.ts, teste), pas sur IAM. A revoir si une table dediee aux verdicts est creee.
     role.addToPolicy(new iam.PolicyStatement({ sid: 'WriteVerdictsPassagesCache', actions: ['dynamodb:PutItem'], resources: [tableArn], conditions: leading('DOC#*', 'PASSAGE#*', 'CLAIMCACHE#*') }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'AddCost', actions: ['dynamodb:UpdateItem'], resources: [tableArn], conditions: leading(`COST#${envName}`) }));
 
@@ -72,7 +75,7 @@ export class VerifyStack extends Stack {
       // Concurrence reservee: avec la limite par instance de api/src/verify/limits.ts, le total reste sous 5 requetes MediaWiki par seconde (revue C7).
       reservedConcurrentExecutions: VERIFY_RESERVED_CONCURRENCY,
       logGroup,
-      environment: { QCM_ENV: envName, TABLE_NAME: table, QCM_MODEL_SONNET_ARN: profileArn }, // QCM_BEDROCK absent: faux modele tant que personne ne l'active
+      environment: { QCM_ENV: envName, TABLE_NAME: table, QCM_MODEL_SONNET_ARN: profileArn, ...(uaContact ? { QCM_UA_CONTACT: String(uaContact) } : {}) }, // QCM_BEDROCK absent: faux modele tant que personne ne l'active
       bundling: { format: OutputFormat.ESM, target: 'node22', minify: true, sourceMap: false, mainFields: ['module', 'main'], banner: "import{createRequire}from'module';const require=createRequire(import.meta.url);" },
     });
   }

@@ -9,7 +9,7 @@ import type { Passage, Niveau } from './search.js';
 import type { Source } from './judge.js';
 
 export type ClaimItem = z.infer<typeof ClaimItemSchema>;
-export type VerdictBody = Pick<z.infer<typeof VerdictItemSchema>, 'statut' | 'secondeLecture'> & { niveau?: Niveau; sources: Source[] };
+export type VerdictBody = Pick<z.infer<typeof VerdictItemSchema>, 'statut' | 'secondeLecture'> & { niveau?: Niveau; sources: Source[]; /** Cout (micro-euros) des appels du lot, porte par le premier verdict du lot: sert a cumuler le plafond du job entre tentatives. */ coutMicros?: number };
 export interface CacheEntry {
   statut: 'verifiee' | 'erreur';
   niveau: Niveau;
@@ -53,10 +53,11 @@ export function dynamoVerifyStore(client: DynamoDBDocumentClient, table: string,
     },
     async listVerdicts(docId) {
       const items = await query(`DOC#${docId}`, 'VERDICT#');
-      return new Map(items.map((i) => [nnOf(String(i.SK), 'VERDICT#'), VerdictItemSchema.parse(i) as VerdictBody]));
+      return new Map(items.map((i) => [nnOf(String(i.SK), 'VERDICT#'), { ...(VerdictItemSchema.parse(i) as VerdictBody), coutMicros: Number.isFinite(i.coutMicros) ? (i.coutMicros as number) : undefined }]));
     },
     async putVerdict(docId, nn, v) {
-      const item = VerdictItemSchema.parse({ ...keys.verdict(docId, nn), ...v });
+      const { coutMicros, ...body } = v;
+      const item = { ...VerdictItemSchema.parse({ ...keys.verdict(docId, nn), ...body }), ...(coutMicros ? { coutMicros } : {}) };
       await client.send(new PutCommand({ TableName: table, Item: item }));
     },
     async putPassages(ps) {

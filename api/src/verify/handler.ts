@@ -5,7 +5,7 @@ import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { costStoreFromDynamo, modelPortFromEnv } from '../../../shared/bedrock.js';
 import { VerifyInputSchema, type VerifyOutput } from '../../../shared/items.js';
 import { createSearchTool } from './search.js';
-import { createRateLimiter, minIntervalMs } from './limits.js';
+import { sharedLimiter } from './limits.js';
 import { verifyRun } from './run.js';
 import { dynamoVerifyStore } from './store.js';
 
@@ -19,12 +19,13 @@ const need = (name: string): string => {
 export async function handler(event: unknown): Promise<VerifyOutput> {
   const input = VerifyInputSchema.parse(event);
   if (!ID.test(input.jobId) || !ID.test(input.docId)) throw new RangeError('identifiant invalide');
+  if (process.env.QCM_ENV === 'prod') need('QCM_UA_CONTACT'); // Wikimedia exige un contact: pas de repli en production
   const table = need('TABLE_NAME');
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
   return verifyRun(
     {
       store: dynamoVerifyStore(client, table),
-      search: createSearchTool({ beforeRequest: createRateLimiter(minIntervalMs()) }),
+      search: createSearchTool({ beforeRequest: sharedLimiter }),
       model: { port: await modelPortFromEnv(), costStore: costStoreFromDynamo(client, table), arn: need('QCM_MODEL_SONNET_ARN') },
     },
     input,

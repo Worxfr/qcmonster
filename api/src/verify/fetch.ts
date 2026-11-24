@@ -16,7 +16,12 @@ export class FetchRefused extends Error {
  * Politique Wikimedia (lue le 2026-11-24): User-Agent descriptif avec contact, format
  * `client/version (contact) bibliotheque/version`. Le contact vient de QCM_UA_CONTACT (adresse de l'equipe).
  */
-export const userAgent = (contact = process.env.QCM_UA_CONTACT ?? 'worx@pouf.org'): string => `QCMonsterVerifyBot/1.0 (${contact}) node-fetch`;
+export const userAgent = (contact = process.env.QCM_UA_CONTACT): string => {
+  // Repli (adresse de l'equipe du depot) hors production seulement: en prod le contact est obligatoire (handler.ts).
+  const c = contact ?? (process.env.QCM_ENV === 'prod' ? undefined : 'worx@pouf.org');
+  if (!c) throw new Error('QCM_UA_CONTACT obligatoire en production');
+  return `QCMonsterVerifyBot/1.0 (${c}) node-fetch`;
+};
 
 export interface FetchOptions {
   fetchImpl?: typeof fetch;

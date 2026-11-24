@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { App, Stack } from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
 process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' });
@@ -55,39 +57,83 @@ describe.each(ENVS)('Verify (%s)', (env) => {
 });
 
 // Test M2 (revue du plan de la vague 3): AUCUN role hors processingRoleNames ne peut recevoir bedrock:Invoke*. Parcourt toutes les stacks de l'application,
-// y compris celles que d'autres lots ajouteront: ce test les couvrira sans modification.
-describe.each(ENVS)('M2: seuls les roles de traitement appellent Bedrock (%s)', (env) => {
-  it('tout role avec bedrock:Invoke* figure dans processingRoleNames', () => {
-    const offenders: string[] = [];
-    let granting = 0;
-    for (const { name, t } of templates(env)) {
-      const roles = t.findResources('AWS::IAM::Role');
-      const roleName = (ref: unknown): string => {
-        const id = (ref as { Ref?: string })?.Ref;
-        const r = id ? (roles[id] as { Properties?: { RoleName?: string } } | undefined) : undefined;
-        return r?.Properties?.RoleName ?? `${name}:${id ?? JSON.stringify(ref)}`; // role sans nom fixe: ne peut pas figurer dans la liste
-      };
-      const check = (stmts: Stmt[], roleNames: string[]) => {
-        if (!stmts.some(grantsBedrockInvoke)) return;
-        granting++;
-        for (const rn of roleNames) if (!processingRoleNames(env).includes(rn)) offenders.push(rn);
-      };
-      for (const p of Object.values(t.findResources('AWS::IAM::Policy')) as { Properties: { Roles?: unknown[]; PolicyDocument?: never } }[]) {
-        check(statementsOf(p.Properties), (p.Properties.Roles ?? []).map(roleName));
-      }
-      for (const p of Object.values(t.findResources('AWS::IAM::ManagedPolicy')) as { Properties: { Roles?: unknown[]; PolicyDocument?: never } }[]) {
-        check(statementsOf(p.Properties), (p.Properties.Roles ?? []).map(roleName));
-      }
-      for (const [id, r] of Object.entries(roles) as [string, { Properties?: { RoleName?: string; Policies?: { PolicyDocument: never }[] } }][]) {
-        for (const pol of r.Properties?.Policies ?? []) check(statementsOf(pol), [r.Properties?.RoleName ?? `${name}:${id}`]);
+// y compris celles que d'autres lots ajouteront: ce test les couvrira sans modification. Lit les politiques en ligne, les politiques jointes (Policy,
+// ManagedPolicy) et les `ManagedPolicyArns`: aucune politique gerée Bedrock, AdministratorAccess ou PowerUserAccess n'est permise, meme sur un role de traitement.
+const FORBIDDEN_MANAGED = /Bedrock|AdministratorAccess|PowerUserAccess/;
+
+/** Roles fautifs d'un ensemble de templates, et nombre de declarations qui accordent bedrock:Invoke* (pour verifier que le test voit quelque chose). */
+function scanBedrock(env: (typeof ENVS)[number], tpls: { name: string; t: Template }[]): { offenders: string[]; granting: number } {
+  const offenders: string[] = [];
+  let granting = 0;
+  for (const { name, t } of tpls) {
+    const roles = t.findResources('AWS::IAM::Role');
+    const roleName = (ref: unknown): string => {
+      const id = (ref as { Ref?: string })?.Ref;
+      const r = id ? (roles[id] as { Properties?: { RoleName?: string } } | undefined) : undefined;
+      return r?.Properties?.RoleName ?? `${name}:${id ?? JSON.stringify(ref)}`; // role sans nom fixe: ne peut pas figurer dans la liste
+    };
+    const check = (stmts: Stmt[], roleNames: string[]) => {
+      if (!stmts.some(grantsBedrockInvoke)) return;
+      granting++;
+      for (const rn of roleNames) if (!processingRoleNames(env).includes(rn)) offenders.push(rn);
+    };
+    for (const type of ['AWS::IAM::Policy', 'AWS::IAM::ManagedPolicy']) {
+      for (const p of Object.values(t.findResources(type)) as { Properties: { Roles?: unknown[]; Users?: unknown[]; Groups?: unknown[]; PolicyDocument?: never } }[]) {
+        const principals = [...(p.Properties.Roles ?? []).map(roleName), ...(p.Properties.Users ?? []).map((u) => `${name}:user:${JSON.stringify(u)}`), ...(p.Properties.Groups ?? []).map((g) => `${name}:group:${JSON.stringify(g)}`)];
+        check(statementsOf(p.Properties), principals);
       }
     }
+    for (const [id, r] of Object.entries(roles) as [string, { Properties?: { RoleName?: string; Policies?: { PolicyDocument: never }[]; ManagedPolicyArns?: unknown[] } }][]) {
+      const rn = r.Properties?.RoleName ?? `${name}:${id}`;
+      for (const pol of r.Properties?.Policies ?? []) check(statementsOf(pol), [rn]);
+      for (const arn of r.Properties?.ManagedPolicyArns ?? []) if (FORBIDDEN_MANAGED.test(JSON.stringify(arn))) offenders.push(`${rn} (politique geree ${FORBIDDEN_MANAGED.exec(JSON.stringify(arn))![0]})`);
+    }
+    for (const type of ['AWS::IAM::User', 'AWS::IAM::Group']) {
+      for (const [id, r] of Object.entries(t.findResources(type)) as [string, { Properties?: { Policies?: { PolicyDocument: never }[]; ManagedPolicyArns?: unknown[] } }][]) {
+        for (const pol of r.Properties?.Policies ?? []) check(statementsOf(pol), [`${name}:${id}`]);
+        for (const arn of r.Properties?.ManagedPolicyArns ?? []) if (FORBIDDEN_MANAGED.test(JSON.stringify(arn))) offenders.push(`${name}:${id} (politique geree)`);
+      }
+    }
+  }
+  return { offenders, granting };
+}
+
+describe.each(ENVS)('M2: seuls les roles de traitement appellent Bedrock (%s)', (env) => {
+  it('tout role avec bedrock:Invoke* figure dans processingRoleNames; aucune politique geree Bedrock/Admin/PowerUser', () => {
+    const { offenders, granting } = scanBedrock(env, templates(env));
     expect(offenders).toEqual([]);
     expect(granting).toBeGreaterThan(0); // le test voit bien au moins le role de verification
   });
-  it("le detecteur reconnait un role fautif (test negatif)", () => {
-    const s: Stmt = { Effect: 'Allow', Action: ['bedrock:InvokeModelWithResponseStream'] };
-    expect(grantsBedrockInvoke(s)).toBe(true);
+  it('test negatif sur de vrais templates: politique geree Bedrock, role hors liste, politique jointe, utilisateur', () => {
+    const synth = (build: (s: Stack) => void) => {
+      const app = new App();
+      const s = new Stack(app, 'Neg');
+      build(s);
+      return [{ name: 'Neg', t: Template.fromStack(s) }];
+    };
+    const lambdaPrincipal = new iam.ServicePrincipal('lambda.amazonaws.com');
+    // 1. politique geree AWS Bedrock sur le role de verification (mutation relevee par la relecture)
+    const m1 = scanBedrock(env, synth((s) => void new iam.Role(s, 'R', { roleName: processingRoleNames(env)[1], assumedBy: lambdaPrincipal, managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonBedrockFullAccess')] })));
+    expect(m1.offenders.join()).toContain('politique geree Bedrock');
+    // 2. AdministratorAccess et PowerUserAccess sur un role quelconque
+    for (const name of ['AdministratorAccess', 'PowerUserAccess']) {
+      const m = scanBedrock(env, synth((s) => void new iam.Role(s, 'R', { assumedBy: lambdaPrincipal, managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName(name)] })));
+      expect(m.offenders.join(), name).toContain(name);
+    }
+    // 3. role hors liste avec bedrock:InvokeModel en ligne ou par politique jointe
+    const m3 = scanBedrock(env, synth((s) => void new iam.Role(s, 'R', { roleName: 'autre-role', assumedBy: lambdaPrincipal, inlinePolicies: { p: new iam.PolicyDocument({ statements: [new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: ['*'] })] }) } })));
+    expect(m3.offenders).toEqual(['autre-role']);
+    const m4 = scanBedrock(env, synth((s) => new iam.Role(s, 'R', { roleName: 'autre-role', assumedBy: lambdaPrincipal }).addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['bedrock:InvokeModelWithResponseStream'], resources: ['*'] }))));
+    expect(m4.offenders).toEqual(['autre-role']);
+    // 4. utilisateur avec bedrock:*
+    const m5 = scanBedrock(env, synth((s) => new iam.User(s, 'U').addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['bedrock:*'], resources: ['*'] }))));
+    expect(m5.offenders.length).toBe(1);
+    // 5. un role de traitement avec seulement des politiques gerees autorisees reste accepte
+    const ok = scanBedrock(env, synth((s) => void new iam.Role(s, 'R', { roleName: processingRoleNames(env)[1], assumedBy: lambdaPrincipal, managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')] })));
+    expect(ok.offenders).toEqual([]);
+  });
+  it('le detecteur reconnait les actions Bedrock', () => {
+    expect(grantsBedrockInvoke({ Effect: 'Allow', Action: ['bedrock:InvokeModelWithResponseStream'] })).toBe(true);
     expect(grantsBedrockInvoke({ Effect: 'Allow', Action: 'bedrock:*' })).toBe(true);
     expect(grantsBedrockInvoke({ Effect: 'Allow', Action: 'bedrock:GetInferenceProfile' })).toBe(false);
   });

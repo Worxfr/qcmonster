@@ -133,11 +133,74 @@ describe('verify-run', () => {
     expect(out.nbVerifiees).toBe(25 * model.calls.length);
     expect(out.nbNonVerifiables).toBe(60 - out.nbVerifiees);
   });
-  it("plafond: l'estimation d'un appel (entree prudente + sortie maximale) refuse l'appel qui depasserait le reste du budget", async () => {
-    const { deps, model } = setup([claim('doc1', 1, OK)], fixed(ps));
-    const out = await verifyRun(deps, { ...input, budgetRestantCentimes: 1 });
+  it("plafond: l'estimation d'un lot plein refuse l'appel qui depasserait le reste du budget (5 centimes)", async () => {
+    const claims = Array.from({ length: 25 }, (_, i) => claim('doc1', i + 1, `Fait numero ${i + 1} du cours de maths.`));
+    const long = (n: number) => mkPassage(`Fait numero ${n} du cours de maths. ` + 'Un long passage de dictionnaire. '.repeat(35), 2, `p${n}`);
+    const map = Object.fromEntries(claims.map((c) => [c.claim.texte, [long(c.nn), long(c.nn + 100), long(c.nn + 200), long(c.nn + 300)]]));
+    const { deps, model } = setup(claims, fixed(map));
+    const out = await verifyRun(deps, { ...input, budgetRestantCentimes: 5 });
     expect(model.calls).toHaveLength(0);
-    expect(out.nbNonVerifiables).toBe(1);
+    expect(out.nbNonVerifiables).toBe(25);
+  });
+  it('panne au 2e lot: le 1er lot est ecrit (verdicts, passages, cache) et son cout est cumule a la reprise', async () => {
+    const claims = Array.from({ length: 30 }, (_, i) => claim('doc1', i + 1, `Fait numero ${i + 1} du cours de maths.`));
+    const map = Object.fromEntries(claims.map((c) => [c.claim.texte, [mkPassage(c.claim.texte, 2, `p${c.nn}`)]]));
+    const { deps, store, model } = setup(claims, fixed(map));
+    const base = model.converse.bind(model);
+    let n = 0;
+    model.converse = async (r) => {
+      if (++n === 2) throw new Error('throttling');
+      const res = await base(r);
+      return { ...res, usage: { inputTokens: 20_000, outputTokens: 1_000 } }; // ~0,05 EUR par appel
+    };
+    await expect(verifyRun(deps, input)).rejects.toThrow('throttling');
+    expect(store.verdicts.size).toBe(25); // 1er lot ecrit
+    expect(store.cache.size).toBe(25);
+    expect(store.passages.size).toBe(25);
+    const carried = [...store.verdicts.values()].reduce((a, v) => a + (v.coutMicros ?? 0), 0);
+    expect(carried).toBeGreaterThan(40_000);
+    // Reprise: seul le 2e lot est rejoue; le cout rendu cumule la tentative perdue (le Job de L2a n'a recu aucune sortie).
+    const out = await verifyRun(deps, input);
+    expect(model.calls).toHaveLength(2); // lot 1 (1er essai) + lot 2 (reprise); l'appel en panne n'est pas compte
+    expect(out.nbVerifiees).toBe(30);
+    expect(out.coutCentimes).toBeGreaterThanOrEqual(Math.ceil(carried / 10_000));
+  });
+  it('plafond du job cumule entre tentatives: le cout deja porte par les verdicts reduit le reste', async () => {
+    const claims = [claim('doc1', 1, 'Fait un du cours de maths.')];
+    const { deps, store, model } = setup(claims, fixed({ 'Fait un du cours de maths.': [mkPassage('Fait un du cours de maths.')] }));
+    store.verdicts.set('doc1/9', { statut: 'verifiee', secondeLecture: false, sources: [], coutMicros: 249_000 }); // 0,249 EUR deja depenses
+    const out = await verifyRun(deps, input);
+    expect(model.calls).toHaveLength(0);
+    expect(out.coutCentimes).toBe(25);
+  });
+  it('seconde lecture en panne: le lot est ecrit (non confirme = non_verifiable, pas de cache) puis l erreur est relancee', async () => {
+    const { deps, store, model } = setup([claim('doc1', 1, BAD)], fixed(ps));
+    const base = model.converse.bind(model);
+    let n = 0;
+    model.converse = async (r) => {
+      if (++n === 2) throw new Error('reseau');
+      return base(r);
+    };
+    await expect(verifyRun(deps, input)).rejects.toThrow('reseau');
+    expect(store.verdicts.get('doc1/1')).toMatchObject({ statut: 'non_verifiable', secondeLecture: false });
+    expect(store.verdicts.get('doc1/1')?.coutMicros).toBeGreaterThan(0);
+    expect(store.cache.size).toBe(0);
+  });
+  it('secondeLecture n est vrai que si l appel a eu lieu', async () => {
+    const { deps, store, model } = setup([claim('doc1', 1, OK, { aRisque: true })], fixed(ps));
+    const base = model.converse.bind(model);
+    model.converse = async (r) => ({ ...(await base(r)), usage: { inputTokens: 30_000, outputTokens: 500 } }); // le jugement coute ~0,065 EUR: plus de budget pour la 2e lecture
+    await verifyRun(deps, { ...input, budgetRestantCentimes: 5 });
+    expect(model.calls).toHaveLength(1);
+    expect(store.verdicts.get('doc1/1')).toMatchObject({ statut: 'non_verifiable', secondeLecture: false });
+  });
+  it('estimation: un lot plein de passages ordinaires n est pas refuse a tort (3,5 car/token)', async () => {
+    const claims = Array.from({ length: 25 }, (_, i) => claim('doc1', i + 1, `Fait numero ${i + 1} du cours de maths.`));
+    const long = (n: number) => mkPassage(`Fait numero ${n} du cours de maths. ` + 'Un long passage de dictionnaire. '.repeat(35), 2, `p${n}`);
+    const map = Object.fromEntries(claims.map((c) => [c.claim.texte, [long(c.nn), long(c.nn + 100), long(c.nn + 200), long(c.nn + 300)]]));
+    const { deps, model } = setup(claims, fixed(map));
+    await verifyRun(deps, input);
+    expect(model.calls.length).toBeGreaterThanOrEqual(1);
   });
   it('reprise apres Retry: les verdicts deja ecrits ne sont pas refaits', async () => {
     const { deps, store, model } = setup([claim('doc1', 1, OK), claim('doc1', 2, BAD)], fixed(ps));
@@ -176,6 +239,30 @@ describe('debit MediaWiki (revue C7)', () => {
     expect(perInstanceRps()).toBe(2);
     expect(minIntervalMs()).toBe(500);
     expect(perInstanceRps() * VERIFY_RESERVED_CONCURRENCY).toBeLessThanOrEqual(MEDIAWIKI_MAX_RPS_TOTAL);
+  });
+  it('limiteur de module: deux invocations successives sur un conteneur chaud restent espacees (pas 3 requetes dans la meme seconde)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { sharedLimiter } = await import('./limits.js');
+      const times: number[] = [];
+      const f = async () => {
+        times.push(Date.now());
+        return jsonResponse(wikiPages([{ title: 'T', extract: 'Un texte assez long pour etre garde comme passage de test unitaire.' }]));
+      };
+      const invocation = async (n: number) => {
+        const tool = createSearchTool({ fetchImpl: f as never, indexes: [], beforeRequest: sharedLimiter }); // outil neuf a chaque invocation
+        for (let i = 0; i < n; i++) await tool.search(`Affirmation ${i} sur Moliere et Tartuffe`);
+      };
+      const done = (async () => {
+        await invocation(3);
+        await invocation(3);
+      })();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(Math.max(...times.map((t) => times.filter((u) => u >= t && u < t + 1000).length))).toBeLessThanOrEqual(perInstanceRps());
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('3 executions simultanees (2 au plus en parallele, comme la concurrence reservee): jamais plus de 5 requetes dans une fenetre de 1 s', async () => {
     vi.useFakeTimers();
