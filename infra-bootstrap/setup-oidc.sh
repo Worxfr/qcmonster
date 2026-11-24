@@ -57,10 +57,10 @@ TRUST="$(cat <<JSON
     "Principal": {"Federated": "${PROVIDER_ARN}"},
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
-      "StringEquals": {"${OIDC_HOST}:aud": "sts.amazonaws.com"},
-      "StringLike": {"${OIDC_HOST}:sub": [
-        "repo:${REPO}:ref:refs/heads/main",
-        "repo:${REPO}:environment:*"
+      "StringEquals": {"${OIDC_HOST}:aud": "sts.amazonaws.com", "${OIDC_HOST}:sub": [
+        "repo:${REPO}:environment:dev",
+        "repo:${REPO}:environment:prod",
+        "repo:${REPO}:ref:refs/heads/main"
       ]}
     }
   }]

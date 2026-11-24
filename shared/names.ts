@@ -15,7 +15,7 @@ export const processingRoleNames = (env: Env) => [`qcm-${env}-pipeline-role`, `q
 /** Noms des fonctions Lambda par handler (design-v2 section 6). */
 export const fn = (env: Env, handler: string) => `qcm-${env}-${handler}`;
 
-/** Quotas par defaut (decision Alexis): 20 pages/eleve/mois et 50/famille en prod, x10 en dev. */
+/** Quotas par defaut (decision le propriétaire): 20 pages/eleve/mois et 50/famille en prod, x10 en dev. */
 export const quotaDefaults = (env: Env) => {
   const k = env === 'prod' ? 1 : 10;
   return { studentPages: 20 * k, familyPages: 50 * k };

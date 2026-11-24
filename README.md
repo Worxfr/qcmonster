@@ -13,7 +13,7 @@ Conception: `docs/design-v2.md`. Region `eu-west-3`, compte `<ID_COMPTE>`.
 | `mock/` | API simulee: `npm run mock` (Prism, port 4010) puis `npm run mock:check` |
 | `web/` | front React/Vite (squelette) |
 | `docs/` | `data-model.md`, `ops/bootstrap.md` |
-| `infra-bootstrap/` | `setup-oidc.sh` (lance par Alexis) |
+| `infra-bootstrap/` | `setup-oidc.sh` (lance par le propriétaire) |
 
 ## Commandes
 
