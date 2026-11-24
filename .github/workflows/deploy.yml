@@ -1,7 +1,7 @@
 name: deploy
-# Deploiement par OIDC, SANS cle d'acces. Role cree par infra-bootstrap/setup-oidc.sh (lance par Alexis).
-# Tant que la variable de depot DEPLOY_ENABLED n'est pas 'true', un push sur main NE DEPLOIE RIEN.
-# A activer par Alexis apres: bootstrap OIDC + cdk bootstrap + validation de l'estimation de cout (docs/ops/bootstrap.md).
+# Deploiement par OIDC, SANS cle d'acces. Role cree par infra-bootstrap/setup-oidc.sh (lance par le propriétaire).
+# Tant que la variable de depot DEPLOY_ENABLED n'est pas 'true', RIEN ne se deploie (ni push sur main, ni lancement manuel).
+# A activer par le propriétaire apres: bootstrap OIDC + cdk bootstrap + validation de l'estimation de cout (docs/ops/bootstrap.md).
 on:
   push:
     branches: [main]
@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
   deploy-dev:
     needs: checks
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' && inputs.target != '')
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: dev

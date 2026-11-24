@@ -47,8 +47,8 @@ describe('pas de console.*', () => {
 });
 
 describe('aucun ID de compte AWS dans le depot', () => {
-  // Regle d'Alexis: ni ID de compte, ni ARN complet, ni cle ou secret dans un fichier du depot (meme prive).
-  // Le compte vient de vars.AWS_ACCOUNT_ID (workflows), de CDK_DEFAULT_ACCOUNT (CDK) et de EXPECTED_ACCOUNT (setup-oidc.sh).
+  // Regle du propriétaire: ni ID de compte, ni ARN complet, ni cle ou secret dans un fichier du depot (meme prive).
+  // Le compte vient de secrets.AWS_ACCOUNT_ID (workflows), de CDK_DEFAULT_ACCOUNT (CDK) et de EXPECTED_ACCOUNT (setup-oidc.sh).
   const FAKE = new Set(['123456789012']); // fixtures de test clairement factices
   const TWELVE = /(?<!\d)\d{12}(?!\d)/g;
   it('aucune suite de 12 chiffres (hors fixtures factices) dans les fichiers suivis', () => {

@@ -1,7 +1,7 @@
-# Bootstrap AWS (a executer par Alexis, dans son terminal)
+# Bootstrap AWS (a executer par le propriétaire, dans son terminal)
 
 L'agent ne lance AUCUNE commande AWS qui cree ou modifie quoi que ce soit. Ces etapes touchent IAM et le compte
-`<ID_COMPTE>` (region `eu-west-3`): elles sont a lancer par Alexis, avec ses identifiants.
+`<ID_COMPTE>` (region `eu-west-3`): elles sont a lancer par le propriétaire, avec ses identifiants.
 
 Ordre: 1 → 2 → 3 → 4 → 5 → 6. Cocher chaque etape et noter la sortie dans `docs/acceptance/L1.md`.
 
@@ -19,7 +19,7 @@ export EXPECTED_ACCOUNT=<ID_COMPTE>   # tape la valeur toi-meme: elle n'est jama
 ./setup-oidc.sh --apply    # cree le role QCMonster-GitHubActions-Deploy
 ```
 
-Le script (copie non modifiee de `/data/qcmonster/infra-bootstrap/`) reutilise le fournisseur OIDC existant, ne cree qu'un role
+Le script (`infra-bootstrap/setup-oidc.sh`) reutilise le fournisseur OIDC existant, ne cree qu'un role
 et une policy dediees, et ne supprime rien. Voir `infra-bootstrap/README.md`.
 
 ## 3. Bootstrap CDK
@@ -41,7 +41,7 @@ Si seule `project` (minuscule) est active, activer aussi `Project`: les deux cle
 
 ## 5. Configurer GitHub (depot prive `Worxfr/qcmonster`)
 
-- Environnements `dev` et `prod` (Settings → Environments). `prod`: **reviewers requis** (Alexis) et branche `main` seulement.
+- Environnements GitHub `dev` et `prod`: **limites a la branche `main`**, et **relecteur obligatoire sur `prod`**. Ils sont crees avec la limite a `main` par l'agent (API GitHub); a verifier dans Settings → Environments. **Limite du plan GitHub actuel**: le relecteur obligatoire sur `prod` a ete refuse par l'API (422, plan non compatible avec les relecteurs requis sur un depot prive). Tant que le plan ne le permet pas, la garde de `prod` est: lancement manuel seulement, depuis `main`, apres `dev`, et `DEPLOY_ENABLED=true`. Ajouter le relecteur des que possible (Settings → Environments → prod → Required reviewers). La trust policy du role n'accepte que les `sub` exacts `environment:dev`, `environment:prod` et `ref:refs/heads/main`: sans cette limite, toute branche pourrait declarer un environnement.
 - **Secret de depot `AWS_ACCOUNT_ID`** (masque dans les journaux; le workflow en construit l'ARN du role; l'ID n'est jamais dans le code). Il est cree par l'agent a la creation du depot; pour le recreer, tape la valeur toi-meme:
 
   ```bash
@@ -60,9 +60,12 @@ Si seule `project` (minuscule) est active, activer aussi `Project`: les deux cle
   `QCMonster-filet-marketplace`, `QCMonster-securite-40`. L'**action** du budget securite est desactivee par defaut (elle cible
   les roles `qcm-prod-pipeline-role` et `qcm-prod-verify-role` des lots L2a/L2b, qui n'existent pas encore). Une fois ces
   lots deployes: `npx cdk deploy qcm-prod-budget -c env=prod -c budgetAction=true`.
+  - [ ] **Controle J+2 fait avant `-c budgetAction=true`**: Cost Explorer filtre par tag `Project` ET par entite AWS Marketplace
+    montre les appels de modeles apres le premier appel reel (design 4.6 point 4). Tant que ce n'est pas coche, la coupure
+    automatique ne voit peut-etre pas Bedrock: seuls le compteur applicatif (15/18 EUR) et le budget Marketplace protegent.
 - Creer un code d'invitation parent (aucun parent ne peut s'inscrire sans): `npx tsx scripts/create-invite.ts --env=dev` (simulation),
   puis `--apply` pour ecrire dans la table. La table `qcm-<env>` est creee par la stack `data` (a venir).
-- Test negatif OIDC (acceptation L1 n.2): depuis un depot prive jetable cree par Alexis, tenter `AssumeRoleWithWebIdentity`
+- Test negatif OIDC (acceptation L1 n.2): depuis un depot prive jetable cree par le propriétaire, tenter `AssumeRoleWithWebIdentity`
   sur le role; l'echec doit etre colle dans `docs/acceptance/L1.md`.
 
 ## Ce que l'agent n'a PAS fait

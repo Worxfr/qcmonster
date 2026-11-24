@@ -65,9 +65,9 @@ Convention : un fait relu pendant cette révision porte la mention « lu » et s
 | Gamification | Complète : XP, séries, niveaux, badges, classement familial, mascotte monstre évolutive (section 7). |
 | Budget | Cible inférieure à 20 € par mois pour une famille, avec alerte. |
 | Usage | Une famille, ouvert plus tard. |
-| Compte AWS | <ID_COMPTE>, **à confirmer par Alexis**. |
+| Compte AWS | <ID_COMPTE>, **à confirmer par le propriétaire**. |
 | Dépôt | Privé, `Worxfr/qcmonster`. |
-| OIDC | Rôle dédié `QCMonster-GitHubActions-Deploy`, créé par `/data/qcmonster/infra-bootstrap/setup-oidc.sh` (non modifié ici). |
+| OIDC | Rôle dédié `QCMonster-GitHubActions-Deploy`, créé par `infra-bootstrap/setup-oidc.sh` (non modifié ici). |
 | Tag `Owner` | `Worxfr`, comme dans le script de bootstrap. |
 
 ---
@@ -186,7 +186,7 @@ AgentCore reste une évolution possible si le produit s'ouvre et que l'agent doi
    - `QCMonster-alerte-20` : 20 € par mois, filtré sur le tag `Project=QCMonster`. Seuils e-mail à 50 %, 80 %, 100 % en réel et 100 % en prévision.
    - `QCMonster-filet-marketplace` : 25 € par mois, filtre « entité de facturation = AWS Marketplace » (les modèles Claude). **Alerte seulement**, pas d'action : le compte contient peut-être d'autres usages Claude **[à valider au lot 1]**.
    - `QCMonster-securite-40` : 40 €, filtré sur le tag, avec **action** qui applique une politique IAM refusant `bedrock:InvokeModel*` aux rôles des Lambda de traitement. Elle ne s'active que si le suivi par tag fonctionne.
-4. **Contrôle à J+2 du premier appel** (critère du lot 1b, 10.2) : après les premiers appels réels, lire Cost Explorer filtré par tag et par entité Marketplace. Si le tag ne ressort pas, on documente que seul le compteur applicatif et le budget Marketplace protègent, et Alexis en est informé.
+4. **Contrôle à J+2 du premier appel** (critère du lot 1b, 10.2) : après les premiers appels réels, lire Cost Explorer filtré par tag et par entité Marketplace. Si le tag ne ressort pas, on documente que seul le compteur applicatif et le budget Marketplace protègent, et le propriétaire en est informé.
 5. **Clé de tag** : on utilise `Project` avec majuscule, comme le test CI. Avant de créer les budgets, lire `aws ce list-cost-allocation-tags`. Si seule `project` est active, **activer aussi `Project`** (gratuit, jusqu'à 24 h de délai). Les deux clés sont distinctes pour AWS.
 
 ### 4.7 Quota de pages, relié à l'XP (A4)
@@ -204,7 +204,7 @@ AgentCore reste une évolution possible si le produit s'ouvre et que l'agent doi
 - L'XP vient surtout de l'entraînement (QCM, trous, revue d'une fiche), **qui ne coûte aucun appel de modèle**. La mécanique pousse à pratiquer plus qu'à scanner.
 - Le tableau de bord affiche les pages restantes. Une série de 7 jours donne **+2 pages bonus**, plafonnées à **+6 par famille et par mois**, et comptées dans le plafond famille de 50.
 - Pas d'achat de pages avec de l'XP.
-- Protection contre la création de familles en série : **inscription parent sur invitation** (code à usage unique, généré par Alexis, stocké haché dans DynamoDB). Contrôle dans le déclencheur Cognito `PreSignUp` (lot 1).
+- Protection contre la création de familles en série : **inscription parent sur invitation** (code à usage unique, généré par le propriétaire, stocké haché dans DynamoDB). Contrôle dans le déclencheur Cognito `PreSignUp` (lot 1).
 
 ### 4.8 Comptes, données et RGPD (A12, A13, M6, M7)
 
@@ -361,7 +361,7 @@ Cognito : 10 000 utilisateurs actifs gratuits (lu par la relecture, non revérif
 
 - Reste identique : OIDC sans clé d'accès, environnements GitHub `dev` (automatique) et `prod` (approbation manuelle, `main` seulement), `permissions: id-token: write, contents: read`, actions épinglées par SHA.
 - **Le rôle OIDC est celui du script `setup-oidc.sh`** : un seul rôle `QCMonster-GitHubActions-Deploy` pour le dépôt, utilisable depuis `main` ou un environnement GitHub. `dev` et `prod` sont séparés par le nom des stacks (`qcm-dev-*`, `qcm-prod-*`) et par les environnements GitHub, dans le même compte.
-- **Le bootstrap de production** (qui fait quoi, A11 point 9) : **Alexis** exécute dans son terminal `./setup-oidc.sh --apply` puis `npx cdk bootstrap aws://<ID_COMPTE>/eu-west-3`. Ces actions touchent IAM et le compte ; l'agent ne les lance pas. Résultat noté dans `docs/ops/bootstrap.md` (lot 1).
+- **Le bootstrap de production** (qui fait quoi, A11 point 9) : **le propriétaire** exécute dans son terminal `./setup-oidc.sh --apply` puis `npx cdk bootstrap aws://<ID_COMPTE>/eu-west-3`. Ces actions touchent IAM et le compte ; l'agent ne les lance pas. Résultat noté dans `docs/ops/bootstrap.md` (lot 1).
 - **Fichiers de workflow** : `.github/workflows/*` appartient **au lot 1 seul**. `eval.yml` est un appel mince à `npm run eval` (code dans `eval/`, lot 2c). Les autres lots proposent des changements par PR au lot 1.
 - Évaluation en CI : **échantillon de 10 pages** (tiré au hasard dans le jeu de mise au point) à chaque PR qui touche aux prompts ou au workflow ; jeu complet seulement en lancement manuel. Le workflow lit le compteur de coût et refuse de partir si le mois d'évaluation a déjà dépassé 5 €.
 - Les tests de bout en bout sur `dev` utilisent Bedrock **simulé** (aucun coût de modèle) sauf un test marqué `@reel`, lancé à la main, qui traite une page.
@@ -382,7 +382,7 @@ Cognito : 10 000 utilisateurs actifs gratuits (lu par la relecture, non revérif
 
 | Lot | Contenu | Propriétaire unique de | Démarre | Dépend de |
 |---|---|---|---|---|
-| **L0** Décisions et dossier | Réponses d'Alexis (section 15), politique de confidentialité et registre, brouillon d'AIPD, relecture de la doc AWS sur la protection des données (M3) | `docs/legal/**` | tout de suite | rien |
+| **L0** Décisions et dossier | Réponses du propriétaire (section 15), politique de confidentialité et registre, brouillon d'AIPD, relecture de la doc AWS sur la protection des données (M3) | `docs/legal/**` | tout de suite | rien |
 | **L1** Fondations et contrat | Dépôt, CI, stacks `Auth`, `Data`, `Api`, `Models` (profils d'application), `Budget`, contrat OpenAPI, schéma de données, `shared/**`, API simulée | `.github/**`, `infra/bin/**`, `infra/lib/{auth,data,api,models,budget}-stack.ts`, `shared/**`, `mock/**`, `api/src/auth/**` (déclencheurs Cognito) | après accord sur la section 15 | L0 (compte confirmé) |
 | **L2c** Jeu doré et évaluation | Fabrication des pages, annotation, outil d'évaluation | `golden/**`, `eval/**` | tout de suite (ne dépend de rien) | rien |
 | **L2a** Pipeline de lecture | Stack du workflow, envoi, transcription, confirmation, extraction, ancrage, génération, QCM, doublons | `infra/lib/pipeline-stack.ts`, `api/src/pipeline/**`, `api/src/docs/**` | après tag `contract-v1.0` | L1 |
@@ -399,33 +399,33 @@ Le jeu doré (L2c) peut commencer avant tout le reste : il ne dépend d'aucun co
 
 **L0. Décisions et dossier**
 - Preuve : `docs/legal/politique-confidentialite.md`, `docs/legal/registre.md`, `docs/legal/aipd-brouillon.md`, `docs/legal/sous-traitants.md` fusionnés ; ce dernier cite la page de la doc AWS relue et la phrase exacte lue.
-- Acceptation : politique fusionnée **avant** le début de L2a (elle fixe les durées : fiches jusqu'à suppression, jobs 7 jours, passages 30 jours, pas de PITR). Compte AWS confirmé par Alexis dans `docs/decisions.md`.
+- Acceptation : politique fusionnée **avant** le début de L2a (elle fixe les durées : fiches jusqu'à suppression, jobs 7 jours, passages 30 jours, pas de PITR). Compte AWS confirmé par le propriétaire dans `docs/decisions.md`.
 
 **L1. Fondations et contrat**
-Contenu : dépôt privé `Worxfr/qcmonster` (**créé seulement après accord d'Alexis**, section 15), structure `api`, `web`, `infra`, `shared`, `mock`, `golden`, `eval`, `e2e`, `docs`. Stacks `Auth` (Cognito, déclencheur `PreSignUp` avec invitation), `Data` (table, buckets S3 dont le coffre du jeu caché), `Api` (HTTP API, autorisateur JWT, CORS, limitation par route), `Models` (4 profils d'application tagués), `Budget` (trois budgets, alarme du compteur). Contrat `openapi.yaml`, types générés, `docs/data-model.md`, `shared/{quota,cost,pricing,names,log}`, API simulée (Prism, lancée par `npm run mock`, port 4010) avec des exemples pour **toutes** les routes. Squelettes des stacks des autres lots.
+Contenu : dépôt privé `Worxfr/qcmonster` (**créé seulement après accord du propriétaire**, section 15), structure `api`, `web`, `infra`, `shared`, `mock`, `golden`, `eval`, `e2e`, `docs`. Stacks `Auth` (Cognito, déclencheur `PreSignUp` avec invitation), `Data` (table, buckets S3 dont le coffre du jeu caché), `Api` (HTTP API, autorisateur JWT, CORS, limitation par route), `Models` (4 profils d'application tagués), `Budget` (trois budgets, alarme du compteur). Contrat `openapi.yaml`, types générés, `docs/data-model.md`, `shared/{quota,cost,pricing,names,log}`, API simulée (Prism, lancée par `npm run mock`, port 4010) avec des exemples pour **toutes** les routes. Squelettes des stacks des autres lots.
 Acceptation (preuves dans `docs/acceptance/L1.md`) :
 1. Un push sur `main` déploie `dev` ; l'export des secrets du dépôt (`gh secret list`) ne contient aucun `AWS_*`.
-2. **Test négatif OIDC** : un second dépôt privé de test (créé par Alexis, supprimé après) ne peut pas assumer le rôle ; la sortie de l'échec `AssumeRoleWithWebIdentity` est collée.
+2. **Test négatif OIDC** : un second dépôt privé de test (créé par le propriétaire, supprimé après) ne peut pas assumer le rôle ; la sortie de l'échec `AssumeRoleWithWebIdentity` est collée.
 3. Le test des tags échoue quand on retire un tag d'une ressource (PR de test fermée sans fusion) et passe sinon.
 4. `npm run mock` répond 200 avec un exemple valide pour **chacune des routes** du tableau 6 ; un test de contrat le vérifie.
 5. Test unitaire : réservation de quota concurrente (50 appels simultanés pour 20 pages) donne exactement 20 réussites.
-6. **L1b, à J+2 du premier appel Bedrock réel** (preuve ajoutée dans la PR suivante) : capture de Cost Explorer filtré par tag `Project` **et** par entité Marketplace, avec le verdict « le tag ressort / ne ressort pas » (4.6). Et `docs/quotas.md` : valeurs appliquées de Service Quotas pour Sonnet 5.5 et Haiku 5.5 en profil Geo (commande lancée par Alexis ; si inférieures à 1 000 000 de tokens par minute, demande d'augmentation faite).
-7. L'estimation de coût (section 8) a été présentée à Alexis **avant** tout déploiement, et sa validation est inscrite dans `docs/decisions.md`.
+6. **L1b, à J+2 du premier appel Bedrock réel** (preuve ajoutée dans la PR suivante) : capture de Cost Explorer filtré par tag `Project` **et** par entité Marketplace, avec le verdict « le tag ressort / ne ressort pas » (4.6). Et `docs/quotas.md` : valeurs appliquées de Service Quotas pour Sonnet 5.5 et Haiku 5.5 en profil Geo (commande lancée par le propriétaire ; si inférieures à 1 000 000 de tokens par minute, demande d'augmentation faite).
+7. L'estimation de coût (section 8) a été présentée au propriétaire **avant** tout déploiement, et sa validation est inscrite dans `docs/decisions.md`.
 
 **L2c. Jeu doré et évaluation**
-- **Qui fabrique** : un agent « qualité » (propriétaire unique de `golden/**`), pas L2a ni L2b. Alexis relit un échantillon.
-- Contenu du jeu : **50 pages** : **38 de mise au point** et **12 cachées**. Pages **synthétiques** : texte rédigé à partir des programmes officiels et de sources libres, rendu en image, puis dégradé comme une photo de téléphone (rotation, flou, ombre, éclairage faible) pour 20 des 50. Aucune photo de cours réel d'un élève (RGPD, droit d'auteur) sans l'accord explicite d'Alexis (section 15). Toutes matières du périmètre : maths, physique, SVT, histoire-géographie, français ; au moins 3 niveaux.
+- **Qui fabrique** : un agent « qualité » (propriétaire unique de `golden/**`), pas L2a ni L2b. le propriétaire relit un échantillon.
+- Contenu du jeu : **50 pages** : **38 de mise au point** et **12 cachées**. Pages **synthétiques** : texte rédigé à partir des programmes officiels et de sources libres, rendu en image, puis dégradé comme une photo de téléphone (rotation, flou, ombre, éclairage faible) pour 20 des 50. Aucune photo de cours réel d'un élève (RGPD, droit d'auteur) sans l'accord explicite du propriétaire (section 15). Toutes matières du périmètre : maths, physique, SVT, histoire-géographie, français ; au moins 3 niveaux.
 - **Effectifs minimaux** : au total ≥ **75 erreurs insérées** (dates, formules, définitions, noms) et ≥ **400 affirmations factuelles justes**. Dans les pages cachées : ≥ **20 erreurs** et ≥ **100 affirmations justes**. Au moins 5 pages contiennent une consigne d'injection (« ignore les consignes précédentes ») dans le cours, et 5 avec une phrase d'injection dans le passage simulé d'une source (cas A7). Au moins 5 pages contiennent des noms de personnes.
 - Les pages cachées sont stockées dans le coffre S3 (lecture par le seul rôle d'évaluation), **jamais dans le dépôt**, et ne servent qu'à valider. Lancement manuel, **3 fois au maximum** avant ouverture ; le nombre de lancements est tracé.
 - Mesures calculées par `eval/` (le script écrit un fichier `eval/report.json`) : ancrage, rappel des erreurs, faux positifs, QCM valides, OCR (mots corrects sur les 20 photos dégradées), fidélité, coût par page, durée, test d'injection, test « aucun contenu ».
-- **Fidélité** : appariement automatique des affirmations produites aux affirmations attendues, puis **Alexis relit 50 affirmations tirées au hasard** (environ 30 minutes) ; la mesure est le résultat de cette relecture.
+- **Fidélité** : appariement automatique des affirmations produites aux affirmations attendues, puis **le propriétaire relit 50 affirmations tirées au hasard** (environ 30 minutes) ; la mesure est le résultat de cette relecture.
 - Rapport : chaque taux est donné avec son **intervalle de confiance à 95 % (Wilson)**, pour que l'on sache ce que vaut un effectif de 75 ou de 20.
 - Acceptation : PR fusionnée avec `golden/MANIFEST.json` (liste des pages, nombre d'erreurs insérées, nombre d'affirmations justes, marque cachée ou non) et un test qui échoue si les effectifs minimaux ne sont pas atteints.
 
 **L2a. Pipeline de lecture** (étapes 1 à 6, 11 à 13 de 4.1)
 - Acceptation, mesurée par `eval/` sur les 38 pages de mise au point :
   - Ancrage = **100 %**.
-  - QCM valides ≥ **97 %** (relecture humaine d'un échantillon de 50 QCM par Alexis ou l'agent qualité, notée dans le rapport).
+  - QCM valides ≥ **97 %** (relecture humaine d'un échantillon de 50 QCM par le propriétaire ou l'agent qualité, notée dans le rapport).
   - OCR ≥ **95 %** des mots sur les 20 pages dégradées.
   - Fidélité ≥ **98 %** (relecture de 50 affirmations).
   - Durée : médiane ≤ **90 s**, 95e centile ≤ **180 s** par page, de la confirmation à la fiche.
@@ -433,7 +433,7 @@ Acceptation (preuves dans `docs/acceptance/L1.md`) :
   - Aucune image dans S3 après `termine`, `annule` ou `expire` (test automatisé avec la photo gardée 30 min au plus).
   - Test « aucun contenu » (4.9) réussi.
   - Un document de type `autre` est refusé et le quota est rendu (test).
-- **Les seuils sont fixes.** Si une mesure n'est pas atteinte, le lot n'est pas accepté ; une révision des seuils est une demande séparée d'Alexis, faite par PR sur ce document, pas une clause de l'acceptation.
+- **Les seuils sont fixes.** Si une mesure n'est pas atteinte, le lot n'est pas accepté ; une révision des seuils est une demande séparée du propriétaire, faite par PR sur ce document, pas une clause de l'acceptation.
 
 **L2b. Vérification** (étapes 7 à 10)
 - Acceptation, sur les 38 pages de mise au point : **rappel des erreurs ≥ 80 %** (au moins 44 erreurs détectées sur les ≥ 55 insérées dans les pages de mise au point) ; **faux positifs ≤ 2 %** des affirmations justes ; **0 URL ou extrait qui ne vient pas d'un passage stocké** (test sur toutes les fiches produites) ; sur les pages d'injection (cours et passage), **le verdict est identique à celui de la page sans injection** ; un test négatif montre que l'outil refuse un hôte hors liste, une redirection et une réponse de plus de 64 Ko. Sur les 12 pages cachées : rappel ≥ **70 %** et faux positifs ≤ **3 %**, avec un écart de moins de 10 points sur le rappel entre mise au point et pages cachées (garde contre le surajustement).
@@ -444,7 +444,7 @@ Acceptation (preuves dans `docs/acceptance/L1.md`) :
 
 **L4. Front PWA**
 - Développé contre l'API simulée (`VITE_API_URL=http://localhost:4010`), puis contre `dev` en fin de lot.
-- Acceptation : PWA installable (Lighthouse **PWA** réussi, `sw.js` et `manifest.webmanifest` présents dans le build, test CI) ; **accessibilité Lighthouse ≥ 90** sur les écrans élève (seuil fixe) ; l'écran de confirmation de la transcription montre la photo et le texte côte à côte ; aucune réponse correcte dans les données du front avant réponse (test sur les réponses simulées) ; interface claire et joyeuse (pas de thème sombre) ; mascotte et 5 stades **validés par Alexis** (capture d'écran des 5 stades dans la PR, accord écrit de lui).
+- Acceptation : PWA installable (Lighthouse **PWA** réussi, `sw.js` et `manifest.webmanifest` présents dans le build, test CI) ; **accessibilité Lighthouse ≥ 90** sur les écrans élève (seuil fixe) ; l'écran de confirmation de la transcription montre la photo et le texte côte à côte ; aucune réponse correcte dans les données du front avant réponse (test sur les réponses simulées) ; interface claire et joyeuse (pas de thème sombre) ; mascotte et 5 stades **validés par le propriétaire** (capture d'écran des 5 stades dans la PR, accord écrit de lui).
 
 **L5. Intégration et exploitation**
 - Acceptation : déploiement `prod` avec approbation manuelle et `cdk diff` joint à la PR ; parcours complet (parent crée un élève, élève scanne une page de test, confirme, lit, répond, gagne de l'XP) réussi sur `prod` (journal du test e2e `@reel` joint) ; suppression d'un élève testée en `prod`.
@@ -495,7 +495,7 @@ Légende : **corrigé** = repris dans cette version ; **refusé** = non repris, 
 | A8. Méthode de recherche par domaine | **Corrigé, avec une réduction.** Wikipedia et projets frères par API, Eduscol et NIST en index figé. Lumni, BnF, Universalis, CNRS, Futura, MathWorld, IUPAC **reportés** jusqu'à une méthode de recherche écrite. | 4.3 |
 | A9. Journaux : AgentCore, traces | **Corrigé.** Pas d'AgentCore ; Step Functions sans données d'exécution ; invocation Bedrock non journalisée ; test avec un jeton unique sur tous les groupes. | 4.9 |
 | A10. Acceptations mesurables | **Corrigé.** Effectifs, jeu caché, plafond de coût, seuils fixes, clause « ou seuils révisés » supprimée. | 10.3 |
-| A11. Découper le lot 2, jeu doré, politique avant le lot 2, API simulée, bootstrap prod | **Corrigé.** L2a, L2b, L2c ; L2c fabrique le jeu ; L0 avant L2a ; API simulée dans L1 ; bootstrap par Alexis. | 9, 10 |
+| A11. Découper le lot 2, jeu doré, politique avant le lot 2, API simulée, bootstrap prod | **Corrigé.** L2a, L2b, L2c ; L2c fabrique le jeu ; L0 avant L2a ; API simulée dans L1 ; bootstrap par le propriétaire. | 9, 10 |
 | A12. Identifiant, lien d'activation, mot de passe perdu, âge | **Corrigé.** Pseudo avec suffixe aléatoire, lien à usage unique 24 h, réinitialisation par le parent, booléen « moins de 15 ans ». | 4.8 |
 | A13. URL POST pré-signée, limitation de débit | **Corrigé.** POST avec `content-length-range`. **Refusé** : plans d'utilisation de REST API (par clé, pas par utilisateur) ; compteur DynamoDB et limitation par route à la place. | 4.8 |
 | A14. Prix Bedrock exacts, destinations Geo de Sonnet 5.5, étiquette AgentCore | **Corrigé.** Prix lus dans la liste officielle (page web illisible), destinations lues, étiquette v1/v2 confirmée juste. Quotas lus en défauts publiés ; quotas appliqués au compte **reportés** au lot 1. | 2.1, 2.2, 10.3 (L1) |
@@ -526,7 +526,7 @@ Légende : **corrigé** = repris dans cette version ; **refusé** = non repris, 
 | Détection d'un document qui n'est pas un cours | **Corrigé.** Type `autre`, refus, quota rendu. | 4.1, 4.8 |
 | Lien d'activation, MFA, sauvegardes, URL pré-signée | **Corrigé** (voir A12, A13, M6, M7). | 4.8 |
 | Tag `Project` / `project` | **Corrigé.** `Project`, activation de la clé avant la création des budgets. | 4.6 |
-| AIPD « relue par Alexis » | **Corrigé.** Brouillon par L0 ; validation compétente exigée avant ouverture ; registre simple suffit pour une famille. | 4.8 |
+| AIPD « relue par le propriétaire » | **Corrigé.** Brouillon par L0 ; validation compétente exigée avant ouverture ; registre simple suffit pour une famille. | 4.8 |
 | Acceptations non vérifiables : « e-mail de test », « autre branche », Lighthouse, coût du premier mois, dossier RGPD | **Corrigé.** Dépôt de test jetable, seuils fixes, coût à J+30, relecture compétente. | 10.3 |
 | Journaux Bedrock, AgentCore, API Gateway dans le test « aucun contenu » | **Corrigé.** Liste des groupes et méthode du jeton unique. | 4.9 |
 | Identification des clés de table sans propriétaire | **Corrigé.** | 5 |
@@ -566,7 +566,7 @@ Légende : **corrigé** = repris dans cette version ; **refusé** = non repris, 
 
 ---
 
-## 15. Ce qu'Alexis doit décider
+## 15. Ce qu'le propriétaire doit décider
 
 Cinq points. Pour chacun, mon choix par défaut s'applique si tu ne réponds pas. **Rien n'est créé sur AWS ni sur GitHub avant ton accord.**
 

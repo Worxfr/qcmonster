@@ -1,5 +1,5 @@
 // Declencheur Cognito PreSignUp (design-v2 4.7): l'inscription d'un parent exige un code d'invitation a usage unique.
-// Le code est genere par Alexis (scripts/create-invite.ts), seul son hache SHA-256 est stocke (INVITE#<hache>).
+// Le code est genere par le propriétaire (scripts/create-invite.ts), seul son hache SHA-256 est stocke (INVITE#<hache>).
 import { createHash } from 'node:crypto';
 import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 import type { PreSignUpTriggerEvent } from 'aws-lambda';
