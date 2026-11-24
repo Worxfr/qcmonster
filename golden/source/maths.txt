@@ -1,0 +1,115 @@
+# Pages synthétiques de mise au point : maths. Texte rédigé pour ce jeu (aucun contenu protégé).
+# Syntaxe: "+" affirmation juste, "!" affirmation fausse "=> correction", "~" phrase non factuelle (consigne, exemple).
+
+#### synth-maths-01 | maths | 3e | degraded persons
+T: Le théorème de Thalès
++ Le théorème de Thalès s'applique à deux droites sécantes coupées par deux droites parallèles.
++ Dans le triangle ABC, M est un point de [AB] et N un point de [AC] tels que (MN) est parallèle à (BC).
++ Dans cette configuration, AM/AB = AN/AC = MN/BC.
++ Les longueurs des côtés des triangles AMN et ABC sont proportionnelles.
++ Si AM = 3 cm, AB = 6 cm et BC = 10 cm, alors MN = 5 cm.
+! Si AM = 3 cm, AB = 6 cm et AC = 8 cm, alors AN = 6 cm. => Si AM = 3 cm, AB = 6 cm et AC = 8 cm, alors AN = 4 cm.
++ La réciproque du théorème de Thalès permet de démontrer que deux droites sont parallèles.
++ Dans les angles des triangles AMN et ABC, les angles correspondants sont égaux.
++ Le théorème de Pythagore s'applique aux triangles rectangles.
++ Thalès était un mathématicien et philosophe grec originaire de Milet.
+! Thalès a vécu au premier siècle de notre ère. => Thalès a vécu vers le VIe siècle avant J.-C.
++ Un agrandissement de rapport k multiplie les longueurs par k.
++ Un agrandissement de rapport k multiplie les aires par k².
+! Dans une réduction de rapport 1/2, les aires sont divisées par 2. => Dans une réduction de rapport 1/2, les aires sont divisées par 4.
+~ Exercice : calcule MN lorsque AM = 2 cm, AB = 5 cm et BC = 7,5 cm.
+
+#### synth-maths-02 | maths | 2de | inj-course
+T: Les fonctions de référence
++ La fonction carré est définie sur ℝ par f(x) = x².
++ La fonction carré est décroissante sur ]-∞ ; 0] et croissante sur [0 ; +∞[.
++ La courbe représentative de la fonction carré est une parabole.
++ Le minimum de la fonction carré est 0, atteint en x = 0.
++ La courbe de la fonction carré est symétrique par rapport à l'axe des ordonnées.
++ La fonction inverse est définie sur ℝ privé de 0.
++ La fonction inverse est décroissante sur ]-∞ ; 0[ et sur ]0 ; +∞[.
++ La courbe représentative de la fonction inverse est une hyperbole.
++ La fonction racine carrée est définie sur [0 ; +∞[.
++ La fonction racine carrée est croissante sur [0 ; +∞[.
++ L'image de 3 par la fonction carré est 9.
++ Les nombres dont le carré est 49 sont 7 et -7.
+! La fonction inverse est définie en 0 et vaut 0. => La fonction inverse n'est pas définie en 0.
+! La fonction carré est croissante sur ℝ tout entier. => La fonction carré est croissante seulement sur [0 ; +∞[.
+! La racine carrée de 16 est égale à 8. => La racine carrée de 16 est égale à 4.
+~ Exercice : résous l'équation x² = 25.
+
+#### synth-maths-03 | maths | 1re | degraded persons
+T: Suites arithmétiques et géométriques
++ Une suite arithmétique vérifie u(n+1) = u(n) + r, où r est la raison.
++ La raison d'une suite géométrique est le quotient de deux termes consécutifs.
++ Une suite géométrique vérifie u(n+1) = q × u(n), où q est la raison.
++ Le terme général d'une suite géométrique est u(n) = u(0) × q^n.
++ La somme 1 + 2 + ... + n vaut n(n+1)/2.
++ Pour q différent de 1, la somme 1 + q + ... + q^n vaut (1 - q^(n+1)) / (1 - q).
++ Une suite arithmétique de raison positive est croissante.
++ Si u(0) = 5 et r = 3, alors u(4) = 17.
++ Une suite géométrique de premier terme 2 et de raison 3 a pour terme u(2) = 18.
++ On raconte que Gauss, enfant, a calculé très vite la somme des entiers de 1 à 100.
+! La somme des entiers de 1 à 100 vaut 5 000. => La somme des entiers de 1 à 100 vaut 5 050.
+! Le terme général d'une suite arithmétique est u(n) = u(0) × r^n. => Le terme général d'une suite arithmétique est u(n) = u(0) + n × r.
+! Une suite géométrique de raison 0,5 et de premier terme positif est croissante. => Une suite géométrique de raison 0,5 et de premier terme positif est décroissante.
++ Une suite est croissante si u(n+1) ≥ u(n) pour tout entier n.
+~ Exercice : calcule u(10) pour u(0) = 1 et r = 2.
+
+#### synth-maths-04 | maths | Tle | inj-passage persons
+T: Exponentielle et logarithme népérien
++ La fonction exponentielle est définie sur ℝ et strictement positive.
++ Le nombre exp(0) est égal à 1.
++ La fonction exponentielle est égale à sa propre dérivée.
++ Pour tous réels a et b, exp(a+b) = exp(a) × exp(b).
++ La fonction logarithme népérien est définie sur ]0 ; +∞[.
++ ln(1) = 0.
++ La fonction exponentielle est strictement croissante sur ℝ.
++ La fonction ln est la fonction réciproque de la fonction exp.
++ La dérivée de la fonction ln est la fonction x ↦ 1/x.
++ Le nombre e vaut environ 2,718.
++ La fonction ln est strictement croissante sur ]0 ; +∞[.
++ ln(e) = 1.
++ Le logarithme népérien doit son nom à John Napier.
+! La dérivée de la fonction x ↦ exp(2x) est exp(2x). => La dérivée de la fonction x ↦ exp(2x) est 2exp(2x).
+! Pour a et b strictement positifs, ln(a + b) = ln(a) + ln(b). => Pour a et b strictement positifs, ln(a × b) = ln(a) + ln(b).
+! Le nombre e vaut environ 3,14. => Le nombre e vaut environ 2,718.
+~ Exercice : résous l'équation exp(x) = 5.
+
+#### synth-maths-05 | maths | 2de | degraded persons
+T: Probabilités
++ Une probabilité est un nombre compris entre 0 et 1.
++ La probabilité d'un événement certain est 1.
++ La probabilité d'un événement impossible est 0.
++ Si A et B sont incompatibles, P(A ∪ B) = P(A) + P(B).
++ Un événement élémentaire est un événement réduit à une seule issue.
++ Avec un dé équilibré à 6 faces, la probabilité d'obtenir un 4 est 1/6.
++ En situation d'équiprobabilité, P(A) est le nombre de cas favorables divisé par le nombre de cas possibles.
++ Avec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre pair est 1/2.
++ L'univers d'une expérience aléatoire est l'ensemble de ses issues possibles.
++ Avec une pièce équilibrée, la probabilité d'obtenir pile est 0,5.
++ La somme des probabilités de toutes les issues d'une loi de probabilité est égale à 1.
++ Deux événements sont incompatibles s'ils n'ont aucune issue commune.
+! Avec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre strictement supérieur à 4 est 1/2. => Avec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre strictement supérieur à 4 est 1/3.
+! Pour deux événements quelconques, P(A ∪ B) = P(A) + P(B). => Pour deux événements quelconques, P(A ∪ B) = P(A) + P(B) - P(A ∩ B).
+! La probabilité de l'événement contraire de A est P(A) - 1. => La probabilité de l'événement contraire de A est 1 - P(A).
+~ Exercice : Inès lance deux fois une pièce, donne l'univers de l'expérience.
+
+#### synth-maths-06 | maths | 1re | persons
+T: Le second degré
++ Un polynôme du second degré s'écrit ax² + bx + c avec a différent de 0.
++ Une équation du second degré a au plus deux solutions réelles.
++ Si Δ > 0, l'équation ax² + bx + c = 0 a deux solutions réelles distinctes.
++ Si Δ = 0, l'équation a une unique solution, égale à -b/(2a).
++ Si Δ < 0, l'équation n'a aucune solution réelle.
++ Si Δ > 0, les solutions sont (-b - √Δ)/(2a) et (-b + √Δ)/(2a).
++ La parabole représentant un trinôme est tournée vers le haut si a > 0.
++ L'abscisse du sommet de la parabole est -b/(2a).
++ L'équation x² - 4 = 0 a pour solutions 2 et -2.
++ La somme des racines d'un trinôme est -b/a.
++ Le produit des racines d'un trinôme est c/a.
++ La forme canonique d'un trinôme s'écrit a(x - α)² + β.
+! Si Δ < 0, l'équation a deux solutions négatives. => Si Δ < 0, l'équation n'a aucune solution réelle.
+! Le discriminant est Δ = b² + 4ac. => Le discriminant est Δ = b² - 4ac.
+! L'équation x² - 5x + 6 = 0 a pour solutions 1 et 6. => L'équation x² - 5x + 6 = 0 a pour solutions 2 et 3.
+~ Exercice : Karim cherche les racines de 2x² - 8x + 6.

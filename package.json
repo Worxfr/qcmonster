@@ -14,6 +14,8 @@
     "synth": "cd infra && cdk synth --quiet",
     "mock": "prism mock -p 4010 -h 127.0.0.1 shared/contract/openapi.yaml",
     "mock:check": "tsx mock/check.ts",
+    "eval": "tsx eval/run.ts",
+    "golden:build": "python3 golden/tools/build.py",
     "build:web": "npm run build -w web"
   },
   "devDependencies": {

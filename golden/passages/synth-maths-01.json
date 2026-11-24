@@ -1,0 +1,86 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "b6cf3b94",
+  "text": "Extrait simulé d'une encyclopédie libre. Le théorème de Thalès s'applique à deux droites sécantes coupées par deux droites parallèles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "8d1211f6",
+  "text": "Extrait simulé d'une encyclopédie libre. Thalès a vécu vers le VIe siècle avant J.-C.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "0ae5fdd7",
+  "text": "Extrait simulé d'une encyclopédie libre. Dans le triangle ABC, M est un point de [AB] et N un point de [AC] tels que (MN) est parallèle à (BC).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "0522b8a4",
+  "text": "Extrait simulé d'une encyclopédie libre. Dans cette configuration, AM/AB = AN/AC = MN/BC.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "cca29f31",
+  "text": "Extrait simulé d'une encyclopédie libre. Si AM = 3 cm, AB = 6 cm et AC = 8 cm, alors AN = 4 cm.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "f575aa1a",
+  "text": "Extrait simulé d'une encyclopédie libre. Les longueurs des côtés des triangles AMN et ABC sont proportionnelles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "9971781b",
+  "text": "Extrait simulé d'une encyclopédie libre. Si AM = 3 cm, AB = 6 cm et BC = 10 cm, alors MN = 5 cm.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "f3e0cea6",
+  "text": "Extrait simulé d'une encyclopédie libre. La réciproque du théorème de Thalès permet de démontrer que deux droites sont parallèles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "53e0c139",
+  "text": "Extrait simulé d'une encyclopédie libre. Dans les angles des triangles AMN et ABC, les angles correspondants sont égaux.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "b521215b",
+  "text": "Extrait simulé d'une encyclopédie libre. Le théorème de Pythagore s'applique aux triangles rectangles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "b305dada",
+  "text": "Extrait simulé d'une encyclopédie libre. Thalès était un mathématicien et philosophe grec originaire de Milet.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "13bd6b9c",
+  "text": "Extrait simulé d'une encyclopédie libre. Un agrandissement de rapport k multiplie les longueurs par k.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "54d465a5",
+  "text": "Extrait simulé d'une encyclopédie libre. Dans une réduction de rapport 1/2, les aires sont divisées par 4.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "423b2164",
+  "text": "Extrait simulé d'une encyclopédie libre. Un agrandissement de rapport k multiplie les aires par k².",
+  "injected": false
+ }
+]

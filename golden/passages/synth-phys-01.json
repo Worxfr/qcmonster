@@ -1,0 +1,86 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "48929295",
+  "text": "Extrait simulé d'une encyclopédie libre. La vitesse moyenne est le rapport de la distance parcourue par la durée du parcours.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "8c1e05f1",
+  "text": "Extrait simulé d'une encyclopédie libre. L'unité de vitesse du Système international est le mètre par seconde.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "e6f1d92a",
+  "text": "Extrait simulé d'une encyclopédie libre. Une vitesse de 72 km/h correspond à 20 m/s.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "4f4228a8",
+  "text": "Extrait simulé d'une encyclopédie libre. Un mouvement se décrit par rapport à un référentiel.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "450219e2",
+  "text": "Extrait simulé d'une encyclopédie libre. Un mouvement rectiligne uniforme a une trajectoire droite et une vitesse constante.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "6109cd38",
+  "text": "Extrait simulé d'une encyclopédie libre. Le poids est la force exercée par la Terre sur un objet.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "8cd1939d",
+  "text": "Extrait simulé d'une encyclopédie libre. Le poids d'un objet s'écrit P = m × g.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "9abcd17e",
+  "text": "Extrait simulé d'une encyclopédie libre. Sur Terre, la valeur de g est d'environ 9,8 N/kg.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "1d128228",
+  "text": "Extrait simulé d'une encyclopédie libre. Le poids s'exprime en newtons.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "fb9fe411",
+  "text": "Extrait simulé d'une encyclopédie libre. La masse d'un objet se mesure en kilogrammes et ne dépend pas du lieu.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "e28917be",
+  "text": "Extrait simulé d'une encyclopédie libre. La vitesse de la lumière dans le vide est d'environ 3,00 × 10^8 m/s.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "5adba791",
+  "text": "Extrait simulé d'une encyclopédie libre. Un objet soumis à des forces qui se compensent peut être à l'arrêt ou en mouvement rectiligne uniforme.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "037a4951",
+  "text": "Extrait simulé d'une encyclopédie libre. Galilée a étudié la chute des corps.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s15",
+  "passageId": "d814e894",
+  "text": "Extrait simulé d'une encyclopédie libre. Selon le principe d'inertie, un objet soumis à des forces qui se compensent est immobile ou en mouvement rectiligne uniforme.",
+  "injected": false
+ }
+]

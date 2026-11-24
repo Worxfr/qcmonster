@@ -1,0 +1,86 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "d91ca780",
+  "text": "Extrait simulé d'une encyclopédie libre. Pour un conducteur ohmique, la tension et l'intensité sont proportionnelles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "3356d0d0",
+  "text": "Extrait simulé d'une encyclopédie libre. La tension s'exprime en volts, la résistance en ohms et l'intensité en ampères.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "0286ba57",
+  "text": "Extrait simulé d'une encyclopédie libre. Dans un circuit en série, l'intensité du courant est la même en tout point.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "079ab363",
+  "text": "Extrait simulé d'une encyclopédie libre. Dans un circuit en dérivation, la tension est la même aux bornes de chaque branche.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "e67d6bf6",
+  "text": "Extrait simulé d'une encyclopédie libre. La tension aux bornes d'un conducteur ohmique est égale à R multipliée par I.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "31af4314",
+  "text": "Extrait simulé d'une encyclopédie libre. La loi des nœuds dit que la somme des intensités qui arrivent à un nœud est égale à la somme de celles qui en repartent.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "efca7b96",
+  "text": "Extrait simulé d'une encyclopédie libre. Un ampèremètre se branche en série dans un circuit.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "2fd815ee",
+  "text": "Extrait simulé d'une encyclopédie libre. Un voltmètre se branche en dérivation, aux bornes du dipôle.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "b827102d",
+  "text": "Extrait simulé d'une encyclopédie libre. La puissance électrique est P = U × I.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "a2146d2d",
+  "text": "Extrait simulé d'une encyclopédie libre. Deux résistances de 10 Ω en série équivalent à une résistance de 20 Ω.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "fff3386b",
+  "text": "Extrait simulé d'une encyclopédie libre. La tension efficace du secteur en France est de 230 V.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "e671c2db",
+  "text": "Extrait simulé d'une encyclopédie libre. Un kilowattheure vaut 3,6 millions de joules.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "7e679021",
+  "text": "Extrait simulé d'une encyclopédie libre. Un conducteur ohmique de 100 Ω soumis à 12 V est traversé par un courant de 0,12 A.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "6f565565",
+  "text": "Extrait simulé d'une encyclopédie libre. Georg Ohm a donné son nom à l'unité de résistance.",
+  "injected": false
+ }
+]

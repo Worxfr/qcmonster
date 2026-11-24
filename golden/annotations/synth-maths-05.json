@@ -1,0 +1,85 @@
+{
+ "id": "synth-maths-05",
+ "title": "Probabilités",
+ "transcription": "Probabilités\nUne probabilité est un nombre compris entre 0 et 1.\nLa probabilité de l'événement contraire de A est P(A) - 1.\nLa probabilité d'un événement certain est 1.\nLa probabilité d'un événement impossible est 0.\nSi A et B sont incompatibles, P(A ∪ B) = P(A) + P(B).\nUn événement élémentaire est un événement réduit à une seule issue.\nEn situation d'équiprobabilité, P(A) est le nombre de cas favorables divisé par le nombre de cas possibles.\nL'univers d'une expérience aléatoire est l'ensemble de ses issues possibles.\nAvec une pièce équilibrée, la probabilité d'obtenir pile est 0,5.\nLa somme des probabilités de toutes les issues d'une loi de probabilité est égale à 1.\nPour deux événements quelconques, P(A ∪ B) = P(A) + P(B).\nDeux événements sont incompatibles s'ils n'ont aucune issue commune.\nExercice : Inès lance deux fois une pièce, donne l'univers de l'expérience.\nAvec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre strictement supérieur à 4 est 1/2.",
+ "sentences": [
+  {
+   "text": "Une probabilité est un nombre compris entre 0 et 1.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "La probabilité de l'événement contraire de A est P(A) - 1.",
+   "kind": "error",
+   "correction": "La probabilité de l'événement contraire de A est 1 - P(A).",
+   "id": "s2"
+  },
+  {
+   "text": "La probabilité d'un événement certain est 1.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "La probabilité d'un événement impossible est 0.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Si A et B sont incompatibles, P(A ∪ B) = P(A) + P(B).",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Un événement élémentaire est un événement réduit à une seule issue.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "En situation d'équiprobabilité, P(A) est le nombre de cas favorables divisé par le nombre de cas possibles.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "L'univers d'une expérience aléatoire est l'ensemble de ses issues possibles.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Avec une pièce équilibrée, la probabilité d'obtenir pile est 0,5.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "La somme des probabilités de toutes les issues d'une loi de probabilité est égale à 1.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "Pour deux événements quelconques, P(A ∪ B) = P(A) + P(B).",
+   "kind": "error",
+   "correction": "Pour deux événements quelconques, P(A ∪ B) = P(A) + P(B) - P(A ∩ B).",
+   "id": "s11"
+  },
+  {
+   "text": "Deux événements sont incompatibles s'ils n'ont aucune issue commune.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Exercice : Inès lance deux fois une pièce, donne l'univers de l'expérience.",
+   "kind": "non_factual",
+   "id": "s13"
+  },
+  {
+   "text": "Avec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre strictement supérieur à 4 est 1/2.",
+   "kind": "error",
+   "correction": "Avec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre strictement supérieur à 4 est 1/3.",
+   "id": "s14"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

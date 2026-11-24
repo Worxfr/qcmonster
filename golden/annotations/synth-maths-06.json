@@ -1,0 +1,85 @@
+{
+ "id": "synth-maths-06",
+ "title": "Le second degré",
+ "transcription": "Le second degré\nUn polynôme du second degré s'écrit ax² + bx + c avec a différent de 0.\nUne équation du second degré a au plus deux solutions réelles.\nSi Δ > 0, l'équation ax² + bx + c = 0 a deux solutions réelles distinctes.\nSi Δ = 0, l'équation a une unique solution, égale à -b/(2a).\nL'équation x² - 5x + 6 = 0 a pour solutions 1 et 6.\nLe discriminant est Δ = b² + 4ac.\nSi Δ > 0, les solutions sont (-b - √Δ)/(2a) et (-b + √Δ)/(2a).\nLa parabole représentant un trinôme est tournée vers le haut si a > 0.\nL'abscisse du sommet de la parabole est -b/(2a).\nSi Δ < 0, l'équation a deux solutions négatives.\nLa somme des racines d'un trinôme est -b/a.\nLe produit des racines d'un trinôme est c/a.\nLa forme canonique d'un trinôme s'écrit a(x - α)² + β.\nExercice : Karim cherche les racines de 2x² - 8x + 6.",
+ "sentences": [
+  {
+   "text": "Un polynôme du second degré s'écrit ax² + bx + c avec a différent de 0.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Une équation du second degré a au plus deux solutions réelles.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Si Δ > 0, l'équation ax² + bx + c = 0 a deux solutions réelles distinctes.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Si Δ = 0, l'équation a une unique solution, égale à -b/(2a).",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "L'équation x² - 5x + 6 = 0 a pour solutions 1 et 6.",
+   "kind": "error",
+   "correction": "L'équation x² - 5x + 6 = 0 a pour solutions 2 et 3.",
+   "id": "s5"
+  },
+  {
+   "text": "Le discriminant est Δ = b² + 4ac.",
+   "kind": "error",
+   "correction": "Le discriminant est Δ = b² - 4ac.",
+   "id": "s6"
+  },
+  {
+   "text": "Si Δ > 0, les solutions sont (-b - √Δ)/(2a) et (-b + √Δ)/(2a).",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "La parabole représentant un trinôme est tournée vers le haut si a > 0.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "L'abscisse du sommet de la parabole est -b/(2a).",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Si Δ < 0, l'équation a deux solutions négatives.",
+   "kind": "error",
+   "correction": "Si Δ < 0, l'équation n'a aucune solution réelle.",
+   "id": "s10"
+  },
+  {
+   "text": "La somme des racines d'un trinôme est -b/a.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Le produit des racines d'un trinôme est c/a.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "La forme canonique d'un trinôme s'écrit a(x - α)² + β.",
+   "kind": "correct",
+   "id": "s13"
+  },
+  {
+   "text": "Exercice : Karim cherche les racines de 2x² - 8x + 6.",
+   "kind": "non_factual",
+   "id": "s14"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

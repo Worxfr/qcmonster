@@ -1,0 +1,74 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "96ac9b5b",
+  "text": "Extrait simulé d'une encyclopédie libre. La photosynthèse nécessite de la lumière, de l'eau et du dioxyde de carbone.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "74b2fc90",
+  "text": "Extrait simulé d'une encyclopédie libre. La chlorophylle est un pigment vert qui absorbe la lumière.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "ce5d555c",
+  "text": "Extrait simulé d'une encyclopédie libre. La photosynthèse a lieu dans les chloroplastes.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "042e77d0",
+  "text": "Extrait simulé d'une encyclopédie libre. Le bilan de la photosynthèse s'écrit 6 CO2 + 6 H2O donne C6H12O6 + 6 O2.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "472016dc",
+  "text": "Extrait simulé d'une encyclopédie libre. La respiration cellulaire consomme du dioxygène et du glucose.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "4998c03b",
+  "text": "Extrait simulé d'une encyclopédie libre. Une partie de la respiration cellulaire a lieu dans les mitochondries.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "e6d5916a",
+  "text": "Extrait simulé d'une encyclopédie libre. Les cellules animales n'ont pas de paroi de cellulose.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "a02966eb",
+  "text": "Extrait simulé d'une encyclopédie libre. Les cellules végétales possèdent une paroi.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "e5bed461",
+  "text": "Extrait simulé d'une encyclopédie libre. La photosynthèse produit du dioxygène.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "3bc7dfb3",
+  "text": "Extrait simulé d'une encyclopédie libre. L'amidon est une forme de réserve du glucose chez les végétaux.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "596a77f1",
+  "text": "Extrait simulé d'une encyclopédie libre. Les cellules procaryotes, comme les bactéries, n'ont pas de noyau.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "2ebef6dd",
+  "text": "Extrait simulé d'une encyclopédie libre. La vacuole est un compartiment de la cellule végétale qui stocke de l'eau et des substances.",
+  "injected": false
+ }
+]

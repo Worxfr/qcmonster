@@ -1,0 +1,80 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "72389ac3",
+  "text": "Extrait simulé d'une encyclopédie libre. Une suite arithmétique vérifie u(n+1) = u(n) + r, où r est la raison.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "694ca23e",
+  "text": "Extrait simulé d'une encyclopédie libre. La raison d'une suite géométrique est le quotient de deux termes consécutifs.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "6489eaee",
+  "text": "Extrait simulé d'une encyclopédie libre. Une suite géométrique vérifie u(n+1) = q × u(n), où q est la raison.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "4a4514a8",
+  "text": "Extrait simulé d'une encyclopédie libre. La somme 1 + 2 + ... + n vaut n(n+1)/2.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "4db17f68",
+  "text": "Extrait simulé d'une encyclopédie libre. Pour q différent de 1, la somme 1 + q + ... + q^n vaut (1 - q^(n+1)) / (1 - q).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "b1c9a426",
+  "text": "Extrait simulé d'une encyclopédie libre. Une suite arithmétique de raison positive est croissante.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "f1e9e0d2",
+  "text": "Extrait simulé d'une encyclopédie libre. Une suite géométrique de raison 0,5 et de premier terme positif est décroissante.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "e853bf4a",
+  "text": "Extrait simulé d'une encyclopédie libre. La somme des entiers de 1 à 100 vaut 5 050.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "38f66649",
+  "text": "Extrait simulé d'une encyclopédie libre. Si u(0) = 5 et r = 3, alors u(4) = 17.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "881a156d",
+  "text": "Extrait simulé d'une encyclopédie libre. Une suite géométrique de premier terme 2 et de raison 3 a pour terme u(2) = 18.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "bad675a9",
+  "text": "Extrait simulé d'une encyclopédie libre. On raconte que Gauss, enfant, a calculé très vite la somme des entiers de 1 à 100.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "42d6781c",
+  "text": "Extrait simulé d'une encyclopédie libre. Le terme général d'une suite arithmétique est u(n) = u(0) + n × r.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "2bec86f8",
+  "text": "Extrait simulé d'une encyclopédie libre. Une suite est croissante si u(n+1) ≥ u(n) pour tout entier n.",
+  "injected": false
+ }
+]

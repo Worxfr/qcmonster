@@ -1,0 +1,85 @@
+{
+ "id": "synth-hist-04",
+ "title": "Renaissance et grandes découvertes",
+ "transcription": "Renaissance et grandes découvertes\nVasco de Gama atteint les Indes par la mer en 1498.\nL'expédition de Magellan fait le premier tour du monde entre 1519 et 1522.\nLes Ottomans prennent Constantinople en 1453.\nLe traité de Tordesillas, en 1494, partage le monde entre l'Espagne et le Portugal.\nLuther publie ses 95 thèses en 1517.\nGutenberg met au point l'imprimerie à caractères mobiles en Chine.\nLa Renaissance débute en Italie au XVe siècle.\nL'édit de Villers-Cotterêts, en 1539, impose le français dans les actes officiels.\nL'édit de Villers-Cotterêts date de 1639.\nMichel-Ange peint le plafond de la chapelle Sixtine entre 1508 et 1512.\nLéonard de Vinci est né en 1452.\nL'humaniste Érasme est un des grands penseurs de la Renaissance.\nExercice : trace sur une carte la route du premier voyage de Colomb.\nChristophe Colomb atteint l'Amérique en 1592.",
+ "sentences": [
+  {
+   "text": "Vasco de Gama atteint les Indes par la mer en 1498.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "L'expédition de Magellan fait le premier tour du monde entre 1519 et 1522.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Les Ottomans prennent Constantinople en 1453.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Le traité de Tordesillas, en 1494, partage le monde entre l'Espagne et le Portugal.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Luther publie ses 95 thèses en 1517.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Gutenberg met au point l'imprimerie à caractères mobiles en Chine.",
+   "kind": "error",
+   "correction": "Gutenberg met au point l'imprimerie à caractères mobiles à Mayence.",
+   "id": "s6"
+  },
+  {
+   "text": "La Renaissance débute en Italie au XVe siècle.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "L'édit de Villers-Cotterêts, en 1539, impose le français dans les actes officiels.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "L'édit de Villers-Cotterêts date de 1639.",
+   "kind": "error",
+   "correction": "L'édit de Villers-Cotterêts date de 1539.",
+   "id": "s9"
+  },
+  {
+   "text": "Michel-Ange peint le plafond de la chapelle Sixtine entre 1508 et 1512.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "Léonard de Vinci est né en 1452.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "L'humaniste Érasme est un des grands penseurs de la Renaissance.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Exercice : trace sur une carte la route du premier voyage de Colomb.",
+   "kind": "non_factual",
+   "id": "s13"
+  },
+  {
+   "text": "Christophe Colomb atteint l'Amérique en 1592.",
+   "kind": "error",
+   "correction": "Christophe Colomb atteint l'Amérique en 1492.",
+   "id": "s14"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

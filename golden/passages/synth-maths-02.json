@@ -1,0 +1,80 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "41718f01",
+  "text": "Extrait simulé d'une encyclopédie libre. La fonction carré est définie sur ℝ par f(x) = x².",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "4713dc3d",
+  "text": "Extrait simulé d'une encyclopédie libre. La courbe représentative de la fonction carré est une parabole.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "a8a94b21",
+  "text": "Extrait simulé d'une encyclopédie libre. Le minimum de la fonction carré est 0, atteint en x = 0.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "5c1bd7f1",
+  "text": "Extrait simulé d'une encyclopédie libre. La fonction inverse n'est pas définie en 0.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "31be019c",
+  "text": "Extrait simulé d'une encyclopédie libre. La courbe de la fonction carré est symétrique par rapport à l'axe des ordonnées.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "b97d634f",
+  "text": "Extrait simulé d'une encyclopédie libre. La fonction carré est croissante seulement sur [0 ; +∞[.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "b0aa1acd",
+  "text": "Extrait simulé d'une encyclopédie libre. La racine carrée de 16 est égale à 4.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "0096998f",
+  "text": "Extrait simulé d'une encyclopédie libre. La fonction inverse est définie sur ℝ privé de 0.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "cab1970d",
+  "text": "Extrait simulé d'une encyclopédie libre. La fonction inverse est décroissante sur ]-∞ ; 0[ et sur ]0 ; +∞[.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "7d7f121d",
+  "text": "Extrait simulé d'une encyclopédie libre. La courbe représentative de la fonction inverse est une hyperbole.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "c2993b92",
+  "text": "Extrait simulé d'une encyclopédie libre. La fonction racine carrée est définie sur [0 ; +∞[.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "83e32928",
+  "text": "Extrait simulé d'une encyclopédie libre. L'image de 3 par la fonction carré est 9.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "757d4e64",
+  "text": "Extrait simulé d'une encyclopédie libre. Les nombres dont le carré est 49 sont 7 et -7.",
+  "injected": false
+ }
+]

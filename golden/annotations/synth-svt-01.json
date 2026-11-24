@@ -1,0 +1,90 @@
+{
+ "id": "synth-svt-01",
+ "title": "Génétique et hérédité",
+ "transcription": "Génétique et hérédité\nL'ADN est le support de l'information génétique.\nChez les cellules eucaryotes, l'ADN est situé dans le noyau.\nUn chromosome est constitué d'une molécule d'ADN très condensée.\nUn gène est une portion d'ADN qui détermine un caractère.\nLes différentes versions d'un même gène s'appellent des allèles.\nMendel a mené ses expériences sur les pois au XVIIIe siècle.\nLa fécondation reconstitue le nombre de chromosomes de l'espèce.\nGregor Mendel a étudié l'hérédité en croisant des pois.\nChez l'humain, une femme possède deux chromosomes sexuels X.\nLes gamètes humains contiennent 46 chromosomes.\nLa mitose produit deux cellules filles identiques à la cellule mère.\nUne mutation est une modification de la séquence de l'ADN.\nLes cellules de la peau d'un humain contiennent 23 paires de chromosomes.\nExercice : Inès a les yeux bleus comme son père, explique la transmission.\nL'espèce humaine possède 48 chromosomes.",
+ "sentences": [
+  {
+   "text": "L'ADN est le support de l'information génétique.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Chez les cellules eucaryotes, l'ADN est situé dans le noyau.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Un chromosome est constitué d'une molécule d'ADN très condensée.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Un gène est une portion d'ADN qui détermine un caractère.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Les différentes versions d'un même gène s'appellent des allèles.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Mendel a mené ses expériences sur les pois au XVIIIe siècle.",
+   "kind": "error",
+   "correction": "Mendel a mené ses expériences sur les pois au XIXe siècle.",
+   "id": "s6"
+  },
+  {
+   "text": "La fécondation reconstitue le nombre de chromosomes de l'espèce.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "Gregor Mendel a étudié l'hérédité en croisant des pois.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Chez l'humain, une femme possède deux chromosomes sexuels X.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Les gamètes humains contiennent 46 chromosomes.",
+   "kind": "error",
+   "correction": "Les gamètes humains contiennent 23 chromosomes.",
+   "id": "s10"
+  },
+  {
+   "text": "La mitose produit deux cellules filles identiques à la cellule mère.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Une mutation est une modification de la séquence de l'ADN.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Les cellules de la peau d'un humain contiennent 23 paires de chromosomes.",
+   "kind": "correct",
+   "id": "s13"
+  },
+  {
+   "text": "Exercice : Inès a les yeux bleus comme son père, explique la transmission.",
+   "kind": "non_factual",
+   "id": "s14"
+  },
+  {
+   "text": "L'espèce humaine possède 48 chromosomes.",
+   "kind": "error",
+   "correction": "L'espèce humaine possède 46 chromosomes.",
+   "id": "s15"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

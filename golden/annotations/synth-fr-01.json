@@ -1,0 +1,90 @@
+{
+ "id": "synth-fr-01",
+ "title": "Molière",
+ "transcription": "Molière\nMolière est le nom de scène de Jean-Baptiste Poquelin.\nMolière est mort en 1673.\nTartuffe est une comédie de Molière jouée pour la première fois en 1664.\nLe Misanthrope date de 1666.\nDom Juan date de 1665.\nL'Avare date de 1668.\nLe Bourgeois gentilhomme date de 1670.\nLes Précieuses ridicules datent de 1659.\nMolière a été protégé par le roi Louis XIV.\nL'Avare est une tragédie.\nMolière a joué dans Le Malade imaginaire peu avant sa mort, en février 1673.\nLe Bourgeois gentilhomme est une comédie-ballet.\nExercice : relève deux traits comiques dans la scène lue en classe.\nMolière est né en 1722.\nTartuffe est une pièce de Jean Racine.",
+ "sentences": [
+  {
+   "text": "Molière est le nom de scène de Jean-Baptiste Poquelin.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Molière est mort en 1673.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Tartuffe est une comédie de Molière jouée pour la première fois en 1664.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Le Misanthrope date de 1666.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Dom Juan date de 1665.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "L'Avare date de 1668.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Le Bourgeois gentilhomme date de 1670.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "Les Précieuses ridicules datent de 1659.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Molière a été protégé par le roi Louis XIV.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "L'Avare est une tragédie.",
+   "kind": "error",
+   "correction": "L'Avare est une comédie.",
+   "id": "s10"
+  },
+  {
+   "text": "Molière a joué dans Le Malade imaginaire peu avant sa mort, en février 1673.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Le Bourgeois gentilhomme est une comédie-ballet.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Exercice : relève deux traits comiques dans la scène lue en classe.",
+   "kind": "non_factual",
+   "id": "s13"
+  },
+  {
+   "text": "Molière est né en 1722.",
+   "kind": "error",
+   "correction": "Molière est né en 1622.",
+   "id": "s14"
+  },
+  {
+   "text": "Tartuffe est une pièce de Jean Racine.",
+   "kind": "error",
+   "correction": "Tartuffe est une pièce de Molière.",
+   "id": "s15"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": true
+ },
+ "persons": true
+}

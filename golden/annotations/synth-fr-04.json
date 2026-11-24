@@ -1,0 +1,80 @@
+{
+ "id": "synth-fr-04",
+ "title": "Albert Camus, L'Étranger",
+ "transcription": "Albert Camus, L'Étranger\nL'Étranger est un roman d'Albert Camus.\nL'Étranger est publié en 1942.\nLe récit de L'Étranger est écrit à la troisième personne.\nLe narrateur du roman s'appelle Meursault.\nMeursault apprend la mort de sa mère au début du roman.\nMeursault tue un homme sur une plage.\nAlbert Camus reçoit le prix Nobel de littérature en 1947.\nLe roman est divisé en deux parties.\nAlbert Camus meurt dans un accident de voiture en 1960.\nL'action de L'Étranger se déroule à Marseille.\nLe Mythe de Sisyphe, un essai sur l'absurde, est publié en 1942.\nLa Peste est publié en 1947.\nExercice : explique la phrase d'ouverture du roman.",
+ "sentences": [
+  {
+   "text": "L'Étranger est un roman d'Albert Camus.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "L'Étranger est publié en 1942.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Le récit de L'Étranger est écrit à la troisième personne.",
+   "kind": "error",
+   "correction": "Le récit de L'Étranger est écrit à la première personne.",
+   "id": "s3"
+  },
+  {
+   "text": "Le narrateur du roman s'appelle Meursault.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Meursault apprend la mort de sa mère au début du roman.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Meursault tue un homme sur une plage.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Albert Camus reçoit le prix Nobel de littérature en 1947.",
+   "kind": "error",
+   "correction": "Albert Camus reçoit le prix Nobel de littérature en 1957.",
+   "id": "s7"
+  },
+  {
+   "text": "Le roman est divisé en deux parties.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Albert Camus meurt dans un accident de voiture en 1960.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "L'action de L'Étranger se déroule à Marseille.",
+   "kind": "error",
+   "correction": "L'action de L'Étranger se déroule à Alger.",
+   "id": "s10"
+  },
+  {
+   "text": "Le Mythe de Sisyphe, un essai sur l'absurde, est publié en 1942.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "La Peste est publié en 1947.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Exercice : explique la phrase d'ouverture du roman.",
+   "kind": "non_factual",
+   "id": "s13"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

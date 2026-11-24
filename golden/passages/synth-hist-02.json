@@ -1,0 +1,86 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "69dae52b",
+  "text": "Extrait simulé d'une encyclopédie libre. La Troisième République est proclamée le 4 septembre 1870.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "5bac60b5",
+  "text": "Extrait simulé d'une encyclopédie libre. Elle succède au Second Empire de Napoléon III.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "eaabb319",
+  "text": "Extrait simulé d'une encyclopédie libre. Les lois de Jules Ferry rendent l'école primaire gratuite en 1881.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "26a24aa6",
+  "text": "Extrait simulé d'une encyclopédie libre. L'école primaire devient obligatoire et laïque en 1882.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "9cb5d4a0",
+  "text": "Extrait simulé d'une encyclopédie libre. Émile Zola publie « J'accuse » en 1898.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "bb0a486b",
+  "text": "Extrait simulé d'une encyclopédie libre. La loi sur la liberté de la presse date du 29 juillet 1881.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "4937ff8f",
+  "text": "Extrait simulé d'une encyclopédie libre. La loi autorisant les syndicats date de 1884.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "07464195",
+  "text": "Extrait simulé d'une encyclopédie libre. Jules Ferry fait voter ses lois scolaires en 1881 et 1882.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "b13b0eae",
+  "text": "Extrait simulé d'une encyclopédie libre. L'affaire Dreyfus commence en 1894.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "89cd755a",
+  "text": "Extrait simulé d'une encyclopédie libre. Alfred Dreyfus est réhabilité en 1906.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "394fe358",
+  "text": "Extrait simulé d'une encyclopédie libre. Les lois constitutionnelles de la Troisième République datent de 1875.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "88d88018",
+  "text": "Extrait simulé d'une encyclopédie libre. Les pleins pouvoirs sont votés à Philippe Pétain le 10 juillet 1940.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "73c296ea",
+  "text": "Extrait simulé d'une encyclopédie libre. La loi de séparation des Églises et de l'État est votée en 1905.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "17b1ab67",
+  "text": "Extrait simulé d'une encyclopédie libre. La Troisième République prend fin en 1940.",
+  "injected": false
+ }
+]

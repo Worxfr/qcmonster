@@ -1,0 +1,95 @@
+{
+ "id": "synth-maths-04",
+ "title": "Exponentielle et logarithme népérien",
+ "transcription": "Exponentielle et logarithme népérien\nLa fonction exponentielle est définie sur ℝ et strictement positive.\nLe nombre exp(0) est égal à 1.\nLa fonction exponentielle est égale à sa propre dérivée.\nPour tous réels a et b, exp(a+b) = exp(a) × exp(b).\nLa fonction logarithme népérien est définie sur ]0 ; +∞[.\nln(1) = 0.\nPour a et b strictement positifs, ln(a + b) = ln(a) + ln(b).\nLa fonction exponentielle est strictement croissante sur ℝ.\nLa dérivée de la fonction x ↦ exp(2x) est exp(2x).\nLa fonction ln est la fonction réciproque de la fonction exp.\nLa dérivée de la fonction ln est la fonction x ↦ 1/x.\nLa fonction ln est strictement croissante sur ]0 ; +∞[.\nln(e) = 1.\nLe logarithme népérien doit son nom à John Napier.\nLe nombre e vaut environ 3,14.\nExercice : résous l'équation exp(x) = 5.",
+ "sentences": [
+  {
+   "text": "La fonction exponentielle est définie sur ℝ et strictement positive.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Le nombre exp(0) est égal à 1.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "La fonction exponentielle est égale à sa propre dérivée.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Pour tous réels a et b, exp(a+b) = exp(a) × exp(b).",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "La fonction logarithme népérien est définie sur ]0 ; +∞[.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "ln(1) = 0.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Pour a et b strictement positifs, ln(a + b) = ln(a) + ln(b).",
+   "kind": "error",
+   "correction": "Pour a et b strictement positifs, ln(a × b) = ln(a) + ln(b).",
+   "id": "s7"
+  },
+  {
+   "text": "La fonction exponentielle est strictement croissante sur ℝ.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "La dérivée de la fonction x ↦ exp(2x) est exp(2x).",
+   "kind": "error",
+   "correction": "La dérivée de la fonction x ↦ exp(2x) est 2exp(2x).",
+   "id": "s9"
+  },
+  {
+   "text": "La fonction ln est la fonction réciproque de la fonction exp.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "La dérivée de la fonction ln est la fonction x ↦ 1/x.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "La fonction ln est strictement croissante sur ]0 ; +∞[.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "ln(e) = 1.",
+   "kind": "correct",
+   "id": "s13"
+  },
+  {
+   "text": "Le logarithme népérien doit son nom à John Napier.",
+   "kind": "correct",
+   "id": "s14"
+  },
+  {
+   "text": "Le nombre e vaut environ 3,14.",
+   "kind": "error",
+   "correction": "Le nombre e vaut environ 2,718.",
+   "id": "s15"
+  },
+  {
+   "text": "Exercice : résous l'équation exp(x) = 5.",
+   "kind": "non_factual",
+   "id": "s16"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": true
+ },
+ "persons": true
+}
