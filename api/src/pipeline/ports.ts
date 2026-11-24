@@ -1,6 +1,6 @@
 // Ports du pipeline L2a: DynamoDB, S3, Step Functions. Les implementations AWS sont chargees a la demande (entry.ts);
 // les tests utilisent les implementations en memoire de ce fichier (aucun reseau, aucun cout).
-import { BatchWriteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Key } from '../../../shared/ddb/keys.js';
 import type { TreeDb } from '../../../shared/delete-tree.js';
 
@@ -12,7 +12,11 @@ export interface Cond {
   eq?: Record<string, unknown>;
   in?: Record<string, unknown[]>;
   lt?: Record<string, number>;
+  /** Attributs qui ne doivent pas exister (drapeau pose une seule fois). */
+  absent?: string[];
 }
+/** Operation d'une transaction: ecriture d'element (`ifNotExists`) ou mise a jour conditionnelle. */
+export type TxOp = { put: Item; ifNotExists?: boolean } | { key: Key; spec: UpdateSpec };
 export interface UpdateSpec {
   set?: Record<string, unknown>;
   add?: Record<string, number>;
@@ -28,6 +32,8 @@ export interface Db {
   put(item: Item, ifNotExists?: boolean): Promise<boolean>;
   /** Cree l'element s'il manque (sauf `cond.exists`). Renvoie l'element mis a jour, ou undefined si la condition echoue. */
   update(key: Key, spec: UpdateSpec): Promise<Item | undefined>;
+  /** Tout ou rien. Renvoie false si une condition echoue. */
+  transact(ops: TxOp[]): Promise<boolean>;
   query(pk: string, skPrefix?: string): Promise<Item[]>;
   queryGsi1(pk: string, skPrefix?: string): Promise<Item[]>;
   remove(keys: Key[]): Promise<void>;
@@ -95,6 +101,7 @@ function buildUpdate(spec: UpdateSpec) {
   if (c.exists) conds.push('attribute_exists(PK)');
   for (const [a, x] of Object.entries(c.eq ?? {})) conds.push(`${n(a)} = ${v(x)}`);
   for (const [a, xs] of Object.entries(c.in ?? {})) conds.push(`${n(a)} IN (${xs.map(v).join(', ')})`);
+  for (const a of c.absent ?? []) conds.push(`attribute_not_exists(${n(a)})`);
   for (const [a, x] of Object.entries(c.lt ?? {})) conds.push(`(attribute_not_exists(${n(a)}) OR ${n(a)} < ${v(x)})`);
   return { UpdateExpression: parts.join(' '), ConditionExpression: conds.length ? conds.join(' AND ') : undefined, ExpressionAttributeNames: names, ExpressionAttributeValues: Object.keys(values).length ? values : undefined };
 }
@@ -143,6 +150,23 @@ export function dynamoDb(client: DynamoDBDocumentClient, table: string, sleep: (
         throw e;
       }
     },
+    async transact(ops) {
+      try {
+        await client.send(
+          new TransactWriteCommand({
+            TransactItems: ops.map((o) =>
+              'put' in o
+                ? { Put: { TableName: table, Item: o.put, ConditionExpression: o.ifNotExists ? 'attribute_not_exists(PK)' : undefined } }
+                : { Update: { TableName: table, Key: o.key, ...buildUpdate(o.spec) } },
+            ),
+          }),
+        );
+        return true;
+      } catch (e) {
+        if ((e as { name?: string }).name === 'TransactionCanceledException') return false;
+        throw e;
+      }
+    },
     query: (pk, skPrefix) => q(undefined, pk, skPrefix),
     queryGsi1: (pk, skPrefix) => q('GSI1', pk, skPrefix),
     async remove(ks) {
@@ -162,11 +186,21 @@ export function dynamoDb(client: DynamoDBDocumentClient, table: string, sleep: (
 // ---------------------------------------------------------------- Memoire (tests)
 const idOf = (k: Key) => `${k.PK}|${k.SK}`;
 
-export function memoryDb(): Db & { items: Map<string, Item>; ops: { updates: number } } {
-  const items = new Map<string, Item>();
+/** `shared` permet de partager le stockage avec `memoryQuotaDb().items` (meme table en production). */
+export function memoryDb(shared?: Map<string, unknown>): Db & { items: Map<string, Item>; ops: { updates: number } } {
+  const items = (shared as Map<string, Item> | undefined) ?? new Map<string, Item>();
   const ops = { updates: 0 };
+  const apply = (cur: Item | undefined, key: Key, spec: UpdateSpec): Item => {
+    const it: Item = cur ? structuredClone(cur) : { ...key };
+    Object.assign(it, spec.set);
+    for (const [a, x] of Object.entries(spec.add ?? {})) it[a] = ((it[a] as number | undefined) ?? 0) + x;
+    for (const [a, xs] of Object.entries(spec.addSet ?? {})) it[a] = [...new Set([...((it[a] as string[] | undefined) ?? []), ...xs])];
+    for (const a of spec.remove ?? []) delete it[a];
+    return it;
+  };
   const passes = (it: Item | undefined, c: Cond = {}): boolean => {
     if (c.exists && !it) return false;
+    for (const a of c.absent ?? []) if (it && it[a] !== undefined) return false;
     for (const [a, x] of Object.entries(c.eq ?? {})) if (!it || it[a] !== x) return false;
     for (const [a, xs] of Object.entries(c.in ?? {})) if (!it || !xs.includes(it[a])) return false;
     for (const [a, x] of Object.entries(c.lt ?? {})) if (it && it[a] !== undefined && !((it[a] as number) < x)) return false;
@@ -196,13 +230,20 @@ export function memoryDb(): Db & { items: Map<string, Item>; ops: { updates: num
       ops.updates++;
       const cur = items.get(idOf(key));
       if (!passes(cur, spec.cond)) return undefined;
-      const it: Item = cur ? structuredClone(cur) : { ...key };
-      Object.assign(it, spec.set);
-      for (const [a, x] of Object.entries(spec.add ?? {})) it[a] = ((it[a] as number | undefined) ?? 0) + x;
-      for (const [a, xs] of Object.entries(spec.addSet ?? {})) it[a] = [...new Set([...((it[a] as string[] | undefined) ?? []), ...xs])];
-      for (const a of spec.remove ?? []) delete it[a];
+      const it = apply(cur, key, spec);
       items.set(idOf(key), it);
       return structuredClone(it);
+    },
+    async transact(ops) {
+      await sleepNone();
+      for (const o of ops) {
+        if ('put' in o ? o.ifNotExists && items.has(idOf(o.put)) : !passes(items.get(idOf(o.key)), o.spec.cond)) return false;
+      }
+      for (const o of ops) {
+        if ('put' in o) items.set(idOf(o.put), structuredClone(o.put));
+        else items.set(idOf(o.key), apply(items.get(idOf(o.key)), o.key, o.spec));
+      }
+      return true;
     },
     async query(pk, skPrefix) {
       return list(pk, skPrefix, false);

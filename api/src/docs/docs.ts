@@ -59,9 +59,15 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
 
 export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const c = await callerOf(ctx, event);
-  const { sid } = await findDoc(ctx, c, pathId(event, 'docId'));
+  const { sid, doc } = await findDoc(ctx, c, pathId(event, 'docId'));
   const n = await deleteDocTree(treeDbFrom(ctx.db), sid, pathId(event, 'docId'));
-  return n === 0 ? fail('introuvable', 'Introuvable') : noContent();
+  if (n === 0) return fail('introuvable', 'Introuvable');
+  // Le texte du cours (TEXT#, TTL 7 jours) part avec la fiche: une suppression demandee efface aussi la transcription.
+  if (typeof doc.jobId === 'string') {
+    const texts = (await ctx.db.query(`JOB#${doc.jobId}`, 'TEXT#')).map((t) => ({ PK: t.PK, SK: t.SK }));
+    if (texts.length) await ctx.db.remove(texts);
+  }
+  return noContent();
 }
 
 export async function docsReport(ctx: Ctx, event: APIGatewayProxyEventV2): Res {

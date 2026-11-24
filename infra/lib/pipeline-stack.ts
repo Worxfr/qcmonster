@@ -21,6 +21,12 @@ export interface PipelineStackProps extends StackProps {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const UPLOAD_TIMEOUT = Duration.minutes(20);
 const CONFIRM_TIMEOUT = Duration.minutes(30);
+/** Delai par tache (secondes): chaque etape de traitement a le sien, plus court que le delai global de la machine. */
+export const TASK_TIMEOUT_S = { scanCheck: 60, transcribe: 360, extract: 180, verify: 960, consume: 60, generate: 240, fail: 60, expire: 60 } as const;
+/** Chemin le plus long: envoi + controle + transcription + confirmation + extraction + verification + quota + generation (+ marge). */
+export const MACHINE_TIMEOUT = Duration.hours(2);
+/** Regions UE du profil systeme `eu.` (a confirmer au premier deploiement). */
+const EU_REGIONS = ['eu-west-1', 'eu-west-3', 'eu-central-1', 'eu-north-1', 'eu-south-1', 'eu-south-2', 'eu-central-2'];
 
 /** Un seul paquet pour toutes les fonctions (une fonction par export de entry.ts). Sortie deterministe: meme empreinte d'asset a chaque synthese. */
 let bundleDir: string | undefined;
@@ -112,14 +118,17 @@ export class PipelineStack extends Stack {
     procRole.addToPolicy(ddb(rw));
     procRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject', 's3:DeleteObject'], resources: [objects] }));
     procRole.addToPolicy(listScans);
+    // Bedrock: profil d'application Haiku + son profil systeme UE; modele de base seulement dans les regions UE du profil et
+    // seulement quand l'appel passe par ce profil (condition bedrock:InferenceProfileArn). Identifiant du modele: exact, tire du profil.
+    // A verifier au premier deploiement dev (identifiant exact du modele de base, regions du profil `eu.`).
+    const systemProfileArn = this.formatArn({ service: 'bedrock', resource: 'inference-profile', resourceName: SYSTEM_PROFILES.haiku });
+    const baseModelId = SYSTEM_PROFILES.haiku.replace(/^eu\./, '');
+    procRole.addToPolicy(new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [haikuArn, systemProfileArn] }));
     procRole.addToPolicy(
       new iam.PolicyStatement({
         actions: ['bedrock:InvokeModel'],
-        resources: [
-          haikuArn,
-          this.formatArn({ service: 'bedrock', resource: 'inference-profile', resourceName: SYSTEM_PROFILES.haiku }),
-          `arn:aws:bedrock:*::foundation-model/${SYSTEM_PROFILES.haiku.replace(/^eu\./, '')}*`, // a verifier au premier deploiement dev (identifiant exact du modele de base)
-        ],
+        resources: EU_REGIONS.map((region) => this.formatArn({ service: 'bedrock', region, account: '', resource: 'foundation-model', resourceName: baseModelId })),
+        conditions: { StringEquals: { 'bedrock:InferenceProfileArn': [haikuArn, systemProfileArn] } },
       }),
     );
 
@@ -161,18 +170,26 @@ export class PipelineStack extends Stack {
       scanCheck: mk(...S.scanCheck, procRole),
       transcribe: mk(...S.transcribe, procRole, { memory: 512, timeout: Duration.minutes(5) }),
       awaitConfirm: mk(...S.awaitConfirm, procRole),
-      expire: mk(...S.expire, procRole),
+      expire: mk(...S.expire, procRole, { timeout: Duration.seconds(60) }),
       extract: mk(...S.extract, procRole, { timeout: Duration.minutes(2) }),
-      consume: mk(...S.consume, procRole),
+      consume: mk(...S.consume, procRole, { timeout: Duration.seconds(60) }),
       generate: mk(...S.generate, procRole, { timeout: Duration.minutes(3) }),
-      fail: mk(...S.fail, procRole),
+      fail: mk(...S.fail, procRole, { timeout: Duration.seconds(60) }),
     };
     // Les etapes qui reprennent la machine (attente d'envoi, de confirmation) ont besoin de SendTask*.
     procRole.addToPolicy(sendTask);
 
     // --- Machine d'etats (Standard). Etat = jobId, sid, compteurs; aucun texte de cours (design 4.1, 4.9).
-    const call = (id: string, f: lambda.IFunction, payload: Record<string, unknown>, resultPath: string | undefined) =>
-      new tasks.LambdaInvoke(this, id, { lambdaFunction: f, payload: sfn.TaskInput.fromObject(payload), payloadResponseOnly: true, resultPath: resultPath ?? sfn.JsonPath.DISCARD, retryOnServiceExceptions: true });
+    // `retry`: seulement pour les etapes qui rejouees ne coutent rien et ne changent rien (voir steps.ts). Jamais sur un appel de modele.
+    const call = (id: string, f: lambda.IFunction, payload: Record<string, unknown>, resultPath: string | undefined, timeoutS: number, retry = false) =>
+      new tasks.LambdaInvoke(this, id, {
+        lambdaFunction: f,
+        payload: sfn.TaskInput.fromObject(payload),
+        payloadResponseOnly: true,
+        resultPath: resultPath ?? sfn.JsonPath.DISCARD,
+        retryOnServiceExceptions: retry,
+        taskTimeout: sfn.Timeout.duration(Duration.seconds(timeoutS)),
+      });
     const waitToken = (id: string, f: lambda.IFunction, timeout: Duration) =>
       new tasks.LambdaInvoke(this, id, {
         lambdaFunction: f,
@@ -180,30 +197,32 @@ export class PipelineStack extends Stack {
         payload: sfn.TaskInput.fromObject({ jobId: sfn.JsonPath.stringAt('$.jobId'), sid: sfn.JsonPath.stringAt('$.sid'), token: sfn.JsonPath.taskToken }),
         taskTimeout: sfn.Timeout.duration(timeout),
         resultPath: sfn.JsonPath.DISCARD,
+        retryOnServiceExceptions: false,
       });
     const ids = { jobId: sfn.JsonPath.stringAt('$.jobId'), sid: sfn.JsonPath.stringAt('$.sid') };
 
     const failed = new sfn.Fail(this, 'Echec', { error: 'PipelineFailed' });
-    const markFailed = call('MarquerEchec', fns.fail, { ...ids, error: sfn.JsonPath.objectAt('$.error') }, undefined).next(failed);
+    const markFailed = call('MarquerEchec', fns.fail, { ...ids, error: sfn.JsonPath.objectAt('$.error') }, undefined, TASK_TIMEOUT_S.fail, true).next(failed);
     const cancelled = new sfn.Succeed(this, 'Termine-sans-fiche');
-    const expired = (id: string, phase: string) => call(id, fns.expire, { ...ids, phase }, undefined).next(cancelled);
+    const expired = (id: string, phase: string) => call(id, fns.expire, { ...ids, phase }, undefined, TASK_TIMEOUT_S.expire, true).next(cancelled);
 
     const awaitUpload = waitToken('AttenteEnvoi', fns.awaitUpload, UPLOAD_TIMEOUT);
-    const scanCheck = call('ControleFichier', fns.scanCheck, ids, '$.check');
-    const transcribe = call('Transcription', fns.transcribe, ids, '$.tr');
+    const scanCheck = call('ControleFichier', fns.scanCheck, ids, '$.check', TASK_TIMEOUT_S.scanCheck, true);
+    const transcribe = call('Transcription', fns.transcribe, ids, '$.tr', TASK_TIMEOUT_S.transcribe);
     const awaitConfirm = waitToken('AttenteConfirmation', fns.awaitConfirm, CONFIRM_TIMEOUT);
-    const extract = call('Extraction', fns.extract, ids, '$.ex');
+    const extract = call('Extraction', fns.extract, ids, '$.ex', TASK_TIMEOUT_S.extract);
     const verifyFn = lambda.Function.fromFunctionArn(this, 'VerifyRun', this.formatArn({ service: 'lambda', resource: 'function', resourceName: fn(envName, WORKFLOW_HANDLERS.verify), arnFormat: ArnFormat.COLON_RESOURCE_NAME }));
     const verify = call(
       'Verification',
       verifyFn,
       { jobId: ids.jobId, docId: sfn.JsonPath.stringAt('$.ex.docId'), budgetRestantCentimes: sfn.JsonPath.numberAt('$.ex.budgetRestantCentimes') },
       '$.verify',
+      TASK_TIMEOUT_S.verify,
     );
-    const consume = call('ConsommationQuota', fns.consume, { ...ids, verify: sfn.JsonPath.objectAt('$.verify') }, undefined);
-    const generate = call('Generation', fns.generate, ids, undefined);
+    const consume = call('ConsommationQuota', fns.consume, { ...ids, verify: sfn.JsonPath.objectAt('$.verify') }, undefined, TASK_TIMEOUT_S.consume, true);
+    const generate = call('Generation', fns.generate, ids, undefined, TASK_TIMEOUT_S.generate);
 
-    // Toute erreur d'etape (hors annulation et delais prevus) finit par le filet `pipeline-fail`; jamais de Retry sur un appel de modele.
+    // Toute erreur d'etape (hors annulation et delais prevus) finit par le filet `pipeline-fail`; pas de Retry sur un appel de modele.
     for (const t of [scanCheck, transcribe, extract, verify, consume, generate]) t.addCatch(markFailed, { errors: ['States.ALL'], resultPath: '$.error' });
     awaitUpload.addCatch(expired('ExpirationEnvoi', 'upload'), { errors: ['States.Timeout'], resultPath: sfn.JsonPath.DISCARD });
     awaitUpload.addCatch(cancelled, { errors: ['Cancelled'], resultPath: sfn.JsonPath.DISCARD });
@@ -225,7 +244,7 @@ export class PipelineStack extends Stack {
       stateMachineName: stateMachineName(envName),
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
       stateMachineType: sfn.StateMachineType.STANDARD,
-      timeout: Duration.hours(1),
+      timeout: MACHINE_TIMEOUT,
       // Niveau ERROR sans donnees d'execution (design 4.9).
       logs: { destination: smLogs, level: sfn.LogLevel.ERROR, includeExecutionData: false },
     });

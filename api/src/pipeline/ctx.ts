@@ -76,6 +76,8 @@ export async function callModel(
   req: { system?: string; prompt: string; maxTokens: number; images?: { format: 'jpeg' | 'png'; bytes: Uint8Array }[] },
   retryDelaysMs?: number[],
 ): Promise<string> {
+  // shortcut: la depense est lue avant l'appel; avec la concurrence de 3 transcriptions, les 3 lisent la meme valeur et le plafond du job
+  // peut etre depasse d'au plus 3 appels de transcription (quelques centimes). A resserrer si la concurrence monte (reservation avant appel).
   const cur = await ctx.db.get(jobKey(job.sid, job.jobId));
   const spentEur = ((cur?.coutMicros as number | undefined) ?? 0) / 1_000_000;
   const r = await invokeModel({

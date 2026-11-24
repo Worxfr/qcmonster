@@ -4,14 +4,14 @@ import { CostBlockedError, JobBudgetExceededError } from '../../../shared/bedroc
 import { gsi1, keys } from '../../../shared/ddb/keys.js';
 import { ClaimItemSchema, FicheItemSchema, GapItemSchema, QcmItemSchema, questionId } from '../../../shared/items.js';
 import { JOB_COST_CAP_EUR } from '../../../shared/names.js';
-import { consumePages } from '../../../shared/quota.js';
 import { callModel, centsFromMicros, iso, jobKey, type Ctx } from './ctx.js';
 import { isDuplicate, minhash } from './fingerprint.js';
-import { endWithoutDoc, quotaScope, transition } from './job.js';
+import { endWithoutDoc, transition } from './job.js';
+import { consumeQuotaOnce } from './quota-ops.js';
 import { extractPrompt, generatePrompt, solvePrompt, SYSTEM_JSON } from './prompts.js';
 import type { Item } from './ports.js';
 import { MSG, type WfInput } from './steps.js';
-import { normalize, parseModelJson } from './text.js';
+import { ModelOutputError, normalize, parseModelJson } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
 export const MAX_CLAIMS = 60;
@@ -55,11 +55,18 @@ export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>): {
 /** Budget transmis a L2b: plafond du job moins ce qui est depense moins la reserve de generation. */
 export const budgetLeftCents = (micros: number): number => Math.max(0, Math.floor(JOB_COST_CAP_EUR * 100) - centsFromMicros(micros) - GEN_RESERVE_CENTS);
 
+/** Supprime les elements d'une tentative precedente (les numeros en trop ne doivent pas survivre a une relance). */
+async function clearDoc(ctx: Ctx, docId: string, prefixes: string[]): Promise<void> {
+  const old = (await ctx.db.query(`DOC#${docId}`)).filter((x) => prefixes.some((p) => x.SK.startsWith(p)));
+  if (old.length) await ctx.db.remove(old.map((o) => ({ PK: o.PK, SK: o.SK })));
+}
+
 export async function extract(ctx: Ctx, i: WfInput): Promise<{ ok: boolean; docId?: string; budgetRestantCentimes?: number }> {
   const job0 = await ctx.db.get(jobKey(i.sid, i.jobId));
   if (!job0 || job0.state !== 'verification') return { ok: false };
   const docId = (job0.docId as string | undefined) ?? ctx.newId();
   await ctx.db.update(jobKey(i.sid, i.jobId), { set: { docId } });
+  await clearDoc(ctx, docId, ['CLAIM#', 'VERDICT#', 'QCM#', 'GAP#']); // restes d'une tentative precedente
 
   const texts = (await ctx.db.query(`JOB#${i.jobId}`, 'TEXT#')).sort((a, b) => Number(a.page) - Number(b.page));
   const sentences = new Map<string, string>();
@@ -82,18 +89,19 @@ export async function extract(ctx: Ctx, i: WfInput): Promise<{ ok: boolean; docI
   return { ok: true, docId, budgetRestantCentimes: budgetLeftCents((cur?.coutMicros as number | undefined) ?? 0) };
 }
 
-/** Consommation du quota, etat distinct juste apres verify-run. Ajoute aussi le cout de L2b (une seule fois). */
+/**
+ * Consommation du quota, etat distinct juste apres `verify-run`. Reprenable: le passage a `generation` ajoute le cout de L2b une seule
+ * fois (meme ecriture), la consommation des pages est idempotente (quota-ops.ts).
+ */
 export async function quotaConsume(ctx: Ctx, i: WfInput & { verify?: { coutCentimes?: number } }): Promise<void> {
   const c = i.verify?.coutCentimes;
   const verifyCents = typeof c === 'number' && Number.isInteger(c) && c > 0 ? c : 0;
-  const won = await ctx.db.update(jobKey(i.sid, i.jobId), {
-    set: { quotaState: 'consumed', state: 'generation' },
+  await ctx.db.update(jobKey(i.sid, i.jobId), {
+    set: { state: 'generation', verifyCostAdded: true },
     add: { coutMicros: verifyCents * 10_000 },
-    cond: { exists: true, eq: { quotaState: 'reserved', state: 'verification' } },
+    cond: { exists: true, in: { state: ['verification'] }, absent: ['verifyCostAdded'] },
   });
-  if (!won) return; // relance: deja consomme
-  const scope = await quotaScope(ctx, won.familyId as string, i.sid, won.quotaMonth as string);
-  await consumePages(ctx.quota, scope, won.pages as number);
+  await consumeQuotaOnce(ctx, i.sid, i.jobId);
 }
 
 // ---------------------------------------------------------------- 11-13
@@ -167,11 +175,16 @@ async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, Eligibl
   if (cand.length) {
     // Resolution a l'aveugle: un second appel repond sans voir la cle; une reponse differente rejette la question.
     const prompt = solvePrompt(cand.map((q, k) => ({ n: k + 1, claim: eligible.get(q.claimId)!.texte, enonce: q.enonce, choix: q.choix })));
-    const solved = parseModelJson(await callModel(ctx, i, 'controle-qcm', 'haiku', { system: SYSTEM_JSON, prompt, maxTokens: 1000 }), SolveOut);
-    const answers = new Map(solved.reponses.map((r) => [r.n, r.choix]));
-    cand.forEach((q, k) => {
-      if (answers.get(k + 1) === q.cle) qcm.push(q);
-    });
+    try {
+      const solved = parseModelJson(await callModel(ctx, i, 'controle-qcm', 'haiku', { system: SYSTEM_JSON, prompt, maxTokens: 1000 }), SolveOut);
+      const answers = new Map(solved.reponses.map((r) => [r.n, r.choix]));
+      cand.forEach((q, k) => {
+        if (answers.get(k + 1) === q.cle) qcm.push(q);
+      });
+    } catch (e) {
+      // Controle illisible: aucun QCM non controle n'est publie (les trous, controles par code, restent).
+      if (!(e instanceof ModelOutputError)) throw e;
+    }
   }
   gaps.push(...gen.trous.filter((g) => validGap(g, eligible)).slice(0, MAX_QUESTIONS));
   return { resume, qcm, gaps };
@@ -191,13 +204,15 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
     if (st === 'verifiee' || st === 'non_factuelle') eligible.set(nn, { id: nn, texte: c.texte as string });
   }
 
+  await clearDoc(ctx, docId, ['QCM#', 'GAP#']);
   let made: { resume: string; qcm: GenQcm[]; gaps: GenGap[] } = { resume: '', qcm: [], gaps: [] };
   if (eligible.size > 0) {
     try {
       made = await makeQuestions(ctx, i, eligible);
     } catch (e) {
       // Plafond du job ou budget atteint: on publie la fiche sans questions plutot que de tout perdre.
-      if (!(e instanceof JobBudgetExceededError) && !(e instanceof CostBlockedError)) throw e;
+      // Idem si le modele renvoie une sortie illisible (erreur courante): le travail deja paye n'est pas perdu.
+      if (!(e instanceof JobBudgetExceededError) && !(e instanceof CostBlockedError) && !(e instanceof ModelOutputError)) throw e;
     }
   }
   for (const [k, q] of made.qcm.entries()) {

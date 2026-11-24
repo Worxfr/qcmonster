@@ -18,6 +18,12 @@ Etat: `jobId`, `sid` et des booleens/compteurs seulement. Journal niveau ERROR s
 | Generation | `generate` | fiche, QCM controles (resolution a l'aveugle), trous, empreinte, doublon, etat `termine` |
 | MarquerEchec | `pipeline-fail` | toute erreur: `echec`, quota rendu s'il est encore reserve, photos et affirmations orphelines supprimees |
 
+## Delais et reprises
+
+Delai global de la machine: 2 h. Chaque tache a son `TimeoutSeconds` (controle 60 s, transcription 360 s, extraction 180 s, verification 960 s, quota 60 s, generation 240 s, filet 60 s); attentes de 20 et 30 min. Un test verifie que le delai global depasse la somme de tous les delais. Pas de Retry automatique sur les appels de modele, les attentes ni `verify-run`; seuls `scan-check`, `quota-consume`, `expire` et `pipeline-fail` en ont un (reprenables). `scan-check`, `transcribe`, `extract`, `await-confirm` et `generate` sont reprenables a la main: une relance continue au lieu de renvoyer un echec.
+
+Quota: `QUOTAOP#<job>#<release|consume>` ecrit dans la meme transaction que les compteurs (une relance ne double rien et n'oublie rien).
+
 ## Ecritures (un type, un ecrivain)
 
 `Job`, `TEXT#`, `Fiche` (+ GSI1), `CLAIM#`, `QCM#`, `GAP#`, `TRANSCR#`, `REPORT#` (creation). Champs ajoutes a la fiche, hors schema partage: `resume`, `familyId`, `studentId`, `jobId`. Champs du job hors schema partage: `coutMicros` (micro-euros, source de `Job.costCents` = arrondi au centime superieur), `quotaState` (`reserved`, `released`, `consumed`), `expectedFiles`, `uploadedKeys`, jetons de tache, `docType`, `draftTitle`, `draftSubject`.

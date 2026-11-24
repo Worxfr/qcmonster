@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { keys } from '../../../shared/ddb/keys.js';
 import { callModel, DAY_S, dayParis, iso, jobKey, mapLimit, ttlIn, type Ctx } from './ctx.js';
 import { ALL_OPEN, endWithoutDoc, isTerminal, scansPrefix, transition } from './job.js';
+import { releaseQuotaOnce } from './quota-ops.js';
 import { SYSTEM_JSON, transcribePrompt } from './prompts.js';
 import type { Item } from './ports.js';
 import { parseModelJson, sentenceId, splitSentences, words } from './text.js';
@@ -68,7 +69,8 @@ export function imageFormat(head: Uint8Array): 'jpeg' | 'png' | undefined {
 }
 
 export async function scanCheck(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }> {
-  const job = await transition(ctx, i.sid, i.jobId, ['en_attente_envoi'], 'verification_fichier');
+  // Reprenable: une relance trouve le job deja en `verification_fichier` et refait le controle (sans effet de bord).
+  const job = await transition(ctx, i.sid, i.jobId, ['en_attente_envoi', 'verification_fichier'], 'verification_fichier');
   if (!job) return { ok: false };
   const prefix = scansPrefix(i.sid, i.jobId);
   let valid = true;
@@ -89,15 +91,19 @@ export async function scanCheck(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }> 
 const TranscribeOut = z.object({ docType: z.enum(['cours', 'exercice', 'autre']), text: z.string().max(20_000) });
 
 export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }> {
-  const job = await transition(ctx, i.sid, i.jobId, ['verification_fichier'], 'transcription', { transcribeStartedAt: iso(ctx) });
+  // Reprenable (une relance ne double ni l'appel de modele ni le compteur du jour): etat deja `transcription` et texte ecrit = fait.
+  const job = await transition(ctx, i.sid, i.jobId, ['verification_fichier', 'transcription'], 'transcription', { transcribeStartedAt: iso(ctx) });
   if (!job) return { ok: false };
+  if (await ctx.db.get({ PK: `JOB#${i.jobId}`, SK: 'TEXT#1' })) return { ok: true };
   const reject = async (msg: string) => {
     await endWithoutDoc(ctx, i.sid, i.jobId, ['transcription'], 'rejete', msg);
     return { ok: false };
   };
-  // Plafond de 10 transcriptions par eleve et par jour (une transcription refusee coute un peu de Haiku: elle compte).
-  const counter = await ctx.db.update(keys.transcriptions(i.sid, dayParis(ctx.now())), { add: { n: 1 }, set: { ttl: ttlIn(ctx, 2 * DAY_S) }, cond: { lt: { n: MAX_TRANSCRIPTIONS_PER_DAY } } });
-  if (!counter) return reject(MSG.dailyLimit);
+  // Plafond de 10 transcriptions par eleve et par jour (une transcription refusee coute un peu de Haiku: elle compte). Comptee une fois par job.
+  if (await ctx.db.update(jobKey(i.sid, i.jobId), { set: { transcrCounted: true }, cond: { exists: true, absent: ['transcrCounted'] } })) {
+    const counter = await ctx.db.update(keys.transcriptions(i.sid, dayParis(ctx.now())), { add: { n: 1 }, set: { ttl: ttlIn(ctx, 2 * DAY_S) }, cond: { lt: { n: MAX_TRANSCRIPTIONS_PER_DAY } } });
+    if (!counter) return reject(MSG.dailyLimit);
+  }
 
   const prefix = scansPrefix(i.sid, i.jobId);
   const idx = Array.from({ length: job.expectedFiles as number }, (_, n) => n);
@@ -123,7 +129,10 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
 // ---------------------------------------------------------------- 4. attente de la confirmation de l'eleve
 export async function awaitConfirm(ctx: Ctx, i: WfInput & { token: string }): Promise<void> {
   const job = await transition(ctx, i.sid, i.jobId, ['transcription'], 'a_confirmer', { confirmToken: i.token, awaitingSince: iso(ctx) });
-  if (!job) await ctx.sfn.taskFailure(i.token, 'Cancelled');
+  if (job) return;
+  // Relance apres succes: meme jeton, l'attente continue. Sinon (annule, expire...) on libere la machine.
+  const cur = await ctx.db.get(jobKey(i.sid, i.jobId));
+  if (!(cur?.state === 'a_confirmer' && cur.confirmToken === i.token)) await ctx.sfn.taskFailure(i.token, 'Cancelled');
 }
 
 /** Delai depasse (envoi ou confirmation): etat `expire`, photo supprimee, quota rendu. */
@@ -135,7 +144,20 @@ export async function expire(ctx: Ctx, i: WfInput & { phase: 'upload' | 'confirm
 /** Toute erreur d'etape: etat `echec`, quota rendu s'il est encore reserve, photos et affirmations orphelines supprimees. */
 export async function failJob(ctx: Ctx, i: WfInput & { error?: { Error?: string } }): Promise<void> {
   const job = await ctx.db.get(jobKey(i.sid, i.jobId));
-  if (!job || isTerminal(job.state)) return;
+  if (!job) return;
+  if (isTerminal(job.state)) {
+    // Fin deja decidee: on repare seulement un nettoyage interrompu (quota encore reserve, photos restantes).
+    if (job.state !== 'termine') {
+      await releaseQuotaOnce(ctx, i.sid, i.jobId);
+      await ctx.s3.deleteAll(scansPrefix(i.sid, i.jobId));
+    }
+    return;
+  }
+  // Cout de L2b: `verify-run` le porte dans ses VERDICT# (premier verdict du lot). S'il a echoue apres des appels, on le recupere ici (une fois).
+  if (typeof job.docId === 'string' && job.quotaState === 'reserved') {
+    const micros = (await ctx.db.query(`DOC#${job.docId}`, 'VERDICT#')).reduce((n, v) => n + (typeof v.coutMicros === 'number' && Number.isFinite(v.coutMicros) ? v.coutMicros : 0), 0);
+    if (micros > 0) await ctx.db.update(jobKey(i.sid, i.jobId), { add: { coutMicros: micros }, set: { verifyCostAdded: true }, cond: { exists: true, absent: ['verifyCostAdded'] } });
+  }
   const msg = i.error?.Error === 'CostBlockedError' ? MSG.budget : MSG.failed;
   await endWithoutDoc(ctx, i.sid, i.jobId, ALL_OPEN, 'echec', msg);
   if (typeof job.docId === 'string' && !(await ctx.db.get(keys.doc(i.sid, job.docId)))) {

@@ -4,9 +4,11 @@ import { ConfirmRequestSchema, ScanCreateRequestSchema } from '../../../shared/c
 import { costGateFor } from '../../../shared/cost.js';
 import { keys, monthParis } from '../../../shared/ddb/keys.js';
 import { releasePages, reservePages } from '../../../shared/quota.js';
+import { log } from '../../../shared/log/index.js';
 import { bodyOf, callerOf, fail, json, pathId, requireStudent, resetDate } from './http.js';
 import { centsFromMicros, DAY_S, iso, jobKey, ttlIn, type Ctx } from './ctx.js';
-import { endWithoutDoc, loadJob, quotaScope, scansPrefix, transition } from './job.js';
+import { endWithoutDoc, loadJob, scansPrefix, transition } from './job.js';
+import { quotaScope } from './quota-ops.js';
 import type { Item } from './ports.js';
 
 /** Limites d'envoi (design-v2 4.1 etape 1): 5 Mo par image. Les PDF ne sont pas pris en charge dans cette version (voir L2a-report.md). */
@@ -107,7 +109,8 @@ export async function jobsTranscription(ctx: Ctx, event: APIGatewayProxyEventV2)
   const { sid, jobId, job } = await ownJob(ctx, event);
   if (job.state !== 'a_confirmer') return fail('etat_invalide', "Le job n'est pas a confirmer");
   const texts = (await ctx.db.query(`JOB#${jobId}`, 'TEXT#')).sort((a, b) => Number(a.page) - Number(b.page));
-  const keysList = await ctx.s3.list(scansPrefix(sid, jobId));
+  // Seules les photos attendues (indices < nombre de pages): un envoi en trop sous le prefixe n'est jamais montre.
+  const keysList = (await ctx.s3.list(scansPrefix(sid, jobId))).filter((k) => Number(k.slice(scansPrefix(sid, jobId).length)) < (job.expectedFiles as number) && /\/\d{1,2}$/.test(k));
   const photoUrls = await Promise.all(keysList.map((k) => ctx.s3.presignGet(k, PHOTO_URL_TTL_S)));
   return json(200, {
     jobId,
@@ -137,13 +140,24 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     const sentences = (changed.get(page.SK) ?? page).sentences as { id: string; text: string }[];
     changed.set(page.SK, { ...(changed.get(page.SK) ?? page), sentences: sentences.map((s) => (s.id === c.id ? { id: s.id, text } : s)) });
   }
-  for (const item of changed.values()) await ctx.db.put(item);
-
-  // Le premier qui change l'etat gagne la course contre une annulation ou l'expiration.
+  // Le premier qui change l'etat gagne la course contre une annulation ou l'expiration; les corrections ne s'ecrivent qu'ensuite.
   const moved = await transition(ctx, sid, jobId, ['a_confirmer'], 'verification', { confirmedAt: iso(ctx) });
   if (!moved) return fail('etat_invalide', "Le job n'est plus a confirmer");
-  await ctx.s3.deleteAll(scansPrefix(sid, jobId)); // la photo disparait a la confirmation
-  if (typeof moved.confirmToken === 'string') await ctx.sfn.taskSuccess(moved.confirmToken);
+  const token = typeof moved.confirmToken === 'string' ? moved.confirmToken : undefined;
+  try {
+    for (const item of changed.values()) await ctx.db.put(item);
+    if (token) await ctx.sfn.taskSuccess(token);
+  } catch (e) {
+    // Etat deja change: on libere la machine par un echec (job `echec`, quota rendu) plutot que de la laisser attendre.
+    if (token) await ctx.sfn.taskFailure(token, 'ConfirmFailed');
+    throw e;
+  }
+  // La reprise est deja partie: un echec de suppression ne la bloque pas (le cycle de vie S3 efface la photo au plus tard sous 1 jour).
+  try {
+    await ctx.s3.deleteAll(scansPrefix(sid, jobId));
+  } catch {
+    log({ jobId, step: 'photo-suppression', status: 'error' });
+  }
   return json(200, jobView(moved));
 }
 

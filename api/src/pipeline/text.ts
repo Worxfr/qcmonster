@@ -29,18 +29,21 @@ export function splitSentences(text: string): string[] {
 
 export const sentenceId = (page: number, n: number): string => `p${page}-s${n}`;
 
+/** Sortie du modele illisible (pas de JSON, JSON invalide ou hors schema). */
+export class ModelOutputError extends Error {}
+
 /** Premier objet JSON de la sortie d'un modele (ignore le texte autour et les blocs ```), valide par `schema`. */
 export function parseModelJson<T>(raw: string, schema: ZodType<T>): T {
   const start = raw.indexOf('{');
   const end = raw.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('sortie du modele sans JSON');
+  if (start < 0 || end <= start) throw new ModelOutputError('sortie du modele sans JSON');
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw.slice(start, end + 1));
   } catch {
-    throw new Error('sortie du modele: JSON invalide');
+    throw new ModelOutputError('sortie du modele: JSON invalide');
   }
   const r = schema.safeParse(parsed);
-  if (!r.success) throw new Error('sortie du modele: schema invalide');
+  if (!r.success) throw new ModelOutputError('sortie du modele: schema invalide');
   return r.data;
 }

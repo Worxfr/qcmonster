@@ -59,8 +59,8 @@ export const MODEL_ARN = 'arn:aws:bedrock:eu-west-3:123456789012:application-inf
 export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>; now?: () => Date } = {}) {
   process.env.QCM_ENV = 'dev';
   const calls: string[] = [];
-  const db = memoryDb();
   const quota = memoryQuotaDb();
+  const db = memoryDb(quota.items); // une seule table, comme en production (le quota et le marqueur QUOTAOP# sont dans la meme transaction)
   const s3 = memoryScanStore();
   const sfn = memorySfn();
   const costStore = memoryCost(opts.cost);
