@@ -41,15 +41,15 @@ type Throttle = { rate: number; burst: number };
  * Les routes, l'autorisateur et la limitation restent ici (un reglage de limitation pour une route absente ferait echouer le deploiement).
  */
 export const ROUTES: ReadonlyArray<RouteDef> = [
-  { route: 'POST /scans', handler: 'scans-create', throttle: { rate: 2, burst: 5 } },
-  { route: 'GET /jobs/{jobId}', handler: 'jobs-get', throttle: { rate: 10, burst: 20 } },
-  { route: 'GET /jobs/{jobId}/transcription', handler: 'jobs-transcription' },
-  { route: 'POST /jobs/{jobId}/confirm', handler: 'jobs-confirm', throttle: { rate: 2, burst: 5 } },
-  { route: 'POST /jobs/{jobId}/cancel', handler: 'jobs-cancel', throttle: { rate: 2, burst: 5 } },
-  { route: 'GET /docs', handler: 'docs-read' },
-  { route: 'GET /docs/{docId}', handler: 'docs-read' },
-  { route: 'DELETE /docs/{docId}', handler: 'docs-delete', throttle: { rate: 2, burst: 5 } },
-  { route: 'POST /docs/{docId}/report', handler: 'docs-report', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /scans', handler: 'scans-create', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
+  { route: 'GET /jobs/{jobId}', handler: 'jobs-get', owner: 'pipeline', throttle: { rate: 10, burst: 20 } },
+  { route: 'GET /jobs/{jobId}/transcription', handler: 'jobs-transcription', owner: 'pipeline' },
+  { route: 'POST /jobs/{jobId}/confirm', handler: 'jobs-confirm', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /jobs/{jobId}/cancel', handler: 'jobs-cancel', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
+  { route: 'GET /docs', handler: 'docs-read', owner: 'pipeline' },
+  { route: 'GET /docs/{docId}', handler: 'docs-read', owner: 'pipeline' },
+  { route: 'DELETE /docs/{docId}', handler: 'docs-delete', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /docs/{docId}/report', handler: 'docs-report', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
   { route: 'GET /docs/{docId}/session', handler: 'session-get' },
   { route: 'POST /answers', handler: 'answers-post', throttle: { rate: 10, burst: 20 } },
   { route: 'GET /me', handler: 'me-get' },
@@ -140,11 +140,18 @@ export class ApiStack extends Stack {
     }
     // Fonction d'un lot: referencee par son NOM (pas d'import entre stacks), sans permission ici (le lot l'ajoute,
     // car la fonction n'existe pas encore quand cette stack se deploie). Les stacks de lot dependent de cette stack.
+    const externals = new Map<string, lambda.IFunction>(); // une fonction par handler (docs-read sert deux routes)
     const external = (handler: string): lambda.IFunction =>
-      lambda.Function.fromFunctionAttributes(this, `Ext-${handler}`, {
+      externals.get(handler) ??
+      externals
+        .set(
+          handler,
+          lambda.Function.fromFunctionAttributes(this, `Ext-${handler}`, {
         functionArn: this.formatArn({ service: 'lambda', resource: 'function', resourceName: fn(envName, handler), arnFormat: ArnFormat.COLON_RESOURCE_NAME }),
         skipPermissions: true,
-      });
+      }),
+        )
+        .get(handler)!;
     for (const { route, handler, owner, public: isPublic } of routes) {
       const [method, path] = route.split(' ') as [keyof typeof apigwv2.HttpMethod, string];
       const target = (owner ?? 'skeleton') === 'skeleton' ? handlers.get(handler)! : external(handler);

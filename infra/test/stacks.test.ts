@@ -121,7 +121,7 @@ describe('Api: mecanisme owner', () => {
     const t = Template.fromStack(st);
     const fnNames = Object.values(t.findResources('AWS::Lambda::Function')).map((f) => (f as { Properties: { FunctionName: string } }).Properties.FunctionName);
     expect(fnNames).not.toContain('qcm-dev-scans-create');
-    expect(fnNames).toContain('qcm-dev-jobs-get');
+    expect(fnNames).toContain('qcm-dev-family-read'); // reste un squelette
     const perms = JSON.stringify(t.findResources('AWS::Lambda::Permission'));
     expect(perms).not.toContain('scans-create');
     const stage = Object.values(t.findResources('AWS::ApiGatewayV2::Stage'))[0] as { Properties: { RouteSettings: Record<string, unknown> } };
