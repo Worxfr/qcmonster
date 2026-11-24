@@ -2,7 +2,7 @@
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
 import { keys } from './ddb/keys.js';
-import { COST_BLOCK_NEW_EUR, COST_STOP_ALL_EUR, METRIC_COST_MONTH, METRIC_NAMESPACE, type Env } from './names.js';
+import { COST_BLOCK_NEW_EUR, COST_STOP_ALL_EUR, DEV_TRIAL_CAP_EUR, METRIC_COST_MONTH, METRIC_NAMESPACE, type Env } from './names.js';
 
 export type CostGate = 'ok' | 'block_new' | 'stop_all';
 
@@ -11,6 +11,12 @@ export function costGate(totalEur: number): CostGate {
   if (totalEur >= COST_STOP_ALL_EUR) return 'stop_all';
   if (totalEur >= COST_BLOCK_NEW_EUR) return 'block_new';
   return 'ok';
+}
+
+/** Garde par environnement: en dev, le plafond d'essais (12 EUR) arrete tout appel Bedrock (decision du proprietaire). */
+export function costGateFor(env: Env, totalEur: number): CostGate {
+  if (env === 'dev' && totalEur >= DEV_TRIAL_CAP_EUR) return 'stop_all';
+  return costGate(totalEur);
 }
 
 /** Ajout atomique (en centimes entiers) au compteur du mois. Renvoie le total du mois en euros. */

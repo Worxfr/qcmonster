@@ -1,4 +1,4 @@
-import { Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { ArnFormat, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
@@ -9,8 +9,25 @@ import type { Construct } from 'constructs';
 import { webOriginFor } from './data-stack.js';
 import { fn, REGION, ssmParam, stackName, type Env } from '../../shared/names.js';
 
+export type Owner = 'skeleton' | 'pipeline' | 'game';
+export interface RouteDef {
+  route: string;
+  handler: string;
+  /**
+   * Qui fournit la Lambda. `skeleton` (defaut): cette stack cree un squelette 501. `pipeline` (L2a, pipeline-stack) ou
+   * `game` (L3, game-stack): le lot cree la fonction `fn(env, handler)` et la permission d'invocation; cette stack garde
+   * la route, l'autorisateur et la limitation. Un lot change SEULEMENT l'`owner` de ses lignes, dans sa PR.
+   */
+  owner?: Owner;
+  /** Route sans JWT (activation de l'eleve). */
+  public?: boolean;
+  throttle?: Throttle;
+}
+
 export interface ApiStackProps extends StackProps {
   envName: Env;
+  /** Pour les tests; defaut: ROUTES. */
+  routes?: ReadonlyArray<RouteDef>;
 }
 
 type Throttle = { rate: number; burst: number };
@@ -18,10 +35,12 @@ type Throttle = { rate: number; burst: number };
 /**
  * Routes du contrat (design-v2 6): route -> handler, limitation par route (requetes/s, rafale).
  * Un test verifie que cette table couvre exactement les routes de shared/contract/openapi.yaml.
- * Les handlers sont des squelettes qui repondent 501; un lot qui implemente un handler remplace le squelette
- * par une PR vers le proprietaire du lot 1 (ou cree la route lui-meme sur l'API importee, SSM /qcm/<env>/api/id).
+ * Les handlers sont des squelettes qui repondent 501 tant que `owner` n'est pas change. Un lot qui implemente un handler
+ * met `owner: 'pipeline' | 'game'` sur SA ligne (seul changement dans ce fichier), cree la fonction `fn(env, handler)` dans sa stack,
+ * depend de la stack Api, et ajoute la permission d'invocation (principal apigateway, source = API de SSM /qcm/<env>/api/id).
+ * Les routes, l'autorisateur et la limitation restent ici (un reglage de limitation pour une route absente ferait echouer le deploiement).
  */
-export const ROUTES: ReadonlyArray<{ route: string; handler: string; throttle?: Throttle }> = [
+export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'POST /scans', handler: 'scans-create', throttle: { rate: 2, burst: 5 } },
   { route: 'GET /jobs/{jobId}', handler: 'jobs-get', throttle: { rate: 10, burst: 20 } },
   { route: 'GET /jobs/{jobId}/transcription', handler: 'jobs-transcription' },
@@ -44,7 +63,19 @@ export const ROUTES: ReadonlyArray<{ route: string; handler: string; throttle?: 
   { route: 'POST /reports/{id}/validate', handler: 'reports-validate', throttle: { rate: 2, burst: 5 } },
   { route: 'GET /family/export', handler: 'family-admin', throttle: { rate: 1, burst: 2 } },
   { route: 'DELETE /family', handler: 'family-admin', throttle: { rate: 1, burst: 2 } },
+  // contract-v1.1 (L1c)
+  { route: 'POST /activation', handler: 'activation-post', public: true, throttle: { rate: 1, burst: 3 } },
+  { route: 'POST /docs/{docId}/read', handler: 'docs-seen', throttle: { rate: 5, burst: 10 } },
+  { route: 'POST /family', handler: 'family-create', throttle: { rate: 1, burst: 2 } },
 ];
+
+/** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
+export const HANDLER_LOT: Record<string, 'L2a' | 'L3'> = {
+  'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
+  'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
+  'session-get': 'L3', 'answers-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3',
+  'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-seen': 'L3', 'family-create': 'L3',
+};
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */
 export const DEFAULT_THROTTLE: Throttle = { rate: 5, burst: 10 };
@@ -63,6 +94,7 @@ export class ApiStack extends Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
     const { envName } = props;
+    const routes = props.routes ?? ROUTES;
 
     // Auth publie ses identifiants dans SSM: lecture au deploiement, pas d'import entre stacks.
     const userPoolId = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'auth/userPoolId'));
@@ -90,8 +122,8 @@ export class ApiStack extends Stack {
     });
 
     const handlers = new Map<string, lambda.Function>();
-    for (const { handler } of ROUTES) {
-      if (handlers.has(handler)) continue;
+    for (const { handler, owner } of routes) {
+      if ((owner ?? 'skeleton') !== 'skeleton' || handlers.has(handler)) continue;
       handlers.set(
         handler,
         new lambda.Function(this, `Fn-${handler}`, {
@@ -106,12 +138,21 @@ export class ApiStack extends Stack {
         }),
       );
     }
-    for (const { route, handler } of ROUTES) {
+    // Fonction d'un lot: referencee par son NOM (pas d'import entre stacks), sans permission ici (le lot l'ajoute,
+    // car la fonction n'existe pas encore quand cette stack se deploie). Les stacks de lot dependent de cette stack.
+    const external = (handler: string): lambda.IFunction =>
+      lambda.Function.fromFunctionAttributes(this, `Ext-${handler}`, {
+        functionArn: this.formatArn({ service: 'lambda', resource: 'function', resourceName: fn(envName, handler), arnFormat: ArnFormat.COLON_RESOURCE_NAME }),
+        skipPermissions: true,
+      });
+    for (const { route, handler, owner, public: isPublic } of routes) {
       const [method, path] = route.split(' ') as [keyof typeof apigwv2.HttpMethod, string];
+      const target = (owner ?? 'skeleton') === 'skeleton' ? handlers.get(handler)! : external(handler);
       this.api.addRoutes({
         path,
         methods: [apigwv2.HttpMethod[method]],
-        integration: new HttpLambdaIntegration(`Int-${handler}`, handlers.get(handler)!),
+        integration: new HttpLambdaIntegration(`Int-${handler}`, target),
+        authorizer: isPublic ? new apigwv2.HttpNoneAuthorizer() : undefined,
       });
     }
 
@@ -131,7 +172,7 @@ export class ApiStack extends Stack {
       format: JSON.stringify({ requestId: '$context.requestId', routeKey: '$context.routeKey', status: '$context.status', requestTime: '$context.requestTime', responseLatency: '$context.responseLatency' }),
     };
     cfnStage.routeSettings = Object.fromEntries(
-      ROUTES.map(({ route, throttle }) => [route, { ThrottlingRateLimit: (throttle ?? DEFAULT_THROTTLE).rate, ThrottlingBurstLimit: (throttle ?? DEFAULT_THROTTLE).burst }]),
+      routes.map(({ route, throttle }) => [route, { ThrottlingRateLimit: (throttle ?? DEFAULT_THROTTLE).rate, ThrottlingBurstLimit: (throttle ?? DEFAULT_THROTTLE).burst }]),
     );
 
     new ssm.StringParameter(this, 'ParamApiId', { parameterName: ssmParam(envName, 'api/id'), stringValue: this.api.apiId });

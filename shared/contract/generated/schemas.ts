@@ -5,7 +5,7 @@ export const ErrorSchema = z.object({ "code": z.enum(["requete_invalide","interd
 
 export const JobStateSchema = z.enum(["en_attente_envoi","verification_fichier","transcription","a_confirmer","verification","generation","termine","rejete","echec","expire"]);
 
-export const JobSchema = z.object({ "jobId": z.string(), "state": z.enum(["en_attente_envoi","verification_fichier","transcription","a_confirmer","verification","generation","termine","rejete","echec","expire"]), "pages": z.number().int().gte(1).lte(10), "createdAt": z.string().datetime({ offset: true }), "durationSeconds": z.number().int().gte(0).optional(), "docId": z.string().describe("Present quand state = termine").optional(), "message": z.string().max(500).optional() });
+export const JobSchema = z.object({ "jobId": z.string(), "state": z.enum(["en_attente_envoi","verification_fichier","transcription","a_confirmer","verification","generation","termine","rejete","echec","expire"]), "pages": z.number().int().gte(1).lte(10), "createdAt": z.string().datetime({ offset: true }), "durationSeconds": z.number().int().gte(0).optional(), "costCents": z.number().int().gte(0).describe("Cout Bedrock du traitement en centimes d'euro (mesure").optional(), "docId": z.string().describe("Present quand state = termine").optional(), "message": z.string().max(500).optional() });
 
 export const ScanCreateRequestSchema = z.object({ "pages": z.number().int().gte(1).lte(10).describe("Une image = 1 page; un PDF = son nombre de pages (10 max)"), "contentType": z.enum(["image/jpeg","image/png","application/pdf"]) });
 
@@ -31,7 +31,7 @@ export const ReportRequestSchema = z.object({ "claimId": z.string().optional(), 
 
 export const ReportValidateRequestSchema = z.object({ "decision": z.enum(["valide","rejete"]) });
 
-export const ReportSchema = z.object({ "reportId": z.string(), "status": z.enum(["ouvert","valide","rejete"]) });
+export const ReportSchema = z.object({ "reportId": z.string(), "docId": z.string().optional(), "claimId": z.string().optional(), "status": z.enum(["ouvert","valide","rejete"]) });
 
 export const QuestionSchema = z.object({ "questionId": z.string(), "kind": z.enum(["qcm","gap"]), "prompt": z.string().max(1000), "choices": z.array(z.string().max(300)).min(4).max(4).optional() }).describe("Jamais de cle de reponse dans une question (test L3/L4).");
 
@@ -39,9 +39,13 @@ export const SessionSchema = z.object({ "docId": z.string(), "questions": z.arra
 
 export const AnswerRequestSchema = z.object({ "questionId": z.string(), "choice": z.string().max(300) });
 
-export const ProgressSchema = z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date() });
+export const ProgressSchema = z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date(), "badges": z.array(z.string().regex(new RegExp("^[a-z0-9_]{1,40}$"))).describe("Identifiants de badges obtenus; catalogue dans docs/game-rules.md").optional() });
 
-export const AnswerResultSchema = z.object({ "correct": z.boolean(), "correctAnswer": z.string().describe("Revele seulement apres la reponse").optional(), "xpGained": z.number().int().gte(0), "badges": z.array(z.string()), "progress": z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date() }) });
+export const ReadResultSchema = z.object({ "xpGained": z.number().int().gte(0), "badges": z.array(z.string()), "progress": z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date(), "badges": z.array(z.string().regex(new RegExp("^[a-z0-9_]{1,40}$"))).describe("Identifiants de badges obtenus; catalogue dans docs/game-rules.md").optional() }) });
+
+export const ActivationRequestSchema = z.object({ "token": z.string().min(20).max(200), "password": z.string().min(12).max(128) });
+
+export const AnswerResultSchema = z.object({ "correct": z.boolean(), "correctAnswer": z.string().describe("Revele seulement apres la reponse").optional(), "xpGained": z.number().int().gte(0), "badges": z.array(z.string()), "progress": z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date(), "badges": z.array(z.string().regex(new RegExp("^[a-z0-9_]{1,40}$"))).describe("Identifiants de badges obtenus; catalogue dans docs/game-rules.md").optional() }) });
 
 export const MeSchema = z.object({ "userId": z.string(), "role": z.enum(["parent","eleve"]), "familyId": z.string(), "studentId": z.string().describe("Present pour le role eleve").optional(), "pseudo": z.string().optional() });
 
@@ -55,7 +59,7 @@ export const StudentCreateResponseSchema = z.object({ "student": z.object({ "stu
 
 export const StudentUpdateRequestSchema = z.object({ "status": z.enum(["actif","suspendu"]).optional(), "pageQuota": z.number().int().gte(0).lte(50).optional() });
 
-export const DashboardSchema = z.object({ "students": z.array(z.object({ "student": z.object({ "studentId": z.string(), "pseudo": z.string().describe("Pseudo avec suffixe aleatoire (Lila-7k2f)"), "schoolLevel": z.enum(["seconde","premiere","terminale"]), "under15": z.boolean(), "status": z.enum(["actif","suspendu"]), "pageQuota": z.number().int().gte(0).lte(50) }), "progress": z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date() }) })), "familyPagesRemaining": z.number().int().gte(0), "familyPagesLimit": z.number().int().gte(0) });
+export const DashboardSchema = z.object({ "students": z.array(z.object({ "student": z.object({ "studentId": z.string(), "pseudo": z.string().describe("Pseudo avec suffixe aleatoire (Lila-7k2f)"), "schoolLevel": z.enum(["seconde","premiere","terminale"]), "under15": z.boolean(), "status": z.enum(["actif","suspendu"]), "pageQuota": z.number().int().gte(0).lte(50) }), "progress": z.object({ "xp": z.number().int().gte(0), "level": z.number().int().gte(0), "streakDays": z.number().int().gte(0), "freezes": z.number().int().gte(0), "stage": z.number().int().gte(1).lte(5), "pagesRemaining": z.number().int().gte(0), "pagesLimit": z.number().int().gte(0), "resetDate": z.string().date(), "badges": z.array(z.string().regex(new RegExp("^[a-z0-9_]{1,40}$"))).describe("Identifiants de badges obtenus; catalogue dans docs/game-rules.md").optional() }) })), "familyPagesRemaining": z.number().int().gte(0), "familyPagesLimit": z.number().int().gte(0) });
 
 export const LeaderboardSchema = z.object({ "week": z.string().regex(new RegExp("^[0-9]{4}-W[0-9]{2}$")), "entries": z.array(z.object({ "studentId": z.string(), "pseudo": z.string(), "xp": z.number().int().gte(0), "activeDays": z.number().int().gte(0).lte(7) })) });
 

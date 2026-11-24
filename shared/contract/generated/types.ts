@@ -137,6 +137,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/docs/{docId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** L'eleve a lu la fiche jusqu'au bout (XP de lecture, une fois par jour par fiche; handler docs-seen, L3) */
+        post: operations["markDocRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/docs/{docId}/session": {
         parameters: {
             query?: never;
@@ -165,6 +182,23 @@ export interface paths {
         put?: never;
         /** Reponse a une question; renvoie juste/faux, XP, badges (handler answers-post, L3) */
         post: operations["postAnswer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** L'eleve active son compte avec le jeton du lien et choisit son mot de passe. Route PUBLIQUE, sans JWT (handler activation-post, L3) */
+        post: operations["activateStudent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -334,7 +368,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /** Premiere connexion d'un parent invite - cree la famille, pose famille_id et le groupe parent. Le jeton deja emis ne les contient pas, le front se reconnecte (handler family-create, L3) */
+        post: operations["createFamily"];
         /** Suppression complete de la famille (handler family-admin, L3) */
         delete: operations["deleteFamily"];
         options?: never;
@@ -365,6 +400,8 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             durationSeconds?: number;
+            /** @description Cout Bedrock du traitement en centimes d'euro (mesure */
+            costCents?: number;
             /** @description Present quand state = termine */
             docId?: string;
             message?: string;
@@ -449,6 +486,8 @@ export interface components {
         };
         Report: {
             reportId: string;
+            docId?: string;
+            claimId?: string;
             /** @enum {string} */
             status: "ouvert" | "valide" | "rejete";
         };
@@ -478,6 +517,17 @@ export interface components {
             pagesLimit: number;
             /** Format: date */
             resetDate: string;
+            /** @description Identifiants de badges obtenus; catalogue dans docs/game-rules.md */
+            badges?: string[];
+        };
+        ReadResult: {
+            xpGained: number;
+            badges: string[];
+            progress: components["schemas"]["Progress"];
+        };
+        ActivationRequest: {
+            token: string;
+            password: string;
         };
         AnswerResult: {
             correct: boolean;
@@ -988,6 +1038,48 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    markDocRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                docId: components["parameters"]["DocId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description XP de lecture accorde (ou 0 si deja pris ce jour) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "xpGained": 10,
+                     *       "badges": [],
+                     *       "progress": {
+                     *         "xp": 120,
+                     *         "level": 2,
+                     *         "streakDays": 3,
+                     *         "freezes": 1,
+                     *         "stage": 1,
+                     *         "pagesRemaining": 18,
+                     *         "pagesLimit": 20,
+                     *         "resetDate": "2027-01-01",
+                     *         "badges": [
+                     *           "premier_scan"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ReadResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     getSession: {
         parameters: {
             query?: never;
@@ -1080,6 +1172,36 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    activateStudent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "exemple-de-jeton-a-usage-unique-0123456789abcdef",
+                 *       "password": "Un-mot-de-passe-long-1"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ActivationRequest"];
+            };
+        };
+        responses: {
+            /** @description Compte active */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     getMe: {
@@ -1436,6 +1558,34 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    createFamily: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Famille creee */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "userId": "7b0f6c1e-0000-4000-8000-00000000a002",
+                     *       "role": "parent",
+                     *       "familyId": "01JEXAMPLE0FAM0000000000AA"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            409: components["responses"]["Conflict"];
         };
     };
     deleteFamily: {
