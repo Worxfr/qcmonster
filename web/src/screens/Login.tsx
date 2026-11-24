@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { signIn, mockSignIn, type MockRole } from '../auth';
-import { MOCK_AUTH } from '../env';
+import { CONFIG_ERROR, MOCK_AUTH } from '../env';
 import { Mascot } from '../components/Mascot';
 import { ErrorBox } from '../components/ui';
 import { errMsg } from '../hooks';
@@ -43,7 +43,9 @@ export function Login({ onDone }: { onDone: () => void }) {
       <Mascot stage={2} size={140} label={false} />
       <h1>QCMonster</h1>
       <p className="lead">Scanne ton cours, deviens plus fort.</p>
-      {MOCK_AUTH ? (
+      {CONFIG_ERROR ? (
+        <p role="alert" className="error">{CONFIG_ERROR}</p>
+      ) : MOCK_AUTH ? (
         <div className="stack">
           <p className="muted">Mode démo : l'API simulée remplace la connexion.</p>
           <button className="btn" onClick={() => pick('eleve')}>Entrer comme élève</button>

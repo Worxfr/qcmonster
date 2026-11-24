@@ -131,7 +131,7 @@ describe('parcours eleve contre l\'API simulee', () => {
     expect(await screen.findByText('Les stades du monstre')).toBeInTheDocument();
     expect(await screen.findByText('Lila-7k2f')).toBeInTheDocument();
     expect(screen.getByText('310 XP')).toBeInTheDocument();
-    expect(screen.getByText(/Premier scan/)).toBeInTheDocument();
+    expect(screen.getByText(/Badges gagnés pendant cette session/)).toBeInTheDocument();
     await a11y(view.container);
   });
 });
@@ -159,5 +159,16 @@ describe('donnees du front', () => {
     const r = await realFetch(`${MOCK_URL}/docs/d1/session`, { headers: { authorization: 'Bearer x' } });
     const text = JSON.stringify(await r.json());
     expect(text).not.toMatch(/correctAnswer|"answer"|"solution"|"correct"/);
+  });
+});
+
+describe('configuration', () => {
+  it('jamais de mock par defaut: sans variable explicite, MOCK_AUTH est faux', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_AUTH_MODE', '');
+    const env = await import('./env');
+    expect(env.MOCK_AUTH).toBe(false);
+    expect(env.CONFIG_ERROR).toMatch(/COGNITO/);
+    vi.unstubAllEnvs();
   });
 });

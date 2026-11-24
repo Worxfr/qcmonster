@@ -4,7 +4,6 @@ import { AppContext } from './app-context';
 import { isSignedIn, mockRole, onSignedOut, signOut } from './auth';
 import { ErrorBox, Loading } from './components/ui';
 import { MOCK_AUTH } from './env';
-import { EARNED_KEY } from './game';
 import { errMsg } from './hooks';
 import { useRoute } from './router';
 import { DocView as Doc } from './screens/Doc';
@@ -15,15 +14,6 @@ import { Parent } from './screens/Parent';
 import { JobView, Scan } from './screens/Scan';
 import { Quiz } from './screens/Quiz';
 import type { Me, Progress } from './types';
-
-const loadBadges = (): string[] => {
-  try {
-    const v = JSON.parse(localStorage.getItem(EARNED_KEY) ?? '[]') as unknown;
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-};
 
 export function App() {
   const [signed, setSigned] = useState(isSignedIn);
@@ -36,7 +26,7 @@ function Shell() {
   const [me, setMe] = useState<Me | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [badges, setBadges] = useState<string[]>(loadBadges);
+  const [badges, setBadges] = useState<string[]>([]);
   const route = useRoute();
 
   const refreshProgress = useCallback(async () => {
@@ -64,11 +54,7 @@ function Shell() {
   }, [refreshProgress]);
 
   const addBadges = useCallback((ids: string[]) => {
-    setBadges((cur) => {
-      const next = Array.from(new Set([...cur, ...ids]));
-      localStorage.setItem(EARNED_KEY, JSON.stringify(next));
-      return next;
-    });
+    setBadges((cur) => Array.from(new Set([...cur, ...ids]))); // en memoire: le contrat n'expose pas les badges deja obtenus
   }, []);
 
   if (!me) return <main className="page">{error ? <ErrorBox message={error} /> : <Loading />}{error && <button className="btn" onClick={signOut}>Se déconnecter</button>}</main>;

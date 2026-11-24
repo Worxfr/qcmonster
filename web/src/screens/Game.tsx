@@ -2,7 +2,7 @@ import { api } from '../api';
 import { useApp } from '../app-context';
 import { Mascot } from '../components/Mascot';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
-import { KNOWN_BADGES, STAGES, badgeLabel, levelProgress } from '../game';
+import { STAGES, badgeLabel, levelProgress } from '../game';
 import { useLoad } from '../hooks';
 
 export function Game() {
@@ -10,7 +10,6 @@ export function Game() {
   const lb = useLoad(() => api.leaderboard(), []);
   if (!progress) return <Loading />;
   const lp = levelProgress(progress.xp, progress.level);
-  const badges = Array.from(new Set([...KNOWN_BADGES, ...earnedBadges]));
   return (
     <>
       <Card>
@@ -35,13 +34,14 @@ export function Game() {
           ))}
         </ol>
       </Card>
-      <Card title="Mes badges">
-        <ul className="badges">
-          {badges.map((b) => {
-            const got = earnedBadges.includes(b);
-            return <li key={b} className={got ? 'got' : 'todo'}><span aria-hidden="true">{got ? '🏅' : '🔒'}</span> {badgeLabel(b)}<span className="sr-only">{got ? ' (obtenu)' : ' (à gagner)'}</span></li>;
-          })}
-        </ul>
+      <Card title="Badges gagnés pendant cette session">
+        {earnedBadges.length === 0 ? (
+          <p className="muted">Réponds aux questions pour gagner des badges.</p>
+        ) : (
+          <ul className="badges">
+            {earnedBadges.map((b) => <li key={b} className="got"><span aria-hidden="true">🏅</span> {badgeLabel(b)}</li>)}
+          </ul>
+        )}
       </Card>
       <Card title={`Classement de la famille${lb.data ? ` · ${lb.data.week}` : ''}`}>
         {lb.loading && <Loading />}

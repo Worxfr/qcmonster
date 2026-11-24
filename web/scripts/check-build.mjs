@@ -15,3 +15,8 @@ if (m.display !== 'standalone' || !m.start_url || !sizes.includes('192x192') || 
 }
 if (/Rolldown/i.test(readFileSync(new URL('../dist/sw.js', import.meta.url), 'utf8'))) process.exit(1);
 console.log('PWA OK: sw.js, manifest.webmanifest, icones');
+const html = readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8');
+if (!/Content-Security-Policy/.test(html) || !/default-src 'self'/.test(html) || /unsafe-/.test(html)) {
+  console.error('CSP absente ou trop permissive dans dist/index.html');
+  process.exit(1);
+}

@@ -1,5 +1,5 @@
 import { AuthenticationDetails, CognitoUser, CognitoUserPool } from 'amazon-cognito-identity-js';
-import { COGNITO_CLIENT_ID, COGNITO_POOL_ID, MOCK_AUTH } from './env';
+import { CONFIG_ERROR, COGNITO_CLIENT_ID, COGNITO_POOL_ID, MOCK_AUTH } from './env';
 
 export type MockRole = 'parent' | 'eleve';
 export type SignInResult = { kind: 'ok' } | { kind: 'mfa'; confirm: (code: string) => Promise<void> };
@@ -12,7 +12,8 @@ export const onSignedOut = (fn: () => void) => {
 };
 
 let pool: CognitoUserPool | undefined;
-const getPool = () => (pool ??= new CognitoUserPool({ UserPoolId: COGNITO_POOL_ID, ClientId: COGNITO_CLIENT_ID }));
+// Jetons dans sessionStorage (perdus a la fermeture de l'onglet), pas dans localStorage.
+const getPool = () => (pool ??= new CognitoUserPool({ UserPoolId: COGNITO_POOL_ID, ClientId: COGNITO_CLIENT_ID, Storage: window.sessionStorage }));
 
 /** Mode mock: le role est choisi sur l'ecran de connexion (l'API simulee renvoie toujours le meme profil). */
 export function mockRole(): MockRole | null {
@@ -24,6 +25,7 @@ export function mockSignIn(role: MockRole) {
 }
 
 export function isSignedIn(): boolean {
+  if (CONFIG_ERROR) return false;
   return MOCK_AUTH ? mockRole() !== null : getPool().getCurrentUser() !== null;
 }
 

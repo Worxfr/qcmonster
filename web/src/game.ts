@@ -38,23 +38,14 @@ export const JOB_STEPS: { state: JobState; label: string }[] = [
 
 export const JOB_FINAL: JobState[] = ['termine', 'rejete', 'echec', 'expire'];
 
-const BADGE_LABELS: Record<string, string> = {
-  premier_scan: 'Premier scan',
-  serie_7: '7 jours de suite',
-  serie_30: '30 jours de suite',
-  bonnes_100: '100 bonnes réponses',
-  serie_parfaite_5: 'Série parfaite ×5',
-  chasseur_erreurs: 'Chasseur d\'erreurs',
-  explorateur: 'Explorateur',
-};
-export const badgeLabel = (id: string) => BADGE_LABELS[id] ?? id.replace(/_/g, ' ');
-export const KNOWN_BADGES = Object.keys(BADGE_LABELS);
+// Le contrat ne fournit que des identifiants de badges (AnswerResult.badges), pas de libelles ni de catalogue.
+export const badgeLabel = (id: string) => id.replace(/_/g, ' ');
 
-/** Les liens de sources viennent du serveur: on n'ouvre que http(s). */
+/** Les liens de sources viennent du serveur: on n'ouvre que https. */
 export function safeUrl(u: string): string | null {
   try {
     const p = new URL(u);
-    return p.protocol === 'https:' || p.protocol === 'http:' ? p.href : null;
+    return p.protocol === 'https:' ? p.href : null;
   } catch {
     return null;
   }
@@ -65,5 +56,3 @@ export function countPdfPages(bytes: Uint8Array): number {
   const text = new TextDecoder('latin1').decode(bytes);
   return (text.match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? []).length;
 }
-
-export const EARNED_KEY = 'qcm.badges';

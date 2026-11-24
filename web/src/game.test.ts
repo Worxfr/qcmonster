@@ -26,8 +26,9 @@ describe('stades', () => {
 });
 
 describe('safeUrl', () => {
-  it('accepte http(s) seulement', () => {
+  it('accepte https seulement', () => {
     expect(safeUrl('https://fr.wikipedia.org/wiki/X')).toBe('https://fr.wikipedia.org/wiki/X');
+    expect(safeUrl('http://exemple.fr/x')).toBeNull();
     expect(safeUrl('javascript:alert(1)')).toBeNull();
     expect(safeUrl('data:text/html,x')).toBeNull();
     expect(safeUrl('pas une url')).toBeNull();
