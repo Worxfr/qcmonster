@@ -62,6 +62,13 @@ export interface Sfn {
 // ---------------------------------------------------------------- DynamoDB
 const sleepNone = () => Promise.resolve();
 
+/** DynamoDB renvoie les ensembles (ADD sur un set) sous forme de `Set`: le reste du code lit des tableaux. */
+const plain = (it: Record<string, unknown> | undefined): Item | undefined => {
+  if (!it) return undefined;
+  for (const [k, v] of Object.entries(it)) if (v instanceof Set) it[k] = [...v];
+  return it as Item;
+};
+
 function buildUpdate(spec: UpdateSpec) {
   const names: Record<string, string> = {};
   const values: Record<string, unknown> = {};
@@ -116,7 +123,7 @@ export function dynamoDb(client: DynamoDBDocumentClient, table: string, sleep: (
   return {
     async get(key) {
       const r = await client.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }));
-      return r.Item as Item | undefined;
+      return plain(r.Item);
     },
     async put(item, ifNotExists) {
       try {
@@ -130,7 +137,7 @@ export function dynamoDb(client: DynamoDBDocumentClient, table: string, sleep: (
     async update(key, spec) {
       try {
         const r = await client.send(new UpdateCommand({ TableName: table, Key: key, ...buildUpdate(spec), ReturnValues: 'ALL_NEW' }));
-        return r.Attributes as Item;
+        return plain(r.Attributes);
       } catch (e) {
         if ((e as { name?: string }).name === 'ConditionalCheckFailedException') return undefined;
         throw e;
