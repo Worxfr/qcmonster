@@ -1,0 +1,688 @@
+openapi: 3.1.0
+info:
+  title: QCMonster API
+  version: 1.0.0
+  description: |
+    Contrat d'API QCMonster (contract-v1.0). Fixe par le lot 1 (design-v2 section 6).
+    Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
+    Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire du lot 1.
+servers:
+  - url: http://localhost:4010
+    description: API simulee (npm run mock)
+security:
+  - bearerAuth: []
+tags:
+  - { name: scans }
+  - { name: docs }
+  - { name: game }
+  - { name: family }
+paths:
+  /scans:
+    post:
+      operationId: createScan
+      tags: [scans]
+      summary: Reserve le quota, cree le job, renvoie une URL POST pre-signee (handler scans-create, L2a)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScanCreateRequest' }
+            example: { pages: 2, contentType: image/jpeg }
+      responses:
+        '201':
+          description: Job cree
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanCreateResponse' }
+              example:
+                jobId: 01JEXAMPLE0JOB0000000000AA
+                upload:
+                  url: https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/
+                  fields: { key: scans/01JEXAMPLE0JOB0000000000AA/0, Content-Type: image/jpeg }
+                expiresAt: '2026-12-01T10:15:00Z'
+                pagesRemaining: 18
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/QuotaExceeded' }
+  /jobs/{jobId}:
+    get:
+      operationId: getJob
+      tags: [scans]
+      summary: Etat du traitement (handler jobs-get, L2a)
+      parameters: [{ $ref: '#/components/parameters/JobId' }]
+      responses:
+        '200':
+          description: Etat du job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                jobId: 01JEXAMPLE0JOB0000000000AA
+                state: transcription
+                pages: 2
+                createdAt: '2026-12-01T10:00:00Z'
+        '404': { $ref: '#/components/responses/NotFound' }
+  /jobs/{jobId}/transcription:
+    get:
+      operationId: getTranscription
+      tags: [scans]
+      summary: Texte numerote et URL pre-signee de lecture de la photo, 5 min (handler jobs-transcription, L2a)
+      parameters: [{ $ref: '#/components/parameters/JobId' }]
+      responses:
+        '200':
+          description: Transcription a confirmer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transcription' }
+              example:
+                jobId: 01JEXAMPLE0JOB0000000000AA
+                docType: cours
+                pages:
+                  - page: 1
+                    sentences:
+                      - { id: p1-s1, text: La photosynthese produit du dioxygene. }
+                photoUrls: ['https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/0?X-Amz-Signature=example']
+                photoUrlsExpireAt: '2026-12-01T10:05:00Z'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /jobs/{jobId}/confirm:
+    post:
+      operationId: confirmJob
+      tags: [scans]
+      summary: Texte corrige, reprend le workflow (handler jobs-confirm, L2a)
+      parameters: [{ $ref: '#/components/parameters/JobId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmRequest' }
+            example: { corrections: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }] }
+      responses:
+        '200':
+          description: Job repris
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                jobId: 01JEXAMPLE0JOB0000000000AA
+                state: verification
+                pages: 2
+                createdAt: '2026-12-01T10:00:00Z'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /jobs/{jobId}/cancel:
+    post:
+      operationId: cancelJob
+      tags: [scans]
+      summary: Annule, supprime la photo, rend le quota (handler jobs-cancel, L2a)
+      parameters: [{ $ref: '#/components/parameters/JobId' }]
+      responses:
+        '200':
+          description: Job annule
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                jobId: 01JEXAMPLE0JOB0000000000AA
+                state: rejete
+                pages: 2
+                createdAt: '2026-12-01T10:00:00Z'
+                message: Annule par l'eleve
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /docs:
+    get:
+      operationId: listDocs
+      tags: [docs]
+      summary: Liste des fiches (handler docs-read, L2a)
+      responses:
+        '200':
+          description: Fiches
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocList' }
+              example:
+                items:
+                  - { docId: 01JEXAMPLE0DOC0000000000AA, title: La photosynthese, subject: svt, createdAt: '2026-12-01T10:03:00Z' }
+  /docs/{docId}:
+    get:
+      operationId: getDoc
+      tags: [docs]
+      summary: Fiche avec pastilles et sources (handler docs-read, L2a)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '200':
+          description: Fiche
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Doc' }
+              example:
+                docId: 01JEXAMPLE0DOC0000000000AA
+                title: La photosynthese
+                subject: svt
+                createdAt: '2026-12-01T10:03:00Z'
+                summary: Les plantes fabriquent leur matiere avec la lumiere.
+                claims:
+                  - claimId: '01'
+                    text: La photosynthese produit du dioxygene.
+                    status: verifiee
+                    aRisque: false
+                    sources:
+                      - passageId: 4f2a9c
+                        url: https://fr.wikipedia.org/wiki/Photosynth%C3%A8se
+                        site: fr.wikipedia.org
+                        titre: Photosynthese
+                        extrait: La photosynthese libere du dioxygene.
+                        niveau: 2
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteDoc
+      tags: [docs]
+      summary: Supprime la fiche et ses elements (handler docs-delete, L2a)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '204': { description: Supprimee }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /docs/{docId}/report:
+    post:
+      operationId: reportDoc
+      tags: [docs]
+      summary: Signale une erreur dans la fiche (handler docs-report, L2a)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequest' }
+            example: { claimId: '01', comment: La date est fausse. }
+      responses:
+        '201':
+          description: Signalement cree
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+              example: { reportId: 01JEXAMPLE0RPT0000000000AA, status: ouvert }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /docs/{docId}/session:
+    get:
+      operationId: getSession
+      tags: [game]
+      summary: Questions de la session, SANS les reponses (handler session-get, L3)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+              example:
+                docId: 01JEXAMPLE0DOC0000000000AA
+                questions:
+                  - questionId: qcm-01
+                    kind: qcm
+                    prompt: Que produit la photosynthese ?
+                    choices: [Du dioxygene, Du dioxyde de carbone, De l'azote, De l'eau]
+                  - questionId: gap-01
+                    kind: gap
+                    prompt: La photosynthese produit du ____.
+        '404': { $ref: '#/components/responses/NotFound' }
+  /answers:
+    post:
+      operationId: postAnswer
+      tags: [game]
+      summary: Reponse a une question; renvoie juste/faux, XP, badges (handler answers-post, L3)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnswerRequest' }
+            example: { questionId: qcm-01, choice: Du dioxygene }
+      responses:
+        '200':
+          description: Resultat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnswerResult' }
+              example:
+                correct: true
+                xpGained: 10
+                badges: []
+                progress: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /me:
+    get:
+      operationId: getMe
+      tags: [game]
+      summary: Profil de l'utilisateur connecte (handler me-get, L3)
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+              example: { userId: 7b0f6c1e-0000-4000-8000-00000000a001, role: eleve, familyId: 01JEXAMPLE0FAM0000000000AA, studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f }
+  /me/progress:
+    get:
+      operationId: getMyProgress
+      tags: [game]
+      summary: XP, niveau, serie, quota restant (handler me-get, L3)
+      responses:
+        '200':
+          description: Progression
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Progress' }
+              example: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01' }
+  /students:
+    post:
+      operationId: createStudent
+      tags: [family]
+      summary: Le parent cree un eleve et recoit le lien d'activation (handler students-create, L3)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StudentCreateRequest' }
+            example: { pseudo: Lila, schoolLevel: seconde, under15: false, parentalAuthority: true }
+      responses:
+        '201':
+          description: Eleve cree
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentCreateResponse' }
+              example:
+                student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: actif, pageQuota: 20 }
+                activationLink: { url: 'https://app.example.invalid/activer#token=example', expiresAt: '2026-12-02T10:00:00Z' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /students/{sid}/activation-link:
+    post:
+      operationId: createActivationLink
+      tags: [family]
+      summary: Nouveau lien d'activation, mot de passe perdu (handler students-link, L3)
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      responses:
+        '201':
+          description: Lien
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivationLink' }
+              example: { url: 'https://app.example.invalid/activer#token=example', expiresAt: '2026-12-02T10:00:00Z' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /students/{sid}:
+    patch:
+      operationId: updateStudent
+      tags: [family]
+      summary: Suspend ou change le quota (handler students-update, L3)
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StudentUpdateRequest' }
+            example: { status: suspendu }
+      responses:
+        '200':
+          description: Eleve mis a jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Student' }
+              example: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: suspendu, pageQuota: 20 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteStudent
+      tags: [family]
+      summary: Supprime l'eleve et ses donnees (handler students-delete, L3)
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      responses:
+        '204': { description: Supprime }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /family/dashboard:
+    get:
+      operationId: getFamilyDashboard
+      tags: [family]
+      summary: Suivi parent (handler family-read, L3)
+      responses:
+        '200':
+          description: Tableau de bord
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dashboard' }
+              example:
+                students:
+                  - student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: actif, pageQuota: 20 }
+                    progress: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01' }
+                familyPagesRemaining: 38
+                familyPagesLimit: 50
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /family/leaderboard:
+    get:
+      operationId: getFamilyLeaderboard
+      tags: [family]
+      summary: Classement de la semaine (handler family-read, L3)
+      responses:
+        '200':
+          description: Classement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Leaderboard' }
+              example:
+                week: 2026-W49
+                entries: [{ studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, xp: 310, activeDays: 4 }]
+  /reports/{id}/validate:
+    post:
+      operationId: validateReport
+      tags: [family]
+      summary: Le parent valide ou rejette un signalement (handler reports-validate, L3)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportValidateRequest' }
+            example: { decision: valide }
+      responses:
+        '200':
+          description: Signalement traite
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+              example: { reportId: 01JEXAMPLE0RPT0000000000AA, status: valide }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /family/export:
+    get:
+      operationId: exportFamily
+      tags: [family]
+      summary: Export des donnees de la famille (handler family-admin, L3)
+      responses:
+        '200':
+          description: Export
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyExport' }
+              example: { familyId: 01JEXAMPLE0FAM0000000000AA, exportedAt: '2026-12-01T10:00:00Z', students: [], docs: [] }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /family:
+    delete:
+      operationId: deleteFamily
+      tags: [family]
+      summary: Suppression complete de la famille (handler family-admin, L3)
+      responses:
+        '204': { description: Famille supprimee }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    JobId: { name: jobId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    StudentId: { name: sid, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+  responses:
+    BadRequest:
+      description: Requete invalide
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: requete_invalide, message: Champ manquant } } }
+    Forbidden:
+      description: Role insuffisant
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: interdit, message: Reserve au parent } } }
+    NotFound:
+      description: Introuvable
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: introuvable, message: Introuvable } } }
+    Conflict:
+      description: Etat incompatible
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Le job n'est pas a confirmer } } }
+    QuotaExceeded:
+      description: "quota_epuise (pages du mois) ou budget_epuise (compteur de cout, 15 EUR)"
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: Quota de pages epuise, resetDate: '2027-01-01' } } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise] }
+        message: { type: string, maxLength: 500 }
+        resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
+    JobState:
+      type: string
+      enum: [en_attente_envoi, verification_fichier, transcription, a_confirmer, verification, generation, termine, rejete, echec, expire]
+    Job:
+      type: object
+      required: [jobId, state, pages, createdAt]
+      properties:
+        jobId: { type: string }
+        state: { $ref: '#/components/schemas/JobState' }
+        pages: { type: integer, minimum: 1, maximum: 10 }
+        createdAt: { type: string, format: date-time }
+        durationSeconds: { type: integer, minimum: 0 }
+        docId: { type: string, description: Present quand state = termine }
+        message: { type: string, maxLength: 500 }
+    ScanCreateRequest:
+      type: object
+      required: [pages, contentType]
+      properties:
+        pages: { type: integer, minimum: 1, maximum: 10, description: Une image = 1 page; un PDF = son nombre de pages (10 max) }
+        contentType: { type: string, enum: [image/jpeg, image/png, application/pdf] }
+    ScanCreateResponse:
+      type: object
+      required: [jobId, upload, expiresAt, pagesRemaining]
+      properties:
+        jobId: { type: string }
+        upload:
+          type: object
+          required: [url, fields]
+          properties:
+            url: { type: string, format: uri }
+            fields: { type: object, additionalProperties: { type: string } }
+        expiresAt: { type: string, format: date-time }
+        pagesRemaining: { type: integer, minimum: 0 }
+    Sentence:
+      type: object
+      required: [id, text]
+      properties:
+        id: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+        text: { type: string, maxLength: 2000 }
+    Transcription:
+      type: object
+      required: [jobId, docType, pages, photoUrls, photoUrlsExpireAt]
+      properties:
+        jobId: { type: string }
+        docType: { type: string, enum: [cours, exercice, autre] }
+        pages:
+          type: array
+          items:
+            type: object
+            required: [page, sentences]
+            properties:
+              page: { type: integer, minimum: 1 }
+              sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
+        photoUrls: { type: array, items: { type: string, format: uri } }
+        photoUrlsExpireAt: { type: string, format: date-time }
+    ConfirmRequest:
+      type: object
+      required: [corrections]
+      properties:
+        corrections: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/Sentence' } }
+    DocSummary:
+      type: object
+      required: [docId, title, subject, createdAt]
+      properties:
+        docId: { type: string }
+        title: { type: string, maxLength: 200 }
+        subject: { type: string, enum: [maths, physique, svt, histoire_geo, francais, autre] }
+        createdAt: { type: string, format: date-time }
+    DocList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DocSummary' } }
+    Source:
+      type: object
+      required: [passageId, url, site, titre, extrait, niveau]
+      properties:
+        passageId: { type: string }
+        url: { type: string, format: uri }
+        site: { type: string }
+        titre: { type: string }
+        extrait: { type: string, maxLength: 1000 }
+        niveau: { type: integer, minimum: 1, maximum: 3 }
+    Claim:
+      type: object
+      required: [claimId, text, status, aRisque, sources]
+      properties:
+        claimId: { type: string }
+        text: { type: string, maxLength: 1000 }
+        status: { type: string, enum: [verifiee, erreur, non_verifiable, non_factuelle] }
+        aRisque: { type: boolean }
+        sources: { type: array, items: { $ref: '#/components/schemas/Source' } }
+    Doc:
+      allOf:
+        - $ref: '#/components/schemas/DocSummary'
+        - type: object
+          required: [summary, claims]
+          properties:
+            summary: { type: string }
+            claims: { type: array, items: { $ref: '#/components/schemas/Claim' } }
+    ReportRequest:
+      type: object
+      required: [comment]
+      properties:
+        claimId: { type: string }
+        comment: { type: string, minLength: 1, maxLength: 500 }
+    ReportValidateRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [valide, rejete] }
+    Report:
+      type: object
+      required: [reportId, status]
+      properties:
+        reportId: { type: string }
+        status: { type: string, enum: [ouvert, valide, rejete] }
+    Question:
+      description: Jamais de cle de reponse dans une question (test L3/L4).
+      type: object
+      required: [questionId, kind, prompt]
+      properties:
+        questionId: { type: string }
+        kind: { type: string, enum: [qcm, gap] }
+        prompt: { type: string, maxLength: 1000 }
+        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 } }
+    Session:
+      type: object
+      required: [docId, questions]
+      properties:
+        docId: { type: string }
+        questions: { type: array, items: { $ref: '#/components/schemas/Question' } }
+    AnswerRequest:
+      type: object
+      required: [questionId, choice]
+      properties:
+        questionId: { type: string }
+        choice: { type: string, maxLength: 300 }
+    Progress:
+      type: object
+      required: [xp, level, streakDays, freezes, stage, pagesRemaining, pagesLimit, resetDate]
+      properties:
+        xp: { type: integer, minimum: 0 }
+        level: { type: integer, minimum: 0 }
+        streakDays: { type: integer, minimum: 0 }
+        freezes: { type: integer, minimum: 0 }
+        stage: { type: integer, minimum: 1, maximum: 5 }
+        pagesRemaining: { type: integer, minimum: 0 }
+        pagesLimit: { type: integer, minimum: 0 }
+        resetDate: { type: string, format: date }
+    AnswerResult:
+      type: object
+      required: [correct, xpGained, badges, progress]
+      properties:
+        correct: { type: boolean }
+        correctAnswer: { type: string, description: Revele seulement apres la reponse }
+        xpGained: { type: integer, minimum: 0 }
+        badges: { type: array, items: { type: string } }
+        progress: { $ref: '#/components/schemas/Progress' }
+    Me:
+      type: object
+      required: [userId, role, familyId]
+      properties:
+        userId: { type: string }
+        role: { type: string, enum: [parent, eleve] }
+        familyId: { type: string }
+        studentId: { type: string, description: Present pour le role eleve }
+        pseudo: { type: string }
+    Student:
+      type: object
+      required: [studentId, pseudo, schoolLevel, under15, status, pageQuota]
+      properties:
+        studentId: { type: string }
+        pseudo: { type: string, description: Pseudo avec suffixe aleatoire (Lila-7k2f) }
+        schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
+        under15: { type: boolean }
+        status: { type: string, enum: [actif, suspendu] }
+        pageQuota: { type: integer, minimum: 0, maximum: 50 }
+    StudentCreateRequest:
+      type: object
+      required: [pseudo, schoolLevel, under15, parentalAuthority]
+      properties:
+        pseudo: { type: string, pattern: "^[A-Za-z][A-Za-z0-9 -]{1,19}$", description: Sans nom de famille }
+        schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
+        under15: { type: boolean }
+        parentalAuthority: { type: boolean, const: true }
+    ActivationLink:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url: { type: string, format: uri }
+        expiresAt: { type: string, format: date-time }
+    StudentCreateResponse:
+      type: object
+      required: [student, activationLink]
+      properties:
+        student: { $ref: '#/components/schemas/Student' }
+        activationLink: { $ref: '#/components/schemas/ActivationLink' }
+    StudentUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        status: { type: string, enum: [actif, suspendu] }
+        pageQuota: { type: integer, minimum: 0, maximum: 50 }
+    Dashboard:
+      type: object
+      required: [students, familyPagesRemaining, familyPagesLimit]
+      properties:
+        students:
+          type: array
+          items:
+            type: object
+            required: [student, progress]
+            properties:
+              student: { $ref: '#/components/schemas/Student' }
+              progress: { $ref: '#/components/schemas/Progress' }
+        familyPagesRemaining: { type: integer, minimum: 0 }
+        familyPagesLimit: { type: integer, minimum: 0 }
+    Leaderboard:
+      type: object
+      required: [week, entries]
+      properties:
+        week: { type: string, pattern: '^[0-9]{4}-W[0-9]{2}$' }
+        entries:
+          type: array
+          items:
+            type: object
+            required: [studentId, pseudo, xp, activeDays]
+            properties:
+              studentId: { type: string }
+              pseudo: { type: string }
+              xp: { type: integer, minimum: 0 }
+              activeDays: { type: integer, minimum: 0, maximum: 7 }
+    FamilyExport:
+      type: object
+      required: [familyId, exportedAt, students, docs]
+      properties:
+        familyId: { type: string }
+        exportedAt: { type: string, format: date-time }
+        students: { type: array, items: { $ref: '#/components/schemas/Student' } }
+        docs: { type: array, items: { $ref: '#/components/schemas/DocSummary' } }

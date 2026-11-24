@@ -1,0 +1,40 @@
+# Modele de donnees DynamoDB
+
+Source de verite: `docs/design-v2.md` section 5 (copie dans le depot par le lot 0) et `shared/ddb/keys.ts`.
+Seul le lot 1 modifie ce fichier et `shared/ddb/keys.ts`. Une table par environnement: `qcm-dev`, `qcm-prod` (a la demande).
+Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qui ecrit**; les autres lots lisent.
+
+| Type | PK | SK | Attributs principaux | Ecrit par |
+|---|---|---|---|---|
+| Famille | `FAMILY#<fid>` | `META` | plafond pages famille, date de creation | L3 |
+| Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | pseudo, niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub` | L3 |
+| Quota mensuel (eleve) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#<sid>` | `limite`, `utilise`, `reserve`, `bonus`, `restant` | `shared/quota.ts` (L1); lu par L2a, L3 |
+| Quota mensuel (famille) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#FAMILY` | memes attributs, `limite` = plafond famille | `shared/quota.ts` (L1) |
+| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, nb de pages, cout en centimes, horodatages, erreur. TTL 7 jours | L2a |
+| Transcription | `JOB#<jobId>` | `TEXT#<page>` | phrases numerotees. TTL 7 jours | L2a |
+| Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, empreinte normalisee, date | L2a |
+| Affirmation | `DOC#<docId>` | `CLAIM#<nn>` | texte, origine (page, `phrase_id`, extrait), type, statut, `a_risque`, `sources[]` | L2b |
+| QCM | `DOC#<docId>` | `QCM#<nn>` | enonce, 4 choix, `claimId`, cle (reservee au serveur) | L2a |
+| Trou | `DOC#<docId>` | `GAP#<nn>` | phrase a trous, mot attendu, `claimId` | L2a |
+| Passage | `PASSAGE#<hash>` | `META` | texte brut, URL, site, titre, niveau, date. TTL 30 jours | L2b |
+| Verdict en cache | `CLAIMCACHE#<empreinte>` | `META` | statut, `passageIds`, date. TTL 30 jours | L2b |
+| Profil de jeu | `STUDENT#<sid>` | `PROFILE` | XP total, niveau, serie, gels, badges, stade | L3 |
+| XP du jour | `STUDENT#<sid>` | `DAY#<aaaa-mm-jj>` | XP gagne, pages payees, jour valide | L3 |
+| Tentative | `STUDENT#<sid>` | `ATT#<questionId>#<aaaa-mm-jj>` | choix, juste, `shownAt`, `answeredAt` | L3 |
+| Classement | `FAMILY#<fid>` | `WEEK#<aaaa-Www>#<sid>` | XP de la semaine, jours actifs | L3 |
+| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` | `cents`, `pages` | `shared/cost.ts` (L1); lu par L2a, L2b |
+| Invitation | `INVITE#<hache>` | `META` | `utilisee`, `utiliseeLe`, `creeLe` | `scripts/create-invite.ts` + `api/src/auth/pre-signup.ts` (L1) |
+| Activation | `ACTIVATION#<hache>` | `META` | `sid`, expiration. TTL 24 h | L3 |
+
+Index secondaire `GSI1`: `GSI1PK = FAMILY#<fid>`, `GSI1SK = DOC#<date>` pour lister les fiches de la famille cote parent (sans le texte du cours). Pas d'autre index en v1. Pas de PITR (suppression effective immediatement).
+
+## Ecart par rapport au design
+
+- **Element `QUOTA#<aaaa-mm>#FAMILY`** (ajout du lot 1): DynamoDB n'autorise pas d'arithmetique dans une condition, et le plafond famille doit etre tenu atomiquement avec le quota de l'eleve. `shared/quota.ts` met a jour les deux elements dans **une** transaction. `restant = limite + bonus - utilise - reserve`; la reservation exige `restant >= pages`.
+- Les hachés (`INVITE#`, `ACTIVATION#`) sont des SHA-256 hexadecimaux (`sha256()` dans `keys.ts`); le code en clair n'est jamais stocke.
+
+## Regles
+
+- Mois des quotas: `monthParis()` (fuseau Europe/Paris, remise a zero le 1er).
+- Aucun texte de cours dans les journaux ni dans l'etat Step Functions (design 4.1, 4.9).
+- Pour changer une cle ou un type: PR sur `shared/ddb/keys.ts` et ce fichier, relue par le proprietaire du lot 1.

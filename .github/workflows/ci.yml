@@ -1,0 +1,45 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Contrat genere a jour
+        run: npm run gen:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      # Inclut: test des tags (4 tags sur toute ressource), aucun modelId systeme, pas de console.*, contrat, quota, PreSignUp.
+      - name: Tests
+        run: npm test
+      - name: cdk synth (dev et prod)
+        env:
+          QCM_ALERT_EMAIL: ci@example.invalid
+        run: |
+          cd infra
+          npx cdk synth -c env=dev --quiet
+          npx cdk synth -c env=prod --quiet
+      - name: Build du front
+        run: npm run build:web
+      - name: API simulee repond sur chaque route
+        run: |
+          npm run mock > /tmp/prism.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:4010/me -H 'authorization: Bearer x' && break; sleep 1; done
+          npm run mock:check

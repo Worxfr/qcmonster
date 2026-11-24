@@ -1,0 +1,89 @@
+name: deploy
+# Deploiement par OIDC, SANS cle d'acces. Role cree par infra-bootstrap/setup-oidc.sh (lance par Alexis).
+# Tant que la variable de depot DEPLOY_ENABLED n'est pas 'true', un push sur main NE DEPLOIE RIEN.
+# A activer par Alexis apres: bootstrap OIDC + cdk bootstrap + validation de l'estimation de cout (docs/ops/bootstrap.md).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environnement a deployer
+        type: choice
+        options: [dev, prod]
+        default: dev
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  deploy-dev:
+    needs: checks
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' && inputs.target != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      QCM_ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Adresse d'alerte presente
+        run: test -n "$QCM_ALERT_EMAIL" || { echo "Variable ALERT_EMAIL (environnement dev) manquante"; exit 1; }
+      - name: Secret de depot AWS_ACCOUNT_ID present
+        run: test -n "$AWS_ACCOUNT_ID" || { echo "Secret de depot AWS_ACCOUNT_ID manquant"; exit 1; }
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/QCMonster-GitHubActions-Deploy
+          aws-region: eu-west-3
+      - name: cdk deploy dev
+        run: |
+          cd infra
+          npx cdk deploy --all -c env=dev --require-approval never
+  deploy-prod:
+    needs: deploy-dev
+    # Approbation manuelle: reviewers requis sur l'environnement GitHub `prod`, branche main seulement.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      QCM_ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Adresse d'alerte presente
+        run: test -n "$QCM_ALERT_EMAIL" || { echo "Variable ALERT_EMAIL (environnement prod) manquante"; exit 1; }
+      - name: Secret de depot AWS_ACCOUNT_ID present
+        run: test -n "$AWS_ACCOUNT_ID" || { echo "Secret de depot AWS_ACCOUNT_ID manquant"; exit 1; }
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/QCMonster-GitHubActions-Deploy
+          aws-region: eu-west-3
+      - name: cdk diff prod
+        run: |
+          cd infra
+          npx cdk diff -c env=prod || true
+      - name: cdk deploy prod
+        run: |
+          cd infra
+          npx cdk deploy --all -c env=prod --require-approval never
