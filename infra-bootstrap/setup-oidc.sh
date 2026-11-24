@@ -16,6 +16,12 @@ PROVIDER_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:oidc-provider/${OIDC_HOST}"
 POLICY_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:policy/${POLICY_NAME}"
 TAGS_CLI=(Key=Project,Value=QCMonster Key=Environment,Value=prod Key=ManagedBy,Value=script Key=Owner,Value=Worxfr)
 
+# Prefixe du claim `sub`. Depots recents: forme immuable avec identifiants numeriques (repo:Worxfr@<id>/qcmonster@<id>),
+# a lire avec: gh api repos/Worxfr/qcmonster/actions/oidc/customization/sub -q .sub_claim_prefix
+SUB_PREFIX="${REPO_SUB_PREFIX:-repo:${REPO}}"
+UPDATE_TRUST=0
+[ "${2:-}" = "--update-trust" ] && UPDATE_TRUST=1
+
 APPLY=0
 case "${1:-}" in
   ""|--dry-run) APPLY=0 ;;
@@ -58,9 +64,9 @@ TRUST="$(cat <<JSON
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": {"${OIDC_HOST}:aud": "sts.amazonaws.com", "${OIDC_HOST}:sub": [
-        "repo:${REPO}:environment:dev",
-        "repo:${REPO}:environment:prod",
-        "repo:${REPO}:ref:refs/heads/main"
+        "${SUB_PREFIX}:environment:dev",
+        "${SUB_PREFIX}:environment:prod",
+        "${SUB_PREFIX}:ref:refs/heads/main"
       ]}
     }
   }]
@@ -159,7 +165,12 @@ else
   if same_json "$TMP/cur-trust.json" "$TMP/trust.json"; then
     echo "  Trust policy identique: rien à faire."
   else
-    echo "  ATTENTION: la trust policy du rôle diffère. Non modifiée (à relire à la main)."
+    if [ "$UPDATE_TRUST" -eq 1 ]; then
+      echo "  Trust policy differente: mise a jour (--update-trust)."
+      w iam update-assume-role-policy --role-name "$ROLE_NAME" --policy-document "file://$TMP/trust.json"
+    else
+      echo "  ATTENTION: la trust policy du rôle diffère. Non modifiée (relancer avec: --apply --update-trust)."
+    fi
   fi
   if aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query 'AttachedPolicies[].PolicyArn' --output text | tr '\t' '\n' | grep -qx "$POLICY_ARN"; then
     echo "  Policy déjà attachée: rien à faire."

@@ -60,3 +60,15 @@ Note: si le job utilise `environment: Production`, c'est la forme `environment:*
 - Pas de suppression (teardown).
 - Pas de bootstrap CDK automatique.
 - Pas de modification des rôles ou policies existants.
+
+## Trust policy et `sub` immuable (depots recents)
+
+Un depot recree recemment emet un `sub` de la forme `repo:Worxfr@<idProprietaire>/qcmonster@<idDepot>:environment:dev`.
+Pour mettre a jour la trust policy d'un role existant (seul changement, rien d'autre n'est touche):
+
+```bash
+export EXPECTED_ACCOUNT=<ID_COMPTE>
+export REPO_SUB_PREFIX="$(gh api repos/Worxfr/qcmonster/actions/oidc/customization/sub -q .sub_claim_prefix)"
+./setup-oidc.sh --dry-run --update-trust   # verifier
+./setup-oidc.sh --apply --update-trust
+```
