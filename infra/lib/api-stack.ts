@@ -123,6 +123,8 @@ export class ApiStack extends Stack {
       autoDeploy: true,
       throttle: { rateLimit: DEFAULT_THROTTLE.rate, burstLimit: DEFAULT_THROTTLE.burst }, // reglage par defaut de chaque route
     });
+    // Les reglages par route exigent que les routes existent deja: l'etape attend toute l'API (routes comprises).
+    stage.node.addDependency(this.api);
     const cfnStage = stage.node.defaultChild as apigwv2.CfnStage;
     cfnStage.accessLogSettings = {
       destinationArn: accessLogs.logGroupArn,
