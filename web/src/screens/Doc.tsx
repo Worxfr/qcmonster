@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api';
+import { useApp } from '../app-context';
 import { Card, ErrorBox, Loading, Pill } from '../components/ui';
 import { safeUrl } from '../game';
 import { errMsg, useLoad } from '../hooks';
@@ -8,7 +9,10 @@ import type { Claim } from '../types';
 
 export function DocView({ id }: { id: string }) {
   const d = useLoad(() => api.doc(id), [id]);
+  const { setProgress, addBadges } = useApp();
   const [error, setError] = useState<string | null>(null);
+  const [read, setRead] = useState<{ xp: number } | null>(null);
+  const [reading, setReading] = useState(false);
   if (d.loading) return <Loading />;
   if (!d.data) return <ErrorBox message={d.error} />;
   const doc = d.data;
@@ -23,6 +27,21 @@ export function DocView({ id }: { id: string }) {
     }
   }
 
+  async function markRead() {
+    setReading(true);
+    setError(null);
+    try {
+      const r = await api.markRead(id);
+      setProgress(r.progress);
+      if (r.badges.length) addBadges(r.badges);
+      setRead({ xp: r.xpGained });
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setReading(false);
+    }
+  }
+
   return (
     <>
       <Card title={doc.title}>
@@ -34,6 +53,16 @@ export function DocView({ id }: { id: string }) {
         <ul className="list">
           {doc.claims.map((c) => <ClaimItem key={c.claimId} docId={id} claim={c} />)}
         </ul>
+      </Card>
+      <Card title="Fini de lire ?">
+        {read ? (
+          <p role="status" className="ok">{read.xp > 0 ? `✓ Bien lu ! +${read.xp} XP.` : "✓ C'est noté. Les points de lecture de cette fiche sont déjà pris aujourd'hui."}</p>
+        ) : (
+          <>
+            <p className="muted">Quand tu as tout lu, dis-le pour gagner des points.</p>
+            <button className="btn" onClick={markRead} disabled={reading}>{reading ? 'Un instant…' : "✓ J'ai tout lu"}</button>
+          </>
+        )}
       </Card>
       <ErrorBox message={error} />
       <button className="btn btn-ghost" onClick={remove}>Supprimer cette fiche</button>

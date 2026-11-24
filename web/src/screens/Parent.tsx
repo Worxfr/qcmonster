@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { Mascot } from '../components/Mascot';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
+import { badgeLabel } from '../game';
 import { errMsg, useLoad } from '../hooks';
 import type { Student } from '../types';
 
@@ -54,6 +55,11 @@ export function Parent() {
                   <h3>{s.pseudo} {s.status === 'suspendu' && <span className="pill pill-warn">Suspendu</span>}</h3>
                   <p className="muted">Niveau {p.level} · {p.xp} XP · série {p.streakDays} j</p>
                   <p>Pages : {p.pagesRemaining}/{p.pagesLimit} (quota {s.pageQuota})</p>
+                  {(p.badges?.length ?? 0) > 0 && (
+                    <ul className="badges" aria-label={`Badges de ${s.pseudo}`}>
+                      {p.badges!.map((b) => <li key={b} className="got"><span aria-hidden="true">🏅</span> {badgeLabel(b)}</li>)}
+                    </ul>
+                  )}
                 </div>
               </div>
               <div className="actions">

@@ -1,7 +1,7 @@
 import { API_URL } from './env';
 import { getToken, signOut } from './auth';
 import type {
-  AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ScanCreateResponse, Session,
+  AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
 } from './types';
 
@@ -11,14 +11,14 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = await getToken();
+async function call<T>(method: string, path: string, body?: unknown, auth = true): Promise<T> {
+  const token = auth ? await getToken() : null;
   const res = await fetch(API_URL + path, {
     method,
-    headers: { authorization: `Bearer ${token}`, ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 401) signOut();
+  if (res.status === 401 && auth) signOut();
   if (!res.ok) {
     const e = (await res.json().catch(() => ({}))) as { code?: string; message?: string; resetDate?: string };
     throw new ApiError(res.status, e.code ?? 'erreur', e.message ?? `Erreur ${res.status}`, e.resetDate);
@@ -47,6 +47,10 @@ export const api = {
   updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
   deleteStudent: (sid: string) => call<void>('DELETE', `/students/${e(sid)}`),
   dashboard: () => call<Dashboard>('GET', '/family/dashboard'),
+  markRead: (docId: string) => call<ReadResult>('POST', `/docs/${e(docId)}/read`),
+  createFamily: () => call<Me>('POST', '/family'),
+  /** Route publique (sans JWT). Le jeton et le mot de passe ne sont ni journalises ni repris dans une erreur. */
+  activate: (token: string, password: string) => call<void>('POST', '/activation', { token, password }, false),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),
 };
 

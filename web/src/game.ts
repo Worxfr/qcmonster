@@ -38,8 +38,25 @@ export const JOB_STEPS: { state: JobState; label: string }[] = [
 
 export const JOB_FINAL: JobState[] = ['termine', 'rejete', 'echec', 'expire'];
 
-// Le contrat ne fournit que des identifiants de badges (AnswerResult.badges), pas de libelles ni de catalogue.
-export const badgeLabel = (id: string) => id.replace(/_/g, ' ');
+/**
+ * Catalogue des badges (identifiants de docs/game-rules.md section 4). shortcut: copie locale tant que le serveur
+ * (L3) ne publie pas son catalogue; un identifiant inconnu s'affiche quand meme (repli sur l'identifiant lisible).
+ */
+export const BADGES: { id: string; icon: string; label: string; hint: string }[] = [
+  { id: 'premier_scan', icon: '📷', label: 'Premier scan', hint: 'Lis ta première fiche' },
+  { id: 'serie_7', icon: '🔥', label: 'Série de 7 jours', hint: '7 jours de suite' },
+  { id: 'serie_30', icon: '🌋', label: 'Série de 30 jours', hint: '30 jours de suite' },
+  { id: 'cent_bonnes_reponses', icon: '💯', label: '100 bonnes réponses', hint: '100 bonnes réponses' },
+  { id: 'serie_parfaite_x5', icon: '🎯', label: 'Cinq séries parfaites', hint: '5 séries sans faute' },
+  { id: 'chasseur_d_erreurs', icon: '🔎', label: "Chasseur d'erreurs", hint: 'Un signalement validé par ton parent' },
+  { id: 'explorateur', icon: '🧭', label: 'Explorateur', hint: '5 matières différentes dans le mois' },
+  { id: 'maitre_maths', icon: '➗', label: 'Maître des maths', hint: '500 XP en maths' },
+  { id: 'maitre_physique', icon: '⚗️', label: 'Maître de la physique', hint: '500 XP en physique-chimie' },
+  { id: 'maitre_svt', icon: '🌱', label: 'Maître des SVT', hint: '500 XP en SVT' },
+  { id: 'maitre_histoire_geo', icon: '🗺️', label: "Maître de l'histoire-géo", hint: '500 XP en histoire-géo' },
+  { id: 'maitre_francais', icon: '📚', label: 'Maître du français', hint: '500 XP en français' },
+];
+export const badgeLabel = (id: string) => BADGES.find((b) => b.id === id)?.label ?? id.replace(/_/g, ' ');
 
 /** Les liens de sources viennent du serveur: on n'ouvre que https. */
 export function safeUrl(u: string): string | null {

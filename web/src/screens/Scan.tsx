@@ -52,6 +52,10 @@ export function Scan() {
   );
 }
 
+const fmtDuration = (s: number) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
+
+const fmtEuros = (cents: number) => `${(cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+
 export function JobView({ id }: { id: string }) {
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +98,8 @@ export function JobView({ id }: { id: string }) {
       </ol>
       <div role="status">
         {failed && <p className="error">{job.message ?? (job.state === 'expire' ? 'Le délai est dépassé.' : 'Ce cours n\'a pas pu être traité.')}</p>}
-        {job.state === 'termine' && job.docId && <p>🎉 Ta fiche est prête !</p>}
+        {job.state === 'termine' && job.docId && <p>🎉 Ta fiche est prête !{job.durationSeconds !== undefined && <span className="muted"> Traitée en {fmtDuration(job.durationSeconds)}.</span>}</p>}
+        {job.state === 'termine' && job.costCents !== undefined && <p className="muted">Coût du traitement : {fmtEuros(job.costCents)}</p>}
         {!failed && job.state !== 'termine' && <p className="muted">Tu peux quitter cette page, on garde ta place.</p>}
       </div>
       <ErrorBox message={error} />

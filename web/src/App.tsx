@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from './api';
+import { ApiError, api } from './api';
+import { isActivationRoute } from './activation';
 import { AppContext } from './app-context';
 import { isSignedIn, mockRole, onSignedOut, signOut } from './auth';
 import { ErrorBox, Loading } from './components/ui';
 import { MOCK_AUTH } from './env';
 import { errMsg } from './hooks';
 import { useRoute } from './router';
+import { Activate } from './screens/Activate';
+import { CreateFamily } from './screens/CreateFamily';
 import { DocView as Doc } from './screens/Doc';
 import { Game } from './screens/Game';
 import { Home } from './screens/Home';
@@ -17,7 +20,9 @@ import type { Me, Progress } from './types';
 
 export function App() {
   const [signed, setSigned] = useState(isSignedIn);
+  const [activating, setActivating] = useState(isActivationRoute);
   useEffect(() => onSignedOut(() => setSigned(false)), []);
+  if (activating) return <Activate onDone={() => setActivating(false)} />;
   if (!signed) return <Login onDone={() => setSigned(true)} />;
   return <Shell />;
 }
@@ -27,6 +32,8 @@ function Shell() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [badges, setBadges] = useState<string[]>([]);
+  const [noFamily, setNoFamily] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const route = useRoute();
 
   const refreshProgress = useCallback(async () => {
@@ -46,17 +53,23 @@ function Shell() {
         setMe({ ...m, role });
         if (role === 'eleve') void refreshProgress();
       },
-      (e) => live && setError(errMsg(e)),
+      (e) => {
+        if (!live) return;
+        // Parent invité qui n'a pas encore de famille: le profil est refusé (403) ou absent (404).
+        if (e instanceof ApiError && (e.status === 403 || e.status === 404)) setNoFamily(true);
+        else setError(errMsg(e));
+      },
     );
     return () => {
       live = false;
     };
-  }, [refreshProgress]);
+  }, [refreshProgress, attempt]);
 
   const addBadges = useCallback((ids: string[]) => {
-    setBadges((cur) => Array.from(new Set([...cur, ...ids]))); // en memoire: le contrat n'expose pas les badges deja obtenus
+    setBadges((cur) => Array.from(new Set([...cur, ...ids])));
   }, []);
 
+  if (!me && noFamily) return <CreateFamily onReady={() => { setNoFamily(false); setError(null); setAttempt((n) => n + 1); }} />;
   if (!me) return <main className="page">{error ? <ErrorBox message={error} /> : <Loading />}{error && <button className="btn" onClick={signOut}>Se déconnecter</button>}</main>;
 
   const parent = me.role === 'parent';
