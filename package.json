@@ -3,8 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["web"],
-  "engines": { "node": ">=22" },
+  "workspaces": [
+    "web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "gen": "tsx scripts/gen-contract.ts",
     "gen:check": "npm run gen && git diff --exit-code -- shared/contract/generated",
@@ -44,6 +48,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1177.0",
     "@aws-sdk/client-cloudwatch": "^3.700.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1177.0",
     "@aws-sdk/client-dynamodb": "^3.700.0",
     "@aws-sdk/client-s3": "^3.1177.0",
     "@aws-sdk/client-sfn": "^3.1177.0",
