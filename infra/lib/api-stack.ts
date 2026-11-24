@@ -129,7 +129,7 @@ export class ApiStack extends Stack {
       format: JSON.stringify({ requestId: '$context.requestId', routeKey: '$context.routeKey', status: '$context.status', requestTime: '$context.requestTime', responseLatency: '$context.responseLatency' }),
     };
     cfnStage.routeSettings = Object.fromEntries(
-      ROUTES.map(({ route, throttle }) => [route, { throttlingRateLimit: (throttle ?? DEFAULT_THROTTLE).rate, throttlingBurstLimit: (throttle ?? DEFAULT_THROTTLE).burst }]),
+      ROUTES.map(({ route, throttle }) => [route, { ThrottlingRateLimit: (throttle ?? DEFAULT_THROTTLE).rate, ThrottlingBurstLimit: (throttle ?? DEFAULT_THROTTLE).burst }]),
     );
 
     new ssm.StringParameter(this, 'ParamApiId', { parameterName: ssmParam(envName, 'api/id'), stringValue: this.api.apiId });

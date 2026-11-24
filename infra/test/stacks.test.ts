@@ -75,6 +75,8 @@ describe('Api', () => {
   it('limitation definie pour chaque route', () => {
     const stage = Object.values(t.findResources('AWS::ApiGatewayV2::Stage'))[0] as { Properties: { RouteSettings: Record<string, unknown> } };
     expect(Object.keys(stage.Properties.RouteSettings).sort()).toEqual(contract);
+    // CloudFormation exige des noms de champs en PascalCase (un nom en camelCase fait echouer le deploiement)
+    expect(stage.Properties.RouteSettings['POST /scans']).toEqual({ ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 });
   });
   it('les squelettes repondent 501', () => {
     t.hasResourceProperties('AWS::Lambda::Function', { Code: { ZipFile: Match.stringLikeRegexp('statusCode: 501') } });
