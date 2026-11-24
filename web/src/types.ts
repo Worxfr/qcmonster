@@ -21,3 +21,4 @@ export type Dashboard = S['Dashboard'];
 export type Leaderboard = S['Leaderboard'];
 export type ScanCreateResponse = S['ScanCreateResponse'];
 export type Sentence = S['Sentence'];
+export type ReadResult = S['ReadResult'];

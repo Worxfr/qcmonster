@@ -97,3 +97,6 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 .student { border: 2px solid var(--line); border-radius: 14px; padding: .7rem; }
 .actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: end; margin-top: .5rem; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.warn-text { color: var(--warn); font-weight: 600; }
+.badges .todo .muted { font-size: .85rem; }

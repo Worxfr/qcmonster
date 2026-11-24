@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { BADGES, badgeLabel } from './game';
+import { passwordProblem } from './screens/Activate';
 import { MOCK_URL, startMock, stopMock } from './test/mock-server';
 
 // Parcours des ecrans contre l'API simulee (Prism). Seuls l'envoi S3 et l'etat d'un job sont substitues:
@@ -10,6 +12,11 @@ import { MOCK_URL, startMock, stopMock } from './test/mock-server';
 const realFetch = globalThis.fetch;
 let uploads = 0;
 let jobState: string | null = null;
+let noFamily = false;
+let noFamilyStatus = 404;
+let progressBadges: string[] | null = null;
+const calls: { url: string; method: string; auth: string | null; body: string | null }[] = [];
+const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
 beforeAll(async () => {
   await startMock();
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -21,6 +28,17 @@ beforeAll(async () => {
     if (jobState && /\/jobs\/[^/]+$/.test(url) && (!init || !init.method || init.method === 'GET')) {
       return new Response(JSON.stringify({ jobId: 'j1', state: jobState, pages: 1, createdAt: '2026-12-01T10:00:00Z', docId: 'd1' }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
+    const method = init?.method ?? 'GET';
+    calls.push({ url, method, auth: new Headers(init?.headers).get('authorization'), body: typeof init?.body === 'string' ? init.body : null });
+    if (noFamily && url.endsWith('/me') && method === 'GET') return json({ code: noFamilyStatus === 404 ? 'introuvable' : 'interdit', message: 'Pas de famille' }, noFamilyStatus);
+    if (noFamily && url.endsWith('/family') && method === 'POST') {
+      noFamily = false;
+      return json({ userId: 'u1', role: 'parent', familyId: 'f1' }, 201);
+    }
+    if (progressBadges && url.endsWith('/me/progress')) {
+      const r = await realFetch(input, init);
+      return json({ ...(await r.json()), badges: progressBadges });
+    }
     return realFetch(input, init);
   }) as typeof fetch;
 });
@@ -30,6 +48,10 @@ afterAll(() => {
 });
 beforeEach(() => {
   jobState = null;
+  noFamily = false;
+  noFamilyStatus = 404;
+  progressBadges = null;
+  calls.length = 0;
   uploads = 0;
   vi.stubGlobal('confirm', () => true);
 });
@@ -131,8 +153,28 @@ describe('parcours eleve contre l\'API simulee', () => {
     expect(await screen.findByText('Les stades du monstre')).toBeInTheDocument();
     expect(await screen.findByText('Lila-7k2f')).toBeInTheDocument();
     expect(screen.getByText('310 XP')).toBeInTheDocument();
-    expect(screen.getByText(/Badges gagnés pendant cette session/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Mes badges/ })).toBeInTheDocument();
     await a11y(view.container);
+  });
+
+  it('jeu: badges obtenus (Progress.badges) avec libelles lisibles, les autres verrouilles', async () => {
+    progressBadges = ['premier_scan', 'serie_7', 'badge_inconnu'];
+    const { view } = await enter('eleve');
+    await goTo('/jeu');
+    expect(await screen.findByRole('heading', { name: 'Mes badges (3)' })).toBeInTheDocument();
+    expect(screen.getByText('Premier scan')).toBeInTheDocument();
+    expect(screen.getByText('Série de 7 jours')).toBeInTheDocument();
+    expect(screen.getByText('badge inconnu')).toBeInTheDocument();
+    expect(screen.getByText(/Maître des maths/)).toBeInTheDocument();
+    await a11y(view.container);
+  });
+
+  it('fiche lue: envoie POST /docs/{id}/read et affiche les XP', async () => {
+    const { user } = await enter('eleve');
+    await goTo('/doc/d1');
+    await user.click(await screen.findByRole('button', { name: /J'ai tout lu/ }));
+    expect(await screen.findByText(/Bien lu ! \+10 XP/)).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/docs/d1/read'))).toBe(true);
   });
 });
 
@@ -151,6 +193,91 @@ describe('parcours parent', () => {
     await user.click(submit);
     const box = await screen.findByLabelText("Lien d'activation");
     expect(box).toHaveValue('https://app.example.invalid/activer#token=example');
+  });
+});
+
+describe('activation et famille', () => {
+  const TOKEN = 'jeton-de-test-a-usage-unique-0123456789';
+  it('activation: jeton retire de l\'URL, mot de passe choisi, appel public sans Authorization', async () => {
+    window.history.replaceState(null, '', `/activer#token=${TOKEN}`);
+    const user = userEvent.setup();
+    const view = render(<App />);
+    expect(window.location.hash).toBe('');
+    expect(window.location.pathname).toBe('/activer');
+    const submit = screen.getByRole('button', { name: 'Activer mon compte' });
+    expect(submit).toBeDisabled();
+    await user.type(screen.getByLabelText('Mot de passe'), 'court');
+    expect(screen.getByText('Au moins 12 caractères.')).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Mot de passe'));
+    await user.type(screen.getByLabelText('Mot de passe'), 'Un-mot-de-passe-long-1');
+    await user.type(screen.getByLabelText(/encore une fois/), 'Un-mot-de-passe-long-2');
+    expect(screen.getByText(/pas les mêmes/)).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+    await user.clear(screen.getByLabelText(/encore une fois/));
+    await user.type(screen.getByLabelText(/encore une fois/), 'Un-mot-de-passe-long-1');
+    await a11y(view.container);
+    await user.click(submit);
+    expect(await screen.findByText(/Ton compte est activé/)).toBeInTheDocument();
+    const c = calls.find((x) => x.url.endsWith('/activation'));
+    expect(c?.method).toBe('POST');
+    expect(c?.auth).toBeNull();
+    expect(JSON.parse(c!.body!)).toEqual({ token: TOKEN, password: 'Un-mot-de-passe-long-1' });
+    // le jeton n'est ni dans l'URL ni dans un stockage
+    expect(window.location.href).not.toContain(TOKEN);
+    expect(JSON.stringify({ ...sessionStorage, ...localStorage })).not.toContain(TOKEN);
+    await user.click(screen.getByRole('button', { name: /connexion/ }));
+    expect(await screen.findByRole('button', { name: /élève/i })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('activation: jeton trop court = lien incomplet, aucun appel', async () => {
+    window.history.replaceState(null, '', '/activer#token=court');
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/incomplet/);
+    expect(calls.some((x) => x.url.endsWith('/activation'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: /connexion/ }));
+  });
+
+  it('activation: lien sans jeton, aucun appel', async () => {
+    window.history.replaceState(null, '', '/activer');
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/incomplet/);
+    expect(calls.some((x) => x.url.endsWith('/activation'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: /connexion/ }));
+  });
+
+  it('parent invite sans famille: crée la famille puis charge le tableau de bord', async () => {
+    noFamily = true;
+    const { user } = await enter('parent');
+    await user.click(await screen.findByRole('button', { name: 'Créer ma famille' }));
+    expect(await screen.findByText(/pages utilisées sur 50/)).toBeInTheDocument();
+    expect(calls.filter((x) => x.method === 'POST' && x.url.endsWith('/family'))).toHaveLength(1);
+  });
+});
+
+describe('famille: cas limites', () => {
+  it('403 sur /me: erreur affichee, pas d\'ecran de creation', async () => {
+    noFamily = true;
+    noFamilyStatus = 403;
+    await enter('parent');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Pas de famille/);
+    expect(screen.queryByRole('button', { name: 'Créer ma famille' })).toBeNull();
+  });
+});
+
+describe('catalogue de badges', () => {
+  it('libelles lisibles, repli sur l\'identifiant', () => {
+    expect(badgeLabel('chasseur_d_erreurs')).toBe("Chasseur d'erreurs");
+    expect(badgeLabel('nouveau_truc')).toBe('nouveau truc');
+    expect(BADGES.every((b) => b.hint !== b.label)).toBe(true);
+    expect(BADGES.map((b) => b.id)).toContain('maitre_histoire_geo');
+  });
+  it('regle du mot de passe', () => {
+    expect(passwordProblem('abc')).not.toBeNull();
+    expect(passwordProblem('toutenminuscules1')).not.toBeNull();
+    expect(passwordProblem('Un-mot-de-passe-long-1')).toBeNull();
   });
 });
 

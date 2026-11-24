@@ -1,4 +1,4 @@
-import { AuthenticationDetails, CognitoUser, CognitoUserPool } from 'amazon-cognito-identity-js';
+import { AuthenticationDetails, CognitoUser, CognitoUserPool, type CognitoRefreshToken } from 'amazon-cognito-identity-js';
 import { CONFIG_ERROR, COGNITO_CLIENT_ID, COGNITO_POOL_ID, MOCK_AUTH } from './env';
 
 export type MockRole = 'parent' | 'eleve';
@@ -38,6 +38,22 @@ export function getToken(): Promise<string> {
     user.getSession((err: Error | null, s: { getIdToken(): { getJwtToken(): string } } | null) => {
       if (err || !s) reject(err ?? new Error('session absente'));
       else resolve(s.getIdToken().getJwtToken());
+    });
+  });
+}
+
+/**
+ * Force le renouvellement des jetons avec le jeton de rafraichissement. Apres POST /family, le jeton deja emis ne contient
+ * ni groupe ni famille_id: sans cela le parent devrait se reconnecter. Rejette si le rafraichissement echoue.
+ */
+export function refreshSession(): Promise<void> {
+  if (MOCK_AUTH) return Promise.resolve();
+  const user = getPool().getCurrentUser();
+  if (!user) return Promise.reject(new Error('non connecte'));
+  return new Promise((resolve, reject) => {
+    user.getSession((err: Error | null, s: { getRefreshToken(): CognitoRefreshToken } | null) => {
+      if (err || !s) return reject(err ?? new Error('session absente'));
+      user.refreshSession(s.getRefreshToken(), (e: Error | null) => (e ? reject(e) : resolve()));
     });
   });
 }

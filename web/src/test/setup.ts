@@ -8,5 +8,6 @@ afterEach(() => {
   cleanup();
   sessionStorage.clear();
   localStorage.clear();
+  window.history.replaceState(null, '', '/');
   window.location.hash = '';
 });
