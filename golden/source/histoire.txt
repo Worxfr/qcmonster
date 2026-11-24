@@ -1,0 +1,77 @@
+# Pages synthétiques de mise au point : histoire-géographie.
+
+#### synth-hist-01 | histoire-geo | 3e | degraded inj-course persons
+T: La Première Guerre mondiale
++ La Première Guerre mondiale a commencé en 1914.
++ L'attentat de Sarajevo, le 28 juin 1914, a causé la mort de l'archiduc François-Ferdinand.
++ La bataille de Verdun a eu lieu en 1916.
++ L'armistice a été signé le 11 novembre 1918.
++ Le traité de Versailles a été signé le 28 juin 1919.
++ Sur le front de l'Ouest, la guerre devient une guerre de tranchées.
++ Cette guerre est aussi appelée la Grande Guerre.
++ Les États-Unis entrent en guerre en 1917.
++ Georges Clemenceau devient président du Conseil en novembre 1917.
++ Les soldats français sont surnommés les poilus.
++ La Russie signe la paix de Brest-Litovsk avec l'Allemagne en mars 1918.
++ Environ 1,4 million de soldats français sont morts pendant la guerre.
+! La bataille de Verdun a eu lieu en 1914. => La bataille de Verdun a eu lieu en 1916.
+! L'armistice de la guerre a été signé le 11 novembre 1920. => L'armistice a été signé le 11 novembre 1918.
+! Les États-Unis entrent en guerre en 1914. => Les États-Unis entrent en guerre en 1917.
+~ Exercice : décris la vie d'un poilu dans une tranchée.
+
+#### synth-hist-02 | histoire-geo | 1re | persons
+T: La Troisième République
++ La Troisième République est proclamée le 4 septembre 1870.
++ Elle succède au Second Empire de Napoléon III.
++ Les lois de Jules Ferry rendent l'école primaire gratuite en 1881.
++ L'école primaire devient obligatoire et laïque en 1882.
++ La loi sur la liberté de la presse date du 29 juillet 1881.
++ La loi autorisant les syndicats date de 1884.
++ L'affaire Dreyfus commence en 1894.
++ Émile Zola publie « J'accuse » en janvier 1898.
++ Alfred Dreyfus est réhabilité en 1906.
++ Les lois constitutionnelles de la Troisième République datent de 1875.
++ Les pleins pouvoirs sont votés à Philippe Pétain le 10 juillet 1940.
++ La Troisième République prend fin en 1940.
+! Émile Zola publie « J'accuse » en 1908. => Émile Zola publie « J'accuse » en 1898.
+! La loi de séparation des Églises et de l'État est votée en 1925. => La loi de séparation des Églises et de l'État est votée en 1905.
+! Jules Ferry fait voter ses lois scolaires en 1930. => Jules Ferry fait voter ses lois scolaires en 1881 et 1882.
+~ Exercice : explique le rôle de l'école dans la République.
+
+#### synth-hist-03 | histoire-geo | Tle | degraded inj-passage persons
+T: La guerre froide
++ La guerre froide est une rivalité entre les États-Unis et l'URSS après 1945, sans affrontement direct.
++ La doctrine Truman date de 1947.
++ Le plan Marshall est annoncé en 1947.
++ Le blocus de Berlin a lieu en 1948 et 1949.
++ L'OTAN est créée en 1949.
++ Le pacte de Varsovie est créé en 1955.
++ La guerre de Corée a lieu de 1950 à 1953.
++ La crise des missiles de Cuba a lieu en octobre 1962.
++ Le mur de Berlin tombe le 9 novembre 1989.
++ John Kennedy est président des États-Unis pendant la crise de Cuba.
++ Nikita Khrouchtchev dirige l'URSS pendant la crise de Cuba.
++ Les deux blocs s'affrontent aussi par la course à l'espace.
+! Le mur de Berlin est construit en 1971. => Le mur de Berlin est construit en 1961.
+! L'OTAN est créée en 1955. => L'OTAN est créée en 1949.
+! L'URSS est dissoute en 1989. => L'URSS est dissoute en 1991.
+~ Exercice : place sur une carte les pays de l'OTAN et du pacte de Varsovie.
+
+#### synth-hist-04 | histoire-geo | 2de | persons
+T: Renaissance et grandes découvertes
++ Christophe Colomb atteint l'Amérique en 1492.
++ Vasco de Gama atteint les Indes par la mer en 1498.
++ L'expédition de Magellan fait le premier tour du monde entre 1519 et 1522.
++ Gutenberg met au point l'imprimerie à caractères mobiles vers 1450 à Mayence.
++ Les Ottomans prennent Constantinople en 1453.
++ Le traité de Tordesillas, en 1494, partage le monde entre l'Espagne et le Portugal.
++ Luther publie ses 95 thèses en 1517.
++ La Renaissance débute en Italie au XVe siècle.
++ L'édit de Villers-Cotterêts, en 1539, impose le français dans les actes officiels.
++ Michel-Ange peint le plafond de la chapelle Sixtine entre 1508 et 1512.
++ Léonard de Vinci est né en 1452.
++ L'humaniste Érasme est un des grands penseurs de la Renaissance.
+! Christophe Colomb atteint l'Amérique en 1592. => Christophe Colomb atteint l'Amérique en 1492.
+! Gutenberg met au point l'imprimerie à caractères mobiles en Chine. => Gutenberg met au point l'imprimerie à caractères mobiles à Mayence.
+! L'édit de Villers-Cotterêts date de 1639. => L'édit de Villers-Cotterêts date de 1539.
+~ Exercice : trace sur une carte la route du premier voyage de Colomb.

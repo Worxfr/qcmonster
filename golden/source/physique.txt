@@ -1,0 +1,77 @@
+# Pages synthétiques de mise au point : physique-chimie.
+
+#### synth-phys-01 | physique | 2de | degraded inj-course
+T: Mouvement et forces
++ La vitesse moyenne est le rapport de la distance parcourue par la durée du parcours.
++ L'unité de vitesse du Système international est le mètre par seconde.
++ Une vitesse de 36 km/h correspond à 10 m/s.
++ Un mouvement se décrit par rapport à un référentiel.
++ Un mouvement rectiligne uniforme a une trajectoire droite et une vitesse constante.
++ Le poids est la force exercée par la Terre sur un objet.
++ Le poids d'un objet s'écrit P = m × g.
++ Sur Terre, la valeur de g est d'environ 9,8 N/kg.
++ La masse d'un objet se mesure en kilogrammes et ne dépend pas du lieu.
++ La vitesse de la lumière dans le vide est d'environ 3,00 × 10^8 m/s.
++ Galilée a étudié la chute des corps.
++ Selon le principe d'inertie, un objet soumis à des forces qui se compensent est immobile ou en mouvement rectiligne uniforme.
+! Une vitesse de 72 km/h correspond à 30 m/s. => Une vitesse de 72 km/h correspond à 20 m/s.
+! Le poids s'exprime en kilogrammes. => Le poids s'exprime en newtons.
+! Un objet soumis à des forces qui se compensent est toujours à l'arrêt. => Un objet soumis à des forces qui se compensent peut être à l'arrêt ou en mouvement rectiligne uniforme.
+~ Exercice : calcule le poids d'un objet de 3 kg sur Terre.
+
+#### synth-phys-02 | physique | 1re | persons
+T: Énergie et travail
++ L'énergie cinétique d'un objet de masse m et de vitesse v est Ec = 1/2 × m × v².
++ L'énergie cinétique s'exprime en joules.
++ L'énergie potentielle de pesanteur d'un objet à la hauteur h est Epp = m × g × h.
++ L'énergie mécanique est la somme de l'énergie cinétique et de l'énergie potentielle.
++ En l'absence de frottements, l'énergie mécanique d'un objet en chute libre se conserve.
++ Le travail d'une force constante est W = F × d × cos α.
++ Le travail d'une force se mesure en joules.
++ La puissance est l'énergie transférée par unité de temps.
++ 1 watt est égal à 1 joule par seconde.
++ Une voiture de 1 000 kg roulant à 20 m/s a une énergie cinétique de 200 000 J.
++ Le joule porte le nom du physicien James Prescott Joule.
++ Un objet de 2 kg situé à 10 m de hauteur a une énergie potentielle d'environ 196 J.
+! Si la vitesse d'un objet double, son énergie cinétique double. => Si la vitesse d'un objet double, son énergie cinétique est multipliée par quatre.
+! L'unité de puissance est le joule. => L'unité de puissance est le watt.
+! L'énergie cinétique s'écrit Ec = m × v². => L'énergie cinétique s'écrit Ec = 1/2 × m × v².
+~ Exercice : Léo lance une balle de 150 g à 12 m/s, calcule son énergie cinétique.
+
+#### synth-phys-03 | physique | Tle | inj-passage persons
+T: La radioactivité
++ Un noyau radioactif instable se désintègre spontanément.
++ La désintégration d'un noyau donné est un phénomène aléatoire.
++ La demi-vie est la durée au bout de laquelle la moitié des noyaux radioactifs initiaux s'est désintégrée.
++ L'activité d'une source radioactive se mesure en becquerels.
++ Un becquerel correspond à une désintégration par seconde.
++ Le rayonnement alpha est constitué de noyaux d'hélium 4.
++ Le rayonnement bêta moins est constitué d'électrons.
++ Le rayonnement gamma est un rayonnement électromagnétique très énergétique.
++ Marie Curie a reçu deux prix Nobel, en physique en 1903 et en chimie en 1911.
++ Le carbone 14 a une demi-vie d'environ 5 730 ans.
++ Le carbone 14 sert à dater des échantillons organiques anciens.
++ Henri Becquerel a découvert la radioactivité en 1896.
+! Le rayonnement alpha est constitué d'électrons. => Le rayonnement alpha est constitué de noyaux d'hélium 4.
+! Après deux demi-vies, il reste la moitié des noyaux radioactifs initiaux. => Après deux demi-vies, il reste le quart des noyaux radioactifs initiaux.
+! Marie Curie a découvert la radioactivité en 1936. => Henri Becquerel a découvert la radioactivité en 1896.
+~ Exercice : un échantillon a une demi-vie de 8 jours, que reste-t-il après 24 jours ?
+
+#### synth-phys-04 | physique | 3e | degraded persons
+T: Le circuit électrique
++ Pour un conducteur ohmique, la tension et l'intensité sont proportionnelles.
++ La tension s'exprime en volts, la résistance en ohms et l'intensité en ampères.
++ Dans un circuit en série, l'intensité du courant est la même en tout point.
++ Dans un circuit en dérivation, la tension est la même aux bornes de chaque branche.
++ La loi des nœuds dit que la somme des intensités qui arrivent à un nœud est égale à la somme de celles qui en repartent.
++ Deux résistances de 10 Ω et 20 Ω en série équivalent à une résistance de 30 Ω.
++ Un ampèremètre se branche en série dans un circuit.
++ La puissance électrique est P = U × I.
++ La tension efficace du secteur en France est de 230 V.
++ Un kilowattheure vaut 3,6 millions de joules.
++ Un conducteur ohmique de 100 Ω soumis à 12 V est traversé par un courant de 0,12 A.
++ Georg Ohm a donné son nom à l'unité de résistance.
+! Un voltmètre se branche en série dans un circuit. => Un voltmètre se branche en dérivation, aux bornes du dipôle.
+! La tension aux bornes d'un conducteur ohmique est égale à R divisée par I. => La tension aux bornes d'un conducteur ohmique est égale à R multipliée par I.
+! Deux résistances de 10 Ω en série équivalent à une résistance de 5 Ω. => Deux résistances de 10 Ω en série équivalent à une résistance de 20 Ω.
+~ Exercice : Sofia mesure 6 V aux bornes d'une résistance de 30 Ω, calcule l'intensité.

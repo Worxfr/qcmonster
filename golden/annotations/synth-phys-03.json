@@ -1,0 +1,85 @@
+{
+ "id": "synth-phys-03",
+ "title": "La radioactivité",
+ "transcription": "La radioactivité\nUn noyau radioactif instable se désintègre spontanément.\nLa désintégration d'un noyau donné est un phénomène aléatoire.\nLe rayonnement alpha est constitué d'électrons.\nAprès deux demi-vies, il reste la moitié des noyaux radioactifs initiaux.\nLa demi-vie est la durée au bout de laquelle la moitié des noyaux radioactifs initiaux s'est désintégrée.\nL'activité d'une source radioactive se mesure en becquerels.\nUn becquerel correspond à une désintégration par seconde.\nLe rayonnement bêta moins est constitué d'électrons.\nLe rayonnement gamma est un rayonnement électromagnétique très énergétique.\nMarie Curie a reçu deux prix Nobel, en physique en 1903 et en chimie en 1911.\nLe carbone 14 a une demi-vie d'environ 5 730 ans.\nLe carbone 14 sert à dater des échantillons organiques anciens.\nMarie Curie a découvert la radioactivité en 1936.\nExercice : un échantillon a une demi-vie de 8 jours, que reste-t-il après 24 jours ?",
+ "sentences": [
+  {
+   "text": "Un noyau radioactif instable se désintègre spontanément.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "La désintégration d'un noyau donné est un phénomène aléatoire.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Le rayonnement alpha est constitué d'électrons.",
+   "kind": "error",
+   "correction": "Le rayonnement alpha est constitué de noyaux d'hélium 4.",
+   "id": "s3"
+  },
+  {
+   "text": "Après deux demi-vies, il reste la moitié des noyaux radioactifs initiaux.",
+   "kind": "error",
+   "correction": "Après deux demi-vies, il reste le quart des noyaux radioactifs initiaux.",
+   "id": "s4"
+  },
+  {
+   "text": "La demi-vie est la durée au bout de laquelle la moitié des noyaux radioactifs initiaux s'est désintégrée.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "L'activité d'une source radioactive se mesure en becquerels.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Un becquerel correspond à une désintégration par seconde.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "Le rayonnement bêta moins est constitué d'électrons.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Le rayonnement gamma est un rayonnement électromagnétique très énergétique.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Marie Curie a reçu deux prix Nobel, en physique en 1903 et en chimie en 1911.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "Le carbone 14 a une demi-vie d'environ 5 730 ans.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Le carbone 14 sert à dater des échantillons organiques anciens.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Marie Curie a découvert la radioactivité en 1936.",
+   "kind": "error",
+   "correction": "Henri Becquerel a découvert la radioactivité en 1896.",
+   "id": "s13"
+  },
+  {
+   "text": "Exercice : un échantillon a une demi-vie de 8 jours, que reste-t-il après 24 jours ?",
+   "kind": "non_factual",
+   "id": "s14"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": true
+ },
+ "persons": true
+}

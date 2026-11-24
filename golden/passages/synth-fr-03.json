@@ -1,0 +1,92 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "b8b4985c",
+  "text": "Extrait simulé d'une encyclopédie libre. Une comparaison relie deux éléments par un outil de comparaison comme « comme » ou « tel ».",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "5b29d1a1",
+  "text": "Extrait simulé d'une encyclopédie libre. Une métaphore est une comparaison sans outil de comparaison.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "dc279210",
+  "text": "Extrait simulé d'une encyclopédie libre. La personnification attribue des caractéristiques humaines à un animal ou à une chose.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "293ce139",
+  "text": "Extrait simulé d'une encyclopédie libre. Une hyperbole est une exagération.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "126d56ff",
+  "text": "Extrait simulé d'une encyclopédie libre. Le Cid est une pièce de Corneille.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "afb9dec3",
+  "text": "Extrait simulé d'une encyclopédie libre. Une antithèse oppose deux termes ou deux idées.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "a2d57f27",
+  "text": "Extrait simulé d'une encyclopédie libre. Une métaphore n'utilise pas d'outil de comparaison.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "603ddc29",
+  "text": "Extrait simulé d'une encyclopédie libre. Une litote dit moins pour suggérer plus.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "9804d6dc",
+  "text": "Extrait simulé d'une encyclopédie libre. Un euphémisme adoucit une réalité désagréable.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "fa5d94ce",
+  "text": "Extrait simulé d'une encyclopédie libre. Un oxymore associe deux termes contradictoires.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "7ab9e1be",
+  "text": "Extrait simulé d'une encyclopédie libre. L'expression « cette obscure clarté » est un oxymore.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "7ab79cee",
+  "text": "Extrait simulé d'une encyclopédie libre. Cette expression vient du Cid de Corneille.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "75b792f2",
+  "text": "Extrait simulé d'une encyclopédie libre. Une périphrase remplace un mot par une expression plus longue.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s15",
+  "passageId": "ace24b43",
+  "text": "Extrait simulé d'une encyclopédie libre. « Va, je ne te hais point » est une litote.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s17",
+  "passageId": "787512b6",
+  "text": "Extrait simulé d'une encyclopédie libre. L'anaphore est la répétition d'un mot au début de plusieurs phrases.",
+  "injected": false
+ }
+]

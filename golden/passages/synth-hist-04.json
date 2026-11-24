@@ -1,0 +1,80 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "7fdbc98f",
+  "text": "Extrait simulé d'une encyclopédie libre. Vasco de Gama atteint les Indes par la mer en 1498.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "0e3657d5",
+  "text": "Extrait simulé d'une encyclopédie libre. L'expédition de Magellan fait le premier tour du monde entre 1519 et 1522.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "921fdccd",
+  "text": "Extrait simulé d'une encyclopédie libre. Les Ottomans prennent Constantinople en 1453.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "c8617578",
+  "text": "Extrait simulé d'une encyclopédie libre. Le traité de Tordesillas, en 1494, partage le monde entre l'Espagne et le Portugal.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "e8610ee6",
+  "text": "Extrait simulé d'une encyclopédie libre. Luther publie ses 95 thèses en 1517.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "7eff5345",
+  "text": "Extrait simulé d'une encyclopédie libre. Gutenberg met au point l'imprimerie à caractères mobiles à Mayence.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "6a9a6c75",
+  "text": "Extrait simulé d'une encyclopédie libre. La Renaissance débute en Italie au XVe siècle.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "63d95600",
+  "text": "Extrait simulé d'une encyclopédie libre. L'édit de Villers-Cotterêts, en 1539, impose le français dans les actes officiels.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "5a9ced8e",
+  "text": "Extrait simulé d'une encyclopédie libre. L'édit de Villers-Cotterêts date de 1539.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "e484749d",
+  "text": "Extrait simulé d'une encyclopédie libre. Michel-Ange peint le plafond de la chapelle Sixtine entre 1508 et 1512.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "19cfd178",
+  "text": "Extrait simulé d'une encyclopédie libre. Léonard de Vinci est né en 1452.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "f734e591",
+  "text": "Extrait simulé d'une encyclopédie libre. L'humaniste Érasme est un des grands penseurs de la Renaissance.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "e4253465",
+  "text": "Extrait simulé d'une encyclopédie libre. Christophe Colomb atteint l'Amérique en 1492.",
+  "injected": false
+ }
+]

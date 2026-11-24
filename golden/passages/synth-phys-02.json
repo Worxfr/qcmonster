@@ -1,0 +1,92 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "f5702bff",
+  "text": "Extrait simulé d'une encyclopédie libre. L'énergie cinétique d'un objet de masse m et de vitesse v est Ec = 1/2 × m × v².",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "e4ded7fc",
+  "text": "Extrait simulé d'une encyclopédie libre. L'énergie cinétique s'exprime en joules.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "f351d12e",
+  "text": "Extrait simulé d'une encyclopédie libre. L'énergie potentielle de pesanteur d'un objet à la hauteur h est Epp = m × g × h.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "1a9ee096",
+  "text": "Extrait simulé d'une encyclopédie libre. L'énergie mécanique est la somme de l'énergie cinétique et de l'énergie potentielle.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "d8e4ef2b",
+  "text": "Extrait simulé d'une encyclopédie libre. En l'absence de frottements, l'énergie mécanique d'un objet en chute libre se conserve.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "828002cf",
+  "text": "Extrait simulé d'une encyclopédie libre. Le travail d'une force constante est W = F × d × cos α.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "1f333c61",
+  "text": "Extrait simulé d'une encyclopédie libre. L'énergie cinétique s'écrit Ec = 1/2 × m × v².",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "b4b452c2",
+  "text": "Extrait simulé d'une encyclopédie libre. Le travail d'une force se mesure en joules.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "29732242",
+  "text": "Extrait simulé d'une encyclopédie libre. Si la vitesse d'un objet double, son énergie cinétique est multipliée par quatre.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "69da660e",
+  "text": "Extrait simulé d'une encyclopédie libre. La puissance est l'énergie transférée par unité de temps.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "a7ceeba8",
+  "text": "Extrait simulé d'une encyclopédie libre. 1 watt est égal à 1 joule par seconde.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "a94a5b11",
+  "text": "Extrait simulé d'une encyclopédie libre. Une voiture de 1 000 kg roulant à 20 m/s a une énergie cinétique de 200 000 J.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "12827af3",
+  "text": "Extrait simulé d'une encyclopédie libre. L'unité de puissance est le watt.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "a3d89f20",
+  "text": "Extrait simulé d'une encyclopédie libre. Le joule porte le nom du physicien James Prescott Joule.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s15",
+  "passageId": "7b155c28",
+  "text": "Extrait simulé d'une encyclopédie libre. Un objet de 2 kg situé à 10 m de hauteur a une énergie potentielle d'environ 196 J.",
+  "injected": false
+ }
+]

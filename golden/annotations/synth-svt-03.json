@@ -1,0 +1,80 @@
+{
+ "id": "synth-svt-03",
+ "title": "La tectonique des plaques",
+ "transcription": "La tectonique des plaques\nLa lithosphère est découpée en plaques rigides.\nLes plaques se déplacent sur l'asthénosphère.\nUne dorsale océanique est une zone de divergence où se forme de la croûte océanique.\nLa croûte océanique est moins dense que la croûte continentale.\nDans une zone de subduction, une plaque océanique plonge sous une autre plaque.\nLes séismes sont fréquents aux limites des plaques.\nLes plaques se déplacent de quelques centimètres par an.\nLa discontinuité de Mohorovičić sépare la croûte du manteau.\nLes volcans de subduction émettent des magmas riches en silice, comme l'andésite.\nLa Terre s'est formée il y a environ 456 millions d'années.\nLa ceinture de feu du Pacifique concentre une grande partie des volcans et des séismes.\nWegener a proposé la dérive des continents en 1812.\nExercice : place les plaques sur la carte fournie.",
+ "sentences": [
+  {
+   "text": "La lithosphère est découpée en plaques rigides.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Les plaques se déplacent sur l'asthénosphère.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Une dorsale océanique est une zone de divergence où se forme de la croûte océanique.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "La croûte océanique est moins dense que la croûte continentale.",
+   "kind": "error",
+   "correction": "La croûte océanique est plus dense que la croûte continentale.",
+   "id": "s4"
+  },
+  {
+   "text": "Dans une zone de subduction, une plaque océanique plonge sous une autre plaque.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Les séismes sont fréquents aux limites des plaques.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Les plaques se déplacent de quelques centimètres par an.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "La discontinuité de Mohorovičić sépare la croûte du manteau.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Les volcans de subduction émettent des magmas riches en silice, comme l'andésite.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "La Terre s'est formée il y a environ 456 millions d'années.",
+   "kind": "error",
+   "correction": "La Terre s'est formée il y a environ 4,56 milliards d'années.",
+   "id": "s10"
+  },
+  {
+   "text": "La ceinture de feu du Pacifique concentre une grande partie des volcans et des séismes.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Wegener a proposé la dérive des continents en 1812.",
+   "kind": "error",
+   "correction": "Wegener a proposé la dérive des continents en 1912.",
+   "id": "s12"
+  },
+  {
+   "text": "Exercice : place les plaques sur la carte fournie.",
+   "kind": "non_factual",
+   "id": "s13"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": true
+ },
+ "persons": true
+}

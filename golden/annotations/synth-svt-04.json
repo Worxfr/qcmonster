@@ -1,0 +1,85 @@
+{
+ "id": "synth-svt-04",
+ "title": "Le système immunitaire",
+ "transcription": "Le système immunitaire\nLa peau et les muqueuses forment une barrière contre les micro-organismes.\nL'immunité innée est une réponse rapide et non spécifique.\nLouis Pasteur a testé son vaccin contre la rage en 1785.\nL'immunité adaptative est spécifique d'un antigène.\nLes lymphocytes T cytotoxiques détruisent les cellules infectées.\nUn antigène est une molécule reconnue par le système immunitaire.\nLes cellules mémoire permettent une réponse plus rapide lors d'un second contact.\nEdward Jenner a mis au point la vaccination contre la variole en 1796.\nLe VIH infecte les lymphocytes T CD4.\nLes antibiotiques agissent contre les bactéries.\nLes anticorps sont fabriqués par les globules rouges.\nUn vaccin prépare le système immunitaire sans provoquer la maladie.\nLes antibiotiques sont efficaces contre les virus.\nExercice : explique pourquoi un rappel de vaccin est utile.",
+ "sentences": [
+  {
+   "text": "La peau et les muqueuses forment une barrière contre les micro-organismes.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "L'immunité innée est une réponse rapide et non spécifique.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Louis Pasteur a testé son vaccin contre la rage en 1785.",
+   "kind": "error",
+   "correction": "Louis Pasteur a testé son vaccin contre la rage en 1885.",
+   "id": "s3"
+  },
+  {
+   "text": "L'immunité adaptative est spécifique d'un antigène.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Les lymphocytes T cytotoxiques détruisent les cellules infectées.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Un antigène est une molécule reconnue par le système immunitaire.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Les cellules mémoire permettent une réponse plus rapide lors d'un second contact.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "Edward Jenner a mis au point la vaccination contre la variole en 1796.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Le VIH infecte les lymphocytes T CD4.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Les antibiotiques agissent contre les bactéries.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "Les anticorps sont fabriqués par les globules rouges.",
+   "kind": "error",
+   "correction": "Les anticorps sont produits par les plasmocytes issus des lymphocytes B.",
+   "id": "s11"
+  },
+  {
+   "text": "Un vaccin prépare le système immunitaire sans provoquer la maladie.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Les antibiotiques sont efficaces contre les virus.",
+   "kind": "error",
+   "correction": "Les antibiotiques sont inefficaces contre les virus.",
+   "id": "s13"
+  },
+  {
+   "text": "Exercice : explique pourquoi un rappel de vaccin est utile.",
+   "kind": "non_factual",
+   "id": "s14"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": true
+ },
+ "persons": true
+}

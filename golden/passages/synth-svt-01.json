@@ -1,0 +1,92 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "bd2e5a00",
+  "text": "Extrait simulé d'une encyclopédie libre. L'ADN est le support de l'information génétique.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "5e67477a",
+  "text": "Extrait simulé d'une encyclopédie libre. Chez les cellules eucaryotes, l'ADN est situé dans le noyau.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "2aa18e23",
+  "text": "Extrait simulé d'une encyclopédie libre. Un chromosome est constitué d'une molécule d'ADN très condensée.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "db655a2b",
+  "text": "Extrait simulé d'une encyclopédie libre. Un gène est une portion d'ADN qui détermine un caractère.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "e087dee6",
+  "text": "Extrait simulé d'une encyclopédie libre. Les différentes versions d'un même gène s'appellent des allèles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "bf815730",
+  "text": "Extrait simulé d'une encyclopédie libre. Mendel a mené ses expériences sur les pois au XIXe siècle.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "93e9fbd0",
+  "text": "Extrait simulé d'une encyclopédie libre. La fécondation reconstitue le nombre de chromosomes de l'espèce.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "1238c66f",
+  "text": "Extrait simulé d'une encyclopédie libre. Gregor Mendel a étudié l'hérédité en croisant des pois.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "7ac7835c",
+  "text": "Extrait simulé d'une encyclopédie libre. Chez l'humain, une femme possède deux chromosomes sexuels X.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "fcaf1d45",
+  "text": "Extrait simulé d'une encyclopédie libre. Les gamètes humains contiennent 23 chromosomes.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "992995f0",
+  "text": "Extrait simulé d'une encyclopédie libre. La mitose produit deux cellules filles identiques à la cellule mère.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "4ec1805f",
+  "text": "Extrait simulé d'une encyclopédie libre. Une mutation est une modification de la séquence de l'ADN.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "ad45589b",
+  "text": "Extrait simulé d'une encyclopédie libre. Les mutations sont une source de diversité génétique.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "4a895bf6",
+  "text": "Extrait simulé d'une encyclopédie libre. Les cellules de la peau d'un humain contiennent 23 paires de chromosomes.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s15",
+  "passageId": "f7d53a35",
+  "text": "Extrait simulé d'une encyclopédie libre. L'espèce humaine possède 46 chromosomes.",
+  "injected": false
+ }
+]

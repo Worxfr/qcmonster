@@ -1,0 +1,80 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "f18e8db9",
+  "text": "Extrait simulé d'une encyclopédie libre. Un polynôme du second degré s'écrit ax² + bx + c avec a différent de 0.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "ddf39fa5",
+  "text": "Extrait simulé d'une encyclopédie libre. Une équation du second degré a au plus deux solutions réelles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "e8a10175",
+  "text": "Extrait simulé d'une encyclopédie libre. Si Δ > 0, l'équation ax² + bx + c = 0 a deux solutions réelles distinctes.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "79c7d05e",
+  "text": "Extrait simulé d'une encyclopédie libre. Si Δ = 0, l'équation a une unique solution, égale à -b/(2a).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "47e6ac64",
+  "text": "Extrait simulé d'une encyclopédie libre. L'équation x² - 5x + 6 = 0 a pour solutions 2 et 3.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "afb4fad0",
+  "text": "Extrait simulé d'une encyclopédie libre. Le discriminant est Δ = b² - 4ac.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "735a3256",
+  "text": "Extrait simulé d'une encyclopédie libre. Si Δ > 0, les solutions sont (-b - √Δ)/(2a) et (-b + √Δ)/(2a).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "da02fa72",
+  "text": "Extrait simulé d'une encyclopédie libre. La parabole représentant un trinôme est tournée vers le haut si a > 0.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "2f7bb5a6",
+  "text": "Extrait simulé d'une encyclopédie libre. L'abscisse du sommet de la parabole est -b/(2a).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "3863eefe",
+  "text": "Extrait simulé d'une encyclopédie libre. Si Δ < 0, l'équation n'a aucune solution réelle.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "b63a0c27",
+  "text": "Extrait simulé d'une encyclopédie libre. La somme des racines d'un trinôme est -b/a.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "5b5b1ac5",
+  "text": "Extrait simulé d'une encyclopédie libre. Le produit des racines d'un trinôme est c/a.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s13",
+  "passageId": "f3fb6f22",
+  "text": "Extrait simulé d'une encyclopédie libre. La forme canonique d'un trinôme s'écrit a(x - α)² + β.",
+  "injected": false
+ }
+]

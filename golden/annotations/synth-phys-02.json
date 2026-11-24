@@ -1,0 +1,95 @@
+{
+ "id": "synth-phys-02",
+ "title": "Énergie et travail",
+ "transcription": "Énergie et travail\nL'énergie cinétique d'un objet de masse m et de vitesse v est Ec = 1/2 × m × v².\nL'énergie cinétique s'exprime en joules.\nL'énergie potentielle de pesanteur d'un objet à la hauteur h est Epp = m × g × h.\nL'énergie mécanique est la somme de l'énergie cinétique et de l'énergie potentielle.\nEn l'absence de frottements, l'énergie mécanique d'un objet en chute libre se conserve.\nLe travail d'une force constante est W = F × d × cos α.\nL'énergie cinétique s'écrit Ec = m × v².\nLe travail d'une force se mesure en joules.\nSi la vitesse d'un objet double, son énergie cinétique double.\nLa puissance est l'énergie transférée par unité de temps.\n1 watt est égal à 1 joule par seconde.\nUne voiture de 1 000 kg roulant à 20 m/s a une énergie cinétique de 200 000 J.\nL'unité de puissance est le joule.\nLe joule porte le nom du physicien James Prescott Joule.\nUn objet de 2 kg situé à 10 m de hauteur a une énergie potentielle d'environ 196 J.\nExercice : Léo lance une balle de 150 g à 12 m/s, calcule son énergie cinétique.",
+ "sentences": [
+  {
+   "text": "L'énergie cinétique d'un objet de masse m et de vitesse v est Ec = 1/2 × m × v².",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "L'énergie cinétique s'exprime en joules.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "L'énergie potentielle de pesanteur d'un objet à la hauteur h est Epp = m × g × h.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "L'énergie mécanique est la somme de l'énergie cinétique et de l'énergie potentielle.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "En l'absence de frottements, l'énergie mécanique d'un objet en chute libre se conserve.",
+   "kind": "correct",
+   "id": "s5"
+  },
+  {
+   "text": "Le travail d'une force constante est W = F × d × cos α.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "L'énergie cinétique s'écrit Ec = m × v².",
+   "kind": "error",
+   "correction": "L'énergie cinétique s'écrit Ec = 1/2 × m × v².",
+   "id": "s7"
+  },
+  {
+   "text": "Le travail d'une force se mesure en joules.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Si la vitesse d'un objet double, son énergie cinétique double.",
+   "kind": "error",
+   "correction": "Si la vitesse d'un objet double, son énergie cinétique est multipliée par quatre.",
+   "id": "s9"
+  },
+  {
+   "text": "La puissance est l'énergie transférée par unité de temps.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "1 watt est égal à 1 joule par seconde.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Une voiture de 1 000 kg roulant à 20 m/s a une énergie cinétique de 200 000 J.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "L'unité de puissance est le joule.",
+   "kind": "error",
+   "correction": "L'unité de puissance est le watt.",
+   "id": "s13"
+  },
+  {
+   "text": "Le joule porte le nom du physicien James Prescott Joule.",
+   "kind": "correct",
+   "id": "s14"
+  },
+  {
+   "text": "Un objet de 2 kg situé à 10 m de hauteur a une énergie potentielle d'environ 196 J.",
+   "kind": "correct",
+   "id": "s15"
+  },
+  {
+   "text": "Exercice : Léo lance une balle de 150 g à 12 m/s, calcule son énergie cinétique.",
+   "kind": "non_factual",
+   "id": "s16"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

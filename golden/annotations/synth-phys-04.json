@@ -1,0 +1,90 @@
+{
+ "id": "synth-phys-04",
+ "title": "Le circuit électrique",
+ "transcription": "Le circuit électrique\nPour un conducteur ohmique, la tension et l'intensité sont proportionnelles.\nLa tension s'exprime en volts, la résistance en ohms et l'intensité en ampères.\nDans un circuit en série, l'intensité du courant est la même en tout point.\nDans un circuit en dérivation, la tension est la même aux bornes de chaque branche.\nLa tension aux bornes d'un conducteur ohmique est égale à R divisée par I.\nLa loi des nœuds dit que la somme des intensités qui arrivent à un nœud est égale à la somme de celles qui en repartent.\nUn ampèremètre se branche en série dans un circuit.\nUn voltmètre se branche en série dans un circuit.\nLa puissance électrique est P = U × I.\nDeux résistances de 10 Ω en série équivalent à une résistance de 5 Ω.\nLa tension efficace du secteur en France est de 230 V.\nUn kilowattheure vaut 3,6 millions de joules.\nUn conducteur ohmique de 100 Ω soumis à 12 V est traversé par un courant de 0,12 A.\nGeorg Ohm a donné son nom à l'unité de résistance.\nExercice : Sofia mesure 6 V aux bornes d'une résistance de 30 Ω, calcule l'intensité.",
+ "sentences": [
+  {
+   "text": "Pour un conducteur ohmique, la tension et l'intensité sont proportionnelles.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "La tension s'exprime en volts, la résistance en ohms et l'intensité en ampères.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Dans un circuit en série, l'intensité du courant est la même en tout point.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Dans un circuit en dérivation, la tension est la même aux bornes de chaque branche.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "La tension aux bornes d'un conducteur ohmique est égale à R divisée par I.",
+   "kind": "error",
+   "correction": "La tension aux bornes d'un conducteur ohmique est égale à R multipliée par I.",
+   "id": "s5"
+  },
+  {
+   "text": "La loi des nœuds dit que la somme des intensités qui arrivent à un nœud est égale à la somme de celles qui en repartent.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Un ampèremètre se branche en série dans un circuit.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "Un voltmètre se branche en série dans un circuit.",
+   "kind": "error",
+   "correction": "Un voltmètre se branche en dérivation, aux bornes du dipôle.",
+   "id": "s8"
+  },
+  {
+   "text": "La puissance électrique est P = U × I.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Deux résistances de 10 Ω en série équivalent à une résistance de 5 Ω.",
+   "kind": "error",
+   "correction": "Deux résistances de 10 Ω en série équivalent à une résistance de 20 Ω.",
+   "id": "s10"
+  },
+  {
+   "text": "La tension efficace du secteur en France est de 230 V.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Un kilowattheure vaut 3,6 millions de joules.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Un conducteur ohmique de 100 Ω soumis à 12 V est traversé par un courant de 0,12 A.",
+   "kind": "correct",
+   "id": "s13"
+  },
+  {
+   "text": "Georg Ohm a donné son nom à l'unité de résistance.",
+   "kind": "correct",
+   "id": "s14"
+  },
+  {
+   "text": "Exercice : Sofia mesure 6 V aux bornes d'une résistance de 30 Ω, calcule l'intensité.",
+   "kind": "non_factual",
+   "id": "s15"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

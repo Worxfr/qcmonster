@@ -1,0 +1,90 @@
+{
+ "id": "synth-maths-01",
+ "title": "Le théorème de Thalès",
+ "transcription": "Le théorème de Thalès\nLe théorème de Thalès s'applique à deux droites sécantes coupées par deux droites parallèles.\nThalès a vécu au premier siècle de notre ère.\nDans le triangle ABC, M est un point de [AB] et N un point de [AC] tels que (MN) est parallèle à (BC).\nDans cette configuration, AM/AB = AN/AC = MN/BC.\nSi AM = 3 cm, AB = 6 cm et AC = 8 cm, alors AN = 6 cm.\nLes longueurs des côtés des triangles AMN et ABC sont proportionnelles.\nSi AM = 3 cm, AB = 6 cm et BC = 10 cm, alors MN = 5 cm.\nLa réciproque du théorème de Thalès permet de démontrer que deux droites sont parallèles.\nDans les angles des triangles AMN et ABC, les angles correspondants sont égaux.\nLe théorème de Pythagore s'applique aux triangles rectangles.\nThalès était un mathématicien et philosophe grec originaire de Milet.\nUn agrandissement de rapport k multiplie les longueurs par k.\nDans une réduction de rapport 1/2, les aires sont divisées par 2.\nUn agrandissement de rapport k multiplie les aires par k².\nExercice : calcule MN lorsque AM = 2 cm, AB = 5 cm et BC = 7,5 cm.",
+ "sentences": [
+  {
+   "text": "Le théorème de Thalès s'applique à deux droites sécantes coupées par deux droites parallèles.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Thalès a vécu au premier siècle de notre ère.",
+   "kind": "error",
+   "correction": "Thalès a vécu vers le VIe siècle avant J.-C.",
+   "id": "s2"
+  },
+  {
+   "text": "Dans le triangle ABC, M est un point de [AB] et N un point de [AC] tels que (MN) est parallèle à (BC).",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "Dans cette configuration, AM/AB = AN/AC = MN/BC.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Si AM = 3 cm, AB = 6 cm et AC = 8 cm, alors AN = 6 cm.",
+   "kind": "error",
+   "correction": "Si AM = 3 cm, AB = 6 cm et AC = 8 cm, alors AN = 4 cm.",
+   "id": "s5"
+  },
+  {
+   "text": "Les longueurs des côtés des triangles AMN et ABC sont proportionnelles.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "Si AM = 3 cm, AB = 6 cm et BC = 10 cm, alors MN = 5 cm.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "La réciproque du théorème de Thalès permet de démontrer que deux droites sont parallèles.",
+   "kind": "correct",
+   "id": "s8"
+  },
+  {
+   "text": "Dans les angles des triangles AMN et ABC, les angles correspondants sont égaux.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Le théorème de Pythagore s'applique aux triangles rectangles.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "Thalès était un mathématicien et philosophe grec originaire de Milet.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Un agrandissement de rapport k multiplie les longueurs par k.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "Dans une réduction de rapport 1/2, les aires sont divisées par 2.",
+   "kind": "error",
+   "correction": "Dans une réduction de rapport 1/2, les aires sont divisées par 4.",
+   "id": "s13"
+  },
+  {
+   "text": "Un agrandissement de rapport k multiplie les aires par k².",
+   "kind": "correct",
+   "id": "s14"
+  },
+  {
+   "text": "Exercice : calcule MN lorsque AM = 2 cm, AB = 5 cm et BC = 7,5 cm.",
+   "kind": "non_factual",
+   "id": "s15"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

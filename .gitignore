@@ -12,3 +12,4 @@ golden/hidden/
 *.key
 .DS_Store
 infra/cdk.context.json
+eval/report.json

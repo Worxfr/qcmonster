@@ -1,0 +1,90 @@
+{
+ "id": "synth-hist-02",
+ "title": "La Troisième République",
+ "transcription": "La Troisième République\nLa Troisième République est proclamée le 4 septembre 1870.\nElle succède au Second Empire de Napoléon III.\nLes lois de Jules Ferry rendent l'école primaire gratuite en 1881.\nL'école primaire devient obligatoire et laïque en 1882.\nÉmile Zola publie « J'accuse » en 1908.\nLa loi sur la liberté de la presse date du 29 juillet 1881.\nLa loi autorisant les syndicats date de 1884.\nJules Ferry fait voter ses lois scolaires en 1930.\nL'affaire Dreyfus commence en 1894.\nAlfred Dreyfus est réhabilité en 1906.\nLes lois constitutionnelles de la Troisième République datent de 1875.\nLes pleins pouvoirs sont votés à Philippe Pétain le 10 juillet 1940.\nLa loi de séparation des Églises et de l'État est votée en 1925.\nLa Troisième République prend fin en 1940.\nExercice : explique le rôle de l'école dans la République.",
+ "sentences": [
+  {
+   "text": "La Troisième République est proclamée le 4 septembre 1870.",
+   "kind": "correct",
+   "id": "s1"
+  },
+  {
+   "text": "Elle succède au Second Empire de Napoléon III.",
+   "kind": "correct",
+   "id": "s2"
+  },
+  {
+   "text": "Les lois de Jules Ferry rendent l'école primaire gratuite en 1881.",
+   "kind": "correct",
+   "id": "s3"
+  },
+  {
+   "text": "L'école primaire devient obligatoire et laïque en 1882.",
+   "kind": "correct",
+   "id": "s4"
+  },
+  {
+   "text": "Émile Zola publie « J'accuse » en 1908.",
+   "kind": "error",
+   "correction": "Émile Zola publie « J'accuse » en 1898.",
+   "id": "s5"
+  },
+  {
+   "text": "La loi sur la liberté de la presse date du 29 juillet 1881.",
+   "kind": "correct",
+   "id": "s6"
+  },
+  {
+   "text": "La loi autorisant les syndicats date de 1884.",
+   "kind": "correct",
+   "id": "s7"
+  },
+  {
+   "text": "Jules Ferry fait voter ses lois scolaires en 1930.",
+   "kind": "error",
+   "correction": "Jules Ferry fait voter ses lois scolaires en 1881 et 1882.",
+   "id": "s8"
+  },
+  {
+   "text": "L'affaire Dreyfus commence en 1894.",
+   "kind": "correct",
+   "id": "s9"
+  },
+  {
+   "text": "Alfred Dreyfus est réhabilité en 1906.",
+   "kind": "correct",
+   "id": "s10"
+  },
+  {
+   "text": "Les lois constitutionnelles de la Troisième République datent de 1875.",
+   "kind": "correct",
+   "id": "s11"
+  },
+  {
+   "text": "Les pleins pouvoirs sont votés à Philippe Pétain le 10 juillet 1940.",
+   "kind": "correct",
+   "id": "s12"
+  },
+  {
+   "text": "La loi de séparation des Églises et de l'État est votée en 1925.",
+   "kind": "error",
+   "correction": "La loi de séparation des Églises et de l'État est votée en 1905.",
+   "id": "s13"
+  },
+  {
+   "text": "La Troisième République prend fin en 1940.",
+   "kind": "correct",
+   "id": "s14"
+  },
+  {
+   "text": "Exercice : explique le rôle de l'école dans la République.",
+   "kind": "non_factual",
+   "id": "s15"
+  }
+ ],
+ "injection": {
+  "course": false,
+  "passage": false
+ },
+ "persons": true
+}

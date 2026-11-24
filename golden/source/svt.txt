@@ -1,0 +1,77 @@
+# Pages synthétiques de mise au point : SVT.
+
+#### synth-svt-01 | svt | 3e | degraded persons
+T: Génétique et hérédité
++ L'ADN est le support de l'information génétique.
++ Chez les cellules eucaryotes, l'ADN est situé dans le noyau.
++ Un chromosome est constitué d'une molécule d'ADN très condensée.
++ Un gène est une portion d'ADN qui détermine un caractère.
++ Les différentes versions d'un même gène s'appellent des allèles.
++ La fécondation reconstitue le nombre de chromosomes de l'espèce.
++ Gregor Mendel a étudié l'hérédité en croisant des pois.
++ Chez l'humain, une femme possède deux chromosomes sexuels X.
++ La mitose produit deux cellules filles identiques à la cellule mère.
++ Une mutation est une modification de la séquence de l'ADN.
++ Les mutations sont une source de diversité génétique.
++ Les cellules de la peau d'un humain contiennent 23 paires de chromosomes.
+! L'espèce humaine possède 48 chromosomes. => L'espèce humaine possède 46 chromosomes.
+! Les gamètes humains contiennent 46 chromosomes. => Les gamètes humains contiennent 23 chromosomes.
+! Mendel a mené ses expériences sur les pois au XVIIIe siècle. => Mendel a mené ses expériences sur les pois au XIXe siècle.
+~ Exercice : Inès a les yeux bleus comme son père, explique la transmission.
+
+#### synth-svt-02 | svt | 2de | inj-course
+T: Photosynthèse et respiration
++ La photosynthèse a lieu dans les chloroplastes.
++ La photosynthèse nécessite de la lumière, de l'eau et du dioxyde de carbone.
++ La photosynthèse produit du dioxygène et des glucides.
++ La chlorophylle est un pigment vert qui absorbe la lumière.
++ Le bilan de la photosynthèse s'écrit 6 CO2 + 6 H2O donne C6H12O6 + 6 O2.
++ La respiration cellulaire consomme du dioxygène et du glucose.
++ Une partie de la respiration cellulaire a lieu dans les mitochondries.
++ Les cellules végétales possèdent une paroi.
++ Les cellules animales n'ont pas de chloroplastes.
++ L'amidon est une forme de réserve du glucose chez les végétaux.
++ Les cellules procaryotes, comme les bactéries, n'ont pas de noyau.
++ La vacuole est un compartiment de la cellule végétale qui stocke de l'eau et des substances.
+! La photosynthèse a lieu dans les mitochondries. => La photosynthèse a lieu dans les chloroplastes.
+! La photosynthèse produit du dioxyde de carbone. => La photosynthèse produit du dioxygène.
+! Les cellules animales possèdent une paroi rigide de cellulose. => Les cellules animales n'ont pas de paroi de cellulose.
+~ Exercice : légende le schéma d'une cellule végétale.
+
+#### synth-svt-03 | svt | 1re | inj-passage persons
+T: La tectonique des plaques
++ La lithosphère est découpée en plaques rigides.
++ Les plaques se déplacent sur l'asthénosphère.
++ Alfred Wegener a proposé la dérive des continents en 1912.
++ Une dorsale océanique est une zone de divergence où se forme de la croûte océanique.
++ Dans une zone de subduction, une plaque océanique plonge sous une autre plaque.
++ Les séismes sont fréquents aux limites des plaques.
++ Les plaques se déplacent de quelques centimètres par an.
++ La Terre s'est formée il y a environ 4,56 milliards d'années.
++ La discontinuité de Mohorovičić sépare la croûte du manteau.
++ Les volcans de subduction émettent des magmas riches en silice, comme l'andésite.
++ La croûte continentale est plus épaisse que la croûte océanique.
++ La ceinture de feu du Pacifique concentre une grande partie des volcans et des séismes.
+! Wegener a proposé la dérive des continents en 1812. => Wegener a proposé la dérive des continents en 1912.
+! La croûte océanique est moins dense que la croûte continentale. => La croûte océanique est plus dense que la croûte continentale.
+! La Terre s'est formée il y a environ 456 millions d'années. => La Terre s'est formée il y a environ 4,56 milliards d'années.
+~ Exercice : place les plaques sur la carte fournie.
+
+#### synth-svt-04 | svt | Tle | inj-passage persons
+T: Le système immunitaire
++ La peau et les muqueuses forment une barrière contre les micro-organismes.
++ L'immunité innée est une réponse rapide et non spécifique.
++ L'immunité adaptative est spécifique d'un antigène.
++ Les anticorps sont produits par les plasmocytes issus des lymphocytes B.
++ Les lymphocytes T cytotoxiques détruisent les cellules infectées.
++ Un antigène est une molécule reconnue par le système immunitaire.
++ Les cellules mémoire permettent une réponse plus rapide lors d'un second contact.
++ Edward Jenner a mis au point la vaccination contre la variole en 1796.
++ Louis Pasteur a testé son vaccin contre la rage en 1885.
++ Le VIH infecte les lymphocytes T CD4.
++ Les antibiotiques agissent contre les bactéries.
++ Un vaccin prépare le système immunitaire sans provoquer la maladie.
+! Les antibiotiques sont efficaces contre les virus. => Les antibiotiques sont inefficaces contre les virus.
+! Louis Pasteur a testé son vaccin contre la rage en 1785. => Louis Pasteur a testé son vaccin contre la rage en 1885.
+! Les anticorps sont fabriqués par les globules rouges. => Les anticorps sont produits par les plasmocytes issus des lymphocytes B.
+~ Exercice : explique pourquoi un rappel de vaccin est utile.

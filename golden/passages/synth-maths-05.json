@@ -1,0 +1,80 @@
+[
+ {
+  "sentenceId": "s1",
+  "passageId": "2b781328",
+  "text": "Extrait simulé d'une encyclopédie libre. Une probabilité est un nombre compris entre 0 et 1.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s2",
+  "passageId": "21991b06",
+  "text": "Extrait simulé d'une encyclopédie libre. La probabilité de l'événement contraire de A est 1 - P(A).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s3",
+  "passageId": "5f5c5ca8",
+  "text": "Extrait simulé d'une encyclopédie libre. La probabilité d'un événement certain est 1.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s4",
+  "passageId": "c81fd1f5",
+  "text": "Extrait simulé d'une encyclopédie libre. La probabilité d'un événement impossible est 0.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s5",
+  "passageId": "63777618",
+  "text": "Extrait simulé d'une encyclopédie libre. Si A et B sont incompatibles, P(A ∪ B) = P(A) + P(B).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s6",
+  "passageId": "994546b8",
+  "text": "Extrait simulé d'une encyclopédie libre. Un événement élémentaire est un événement réduit à une seule issue.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s7",
+  "passageId": "0df4bd3d",
+  "text": "Extrait simulé d'une encyclopédie libre. En situation d'équiprobabilité, P(A) est le nombre de cas favorables divisé par le nombre de cas possibles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s8",
+  "passageId": "e644d1f6",
+  "text": "Extrait simulé d'une encyclopédie libre. L'univers d'une expérience aléatoire est l'ensemble de ses issues possibles.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s9",
+  "passageId": "74c23f4b",
+  "text": "Extrait simulé d'une encyclopédie libre. Avec une pièce équilibrée, la probabilité d'obtenir pile est 0,5.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s10",
+  "passageId": "77c05203",
+  "text": "Extrait simulé d'une encyclopédie libre. La somme des probabilités de toutes les issues d'une loi de probabilité est égale à 1.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s11",
+  "passageId": "d795817e",
+  "text": "Extrait simulé d'une encyclopédie libre. Pour deux événements quelconques, P(A ∪ B) = P(A) + P(B) - P(A ∩ B).",
+  "injected": false
+ },
+ {
+  "sentenceId": "s12",
+  "passageId": "0d2531c0",
+  "text": "Extrait simulé d'une encyclopédie libre. Deux événements sont incompatibles s'ils n'ont aucune issue commune.",
+  "injected": false
+ },
+ {
+  "sentenceId": "s14",
+  "passageId": "c078b0cd",
+  "text": "Extrait simulé d'une encyclopédie libre. Avec un dé équilibré à 6 faces, la probabilité d'obtenir un nombre strictement supérieur à 4 est 1/3.",
+  "injected": false
+ }
+]

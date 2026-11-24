@@ -1,0 +1,77 @@
+# Pages synthétiques de mise au point : français.
+
+#### synth-fr-01 | francais | 2de | degraded inj-passage persons
+T: Molière
++ Molière est le nom de scène de Jean-Baptiste Poquelin.
++ Molière est né à Paris en 1622.
++ Molière est mort en 1673.
++ Tartuffe est une comédie de Molière jouée pour la première fois en 1664.
++ Le Misanthrope date de 1666.
++ Dom Juan date de 1665.
++ L'Avare date de 1668.
++ Le Bourgeois gentilhomme date de 1670.
++ Les Précieuses ridicules datent de 1659.
++ Molière a été protégé par le roi Louis XIV.
++ Molière a joué dans Le Malade imaginaire peu avant sa mort, en février 1673.
++ Le Bourgeois gentilhomme est une comédie-ballet.
+! L'Avare est une tragédie. => L'Avare est une comédie.
+! Molière est né en 1722. => Molière est né en 1622.
+! Tartuffe est une pièce de Jean Racine. => Tartuffe est une pièce de Molière.
+~ Exercice : relève deux traits comiques dans la scène lue en classe.
+
+#### synth-fr-02 | francais | 1re | inj-course persons
+T: Baudelaire et Les Fleurs du mal
++ Charles Baudelaire est né en 1821 et mort en 1867.
++ Le recueil Les Fleurs du mal est publié en 1857.
++ Le procès de 1857 condamne six poèmes pour outrage à la morale publique.
++ Le recueil comprend une section intitulée « Spleen et Idéal ».
++ Le poème « Correspondances » fait partie des Fleurs du mal.
++ Un sonnet comprend deux quatrains et deux tercets.
++ Un vers de douze syllabes s'appelle un alexandrin.
++ Le spleen désigne chez Baudelaire une mélancolie profonde.
++ Le Spleen de Paris est un recueil de poèmes en prose publié après la mort de Baudelaire.
++ Baudelaire a traduit les œuvres d'Edgar Allan Poe.
++ La section « Tableaux parisiens » fait partie des Fleurs du mal.
++ Baudelaire est considéré comme un poète du XIXe siècle.
+! Les Fleurs du mal sont publiées en 1757. => Les Fleurs du mal sont publiées en 1857.
+! Un sonnet comprend trois quatrains et un distique. => Un sonnet comprend deux quatrains et deux tercets.
+! L'alexandrin compte dix syllabes. => L'alexandrin compte douze syllabes.
+~ Exercice : commente le premier quatrain du poème étudié.
+
+#### synth-fr-03 | francais | 3e | inj-course
+T: Les figures de style
++ Une comparaison relie deux éléments par un outil de comparaison comme « comme » ou « tel ».
++ Une métaphore est une comparaison sans outil de comparaison.
++ La personnification attribue des caractéristiques humaines à un animal ou à une chose.
++ Une hyperbole est une exagération.
++ Une antithèse oppose deux termes ou deux idées.
++ Une litote dit moins pour suggérer plus.
++ Un euphémisme adoucit une réalité désagréable.
++ Un oxymore associe deux termes contradictoires.
++ L'expression « cette obscure clarté » est un oxymore.
++ Cette expression vient du Cid de Corneille.
++ Une périphrase remplace un mot par une expression plus longue.
++ « Va, je ne te hais point » est une litote.
+! L'anaphore est la répétition d'un mot à la fin de plusieurs phrases. => L'anaphore est la répétition d'un mot au début de plusieurs phrases.
+! Une métaphore utilise toujours le mot « comme ». => Une métaphore n'utilise pas d'outil de comparaison.
+! Le Cid est une pièce de Molière. => Le Cid est une pièce de Corneille.
+~ Exercice : identifie la figure de style dans chaque phrase.
+
+#### synth-fr-04 | francais | Tle | degraded persons
+T: Albert Camus, L'Étranger
++ L'Étranger est un roman d'Albert Camus.
++ L'Étranger est publié en 1942.
++ Le narrateur du roman s'appelle Meursault.
++ Meursault apprend la mort de sa mère au début du roman.
++ L'action se déroule à Alger.
++ Meursault tue un homme sur une plage.
++ Le récit est écrit à la première personne.
++ Le roman est divisé en deux parties.
++ Albert Camus reçoit le prix Nobel de littérature en 1957.
++ Albert Camus meurt dans un accident de voiture en 1960.
++ Le Mythe de Sisyphe, un essai sur l'absurde, est publié en 1942.
++ La Peste est publié en 1947.
+! Albert Camus reçoit le prix Nobel de littérature en 1947. => Albert Camus reçoit le prix Nobel de littérature en 1957.
+! L'action de L'Étranger se déroule à Marseille. => L'action de L'Étranger se déroule à Alger.
+! Le récit de L'Étranger est écrit à la troisième personne. => Le récit de L'Étranger est écrit à la première personne.
+~ Exercice : explique la phrase d'ouverture du roman.
