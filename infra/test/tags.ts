@@ -11,6 +11,10 @@ export const UNTAGGABLE = new Set([
   'AWS::Cognito::UserPoolClient',
   'AWS::Cognito::UserPoolGroup',
   'AWS::SNS::Subscription',
+  'AWS::S3::BucketPolicy',
+  'AWS::ApiGatewayV2::Authorizer',
+  'AWS::ApiGatewayV2::Integration',
+  'AWS::ApiGatewayV2::Route',
   'AWS::Budgets::BudgetsAction',
 ]);
 
