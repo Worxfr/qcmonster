@@ -32,6 +32,8 @@ export interface Auth {
   email?: string;
   /** Attribut `custom:famille_id`; absent tant que la famille n'est pas creee (jeton emis avant `POST /family`). */
   familyId?: string;
+  /** Vrai si le jeton porte `eleve` ET `parent`: compte incoherent, refuse partout (y compris pour creer une famille). */
+  conflicting?: true;
 }
 
 /** `cognito:groups` arrive en tableau ou en chaine (« [parent] ») selon l'API: les deux formes sont lues. */
@@ -51,7 +53,8 @@ export function authOf(event: APIGatewayProxyEventV2WithJWTAuthorizer): Auth {
   const fid = c['custom:famille_id'];
   const username = typeof c['cognito:username'] === 'string' ? c['cognito:username'] : typeof c.username === 'string' ? c.username : '';
   const email = typeof c.email === 'string' && role === 'parent' ? c.email : undefined;
-  return { sub, username, role, ...(email ? { email } : {}), familyId: typeof fid === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(fid) ? fid : undefined };
+  const conflicting = groups.includes('parent') && groups.includes('eleve');
+  return { sub, username, role, ...(conflicting ? { conflicting: true as const } : {}), ...(email ? { email } : {}), familyId: typeof fid === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(fid) ? fid : undefined };
 }
 
 export interface ParentCtx {

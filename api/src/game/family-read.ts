@@ -19,7 +19,8 @@ export interface MeView {
 
 /** GET /me. Un parent sans famille (jeton emis avant POST /family) recoit 404: le front appelle alors POST /family puis rafraichit le jeton. */
 export async function getMe(deps: Deps, a: Auth): Promise<MeView> {
-  if (!a.role) throw forbidden();
+  // Sans role ni famille (admin seul, parent invite avant POST /family): profil absent, le front propose de creer la famille.
+  if (!a.role) throw a.conflicting || a.familyId ? forbidden() : notFound();
   if (!a.familyId) throw notFound();
   if (a.role === 'parent') return { userId: a.sub, role: 'parent', familyId: a.familyId };
   const ctx: StudentCtx = { sub: a.sub, studentId: a.username, familyId: a.familyId };

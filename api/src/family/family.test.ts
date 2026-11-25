@@ -3,8 +3,10 @@ import { FamilyCreateRequestSchema, StudentCreateRequestSchema } from '../../../
 import { POLICY_VERSION } from '../../../shared/policy.js';
 import { keys, sha256 } from '../../../shared/ddb/keys.js';
 import { postAnswer } from '../game/answers.js';
+import { getMe } from '../game/family-read.js';
 import { getSession } from '../game/session.js';
-import { HttpError, parseBody } from '../lib/http.js';
+import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
+import { HttpError, authOf, parseBody } from '../lib/http.js';
 import { FID, SID, parentCtx, qid, seed, testDeps, type TestEnv } from '../lib/testkit.js';
 import { ACTIVATION_TTL_MS, activate, issueActivation } from './activation.js';
 import { createFamily, deleteFamily, exportFamily, familyIdFor } from './family.js';
@@ -68,6 +70,31 @@ describe('POST /family', () => {
     await rejects(createFamily(t.deps, { ...a, role: 'eleve', familyId: FID }, OK), 403);
     await rejects(createFamily(t.deps, { ...a, role: 'parent', familyId: FID }, OK), 409); // jeton qui porte deja une famille
     await rejects(createFamily(t.deps, { sub: 'x', username: '' }, OK), 409);
+  });
+  const tokenFor = (groups: string[], extra: Record<string, unknown> = {}) =>
+    authOf({ requestContext: { authorizer: { jwt: { claims: { sub: 'sub-adm', 'cognito:username': 'adm1', 'cognito:groups': groups, ...extra } } } } } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
+  it('admin seul: /me 404, creation de famille OK, groupes admin + parent', async () => {
+    const t = testDeps();
+    t.identity.users.set('adm1', { sub: 'sub-adm', enabled: true, groups: ['admin'] });
+    const a = tokenFor(['admin']);
+    expect(a.role).toBeUndefined();
+    await rejects(getMe(t.deps, a), 404);
+    const me = await createFamily(t.deps, a, OK);
+    expect(me).toEqual({ userId: 'sub-adm', role: 'parent', familyId: familyIdFor('sub-adm') });
+    expect(t.identity.users.get('adm1')?.groups).toEqual(expect.arrayContaining(['admin', 'parent']));
+    // jeton renouvele: parent + admin, famille du jeton seulement
+    const renewed = tokenFor(['admin', 'parent'], { 'custom:famille_id': me.familyId });
+    expect(await getMe(t.deps, renewed)).toEqual(me);
+  });
+  it('refuse eleve (meme admin) et compte parent+eleve; l\'admin n\'ouvre pas une autre famille', async () => {
+    const t = testDeps();
+    await rejects(createFamily(t.deps, tokenFor(['eleve']), OK), 403);
+    await rejects(createFamily(t.deps, tokenFor(['admin', 'eleve']), OK), 403);
+    await rejects(createFamily(t.deps, tokenFor(['parent', 'eleve']), OK), 403);
+    await rejects(getMe(t.deps, tokenFor(['parent', 'eleve'])), 403);
+    await family(t); // FID appartient a un autre parent
+    await rejects(createFamily(t.deps, tokenFor(['admin'], { 'custom:famille_id': FID }), OK), 409);
+    await rejects(getMe(t.deps, tokenFor(['admin'], { 'custom:famille_id': FID })), 403); // admin: aucun acces par le seul groupe
   });
   it('deux appels simultanes: une seule famille', async () => {
     const t = testDeps();

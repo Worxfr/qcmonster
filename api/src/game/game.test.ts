@@ -505,7 +505,9 @@ describe('lectures: profil, tableau de bord, classement', () => {
     expect(await getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent', familyId: FID })).toEqual({ userId: 'p', role: 'parent', familyId: FID });
     expect(await getMe(t.deps, { sub: ctx.sub, username: SID, role: 'eleve', familyId: FID })).toEqual({ userId: ctx.sub, role: 'eleve', familyId: FID, studentId: SID, pseudo: 'Pseudo-1abc' });
     await rejects(getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent' }), 404);
-    await rejects(getMe(t.deps, { sub: 'p', username: 'x' }), 403);
+    await rejects(getMe(t.deps, { sub: 'p', username: 'x' }), 404); // admin seul ou parent invite sans famille: profil absent
+    await rejects(getMe(t.deps, { sub: 'p', username: 'x', conflicting: true }), 403); // parent + eleve
+    await rejects(getMe(t.deps, { sub: 'p', username: 'x', familyId: FID }), 403); // famille sans role
     await rejects(getMe(t.deps, { sub: 'x', username: SID, role: 'eleve', familyId: FID }), 403);
   });
   it('tableau de bord: eleves de la famille seulement, quota famille', async () => {
