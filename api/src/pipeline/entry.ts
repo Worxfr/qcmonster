@@ -16,7 +16,7 @@ import { ulid, type Ctx } from './ctx.js';
 import { guarded, json } from './http.js';
 import { dynamoDb, type PresignedPost, type ScanStore, type Sfn } from './ports.js';
 import { awaitConfirm, awaitUpload, expire, failJob, scanCheck, scanStart, transcribe, type WfInput } from './steps.js';
-import { extract, generate, quotaConsume } from './steps-doc.js';
+import { extract, finalize, generate, quotaConsume, sectionCost, sectionsPlan } from './steps-doc.js';
 
 const need = (name: string): string => process.env[name] ?? (() => { throw new Error(`variable ${name} absente`); })();
 
@@ -145,6 +145,9 @@ export const scanCheckHandler = step((c, i: WfInput) => scanCheck(c, i));
 export const transcribeHandler = step((c, i: WfInput) => transcribe(c, i));
 export const awaitConfirmHandler = step((c, i: WfInput & { token: string }) => awaitConfirm(c, i));
 export const expireHandler = step((c, i: WfInput & { phase: 'upload' | 'confirm' }) => expire(c, i));
+export const sectionsPlanHandler = step(sectionsPlan);
+export const sectionCostHandler = step(sectionCost);
+export const finalizeHandler = step(finalize);
 export const extractHandler = step((c, i: WfInput) => extract(c, i));
 export const quotaConsumeHandler = step((c, i: WfInput & { verify?: { coutCentimes?: number } }) => quotaConsume(c, i));
 export const generateHandler = step((c, i: WfInput) => generate(c, i));
