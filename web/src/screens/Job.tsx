@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useApp } from '../app-context';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
 import { JOB_FINAL } from '../game';
 import { errMsg } from '../hooks';
@@ -90,6 +91,8 @@ export function JobView({ id }: { id: string }) {
   const { job, setJob, error, setError, again } = useJob(id);
   const [fiches, setFiches] = useState<number | undefined>();
   const [cancelling, setCancelling] = useState(false);
+  const [sure, setSure] = useState(false);
+  const { refreshProgress } = useApp();
   const onConfirmed = useCallback((j: Job, n?: number) => { setFiches(n); setJob(j); again(); }, [setJob, again]);
   const state = job?.state;
   useEffect(() => {
@@ -107,14 +110,23 @@ export function JobView({ id }: { id: string }) {
       const j = await api.cancel(id);
       clearEdits(id); // le texte non envoye ne reste pas dans l'onglet
       setJob(j);
+      void refreshProgress(); // les pages rendues se voient tout de suite (compteur de l'accueil et du scan)
     } catch (e) {
       setError(errMsg(e));
     } finally {
       setCancelling(false);
     }
   };
-  const cancelBtn = (
-    <button type="button" className="btn btn-ghost" onClick={cancel} disabled={cancelling}>Annuler et récupérer mes pages</button>
+  const cancelBtn = sure ? (
+    <div role="group" aria-label="Confirmer l'annulation" className="calm cancel-ask">
+      <p><strong>Annuler ce scan ?</strong> La lecture déjà faite sera perdue. Tes pages te sont rendues.</p>
+      <div className="btn-row">
+        <button type="button" className="btn" onClick={cancel} disabled={cancelling} autoFocus>Oui, annuler le scan</button>
+        <button type="button" className="btn btn-ghost" onClick={() => setSure(false)} disabled={cancelling}>Non, continuer</button>
+      </div>
+    </div>
+  ) : (
+    <button type="button" className="btn btn-ghost" onClick={() => setSure(true)}>Annuler et récupérer mes pages</button>
   );
 
   if (job.state === 'a_confirmer') {

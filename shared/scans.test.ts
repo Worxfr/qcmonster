@@ -207,11 +207,12 @@ describe('revue PR 40', () => {
     expect(cleanTopic('\u200b\u202e \ufeff <>')).toBeUndefined();
     expect(cleanFolderName('\u202eBrevet\u202c')).toBe('Brevet');
   });
-  it('ScanSummary.state distingue annule (rejete), echec, expire; fiche = termine', () => {
+  it('ScanSummary.state distingue echec, expire; fiche = termine; un scan annule n\'est pas liste (FIX-T4 B1)', () => {
     const jobs = [job('a', { state: 'rejete', message: 'Annule par l\'eleve' }), job('b', { state: 'echec' }), job('c', { state: 'expire' }), job('d', { state: 'bizarre' })];
     const r = run(jobs, [doc('x')]);
     const by = Object.fromEntries(r.items.map((i) => [i.scanId, i.state]));
-    expect(by).toMatchObject({ a: 'rejete', b: 'echec', c: 'expire', d: 'echec', x: 'termine' });
+    expect(by.a).toBeUndefined();
+    expect(by).toMatchObject({ b: 'echec', c: 'expire', d: 'echec', x: 'termine' });
   });
   it('sens par defaut: croissant pour matiere et sujet, decroissant pour date', () => {
     const docs = [doc('d1', { matiere: 'svt', sujet: 'b', createdAt: '2026-12-01T10:00:00Z' }), doc('d2', { matiere: 'maths', sujet: 'a', createdAt: '2026-12-02T10:00:00Z' }), doc('d3', { matiere: 'autre', sujet: 'c', createdAt: '2026-12-03T10:00:00Z' })];

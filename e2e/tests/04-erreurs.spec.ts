@@ -70,15 +70,15 @@ test.describe('Parcours d\'erreur', () => {
     await sendPhotos(page, 3);
     await waitForReview(page);
     await page.getByRole('button', { name: 'Annuler et récupérer mes pages' }).click();
+    await page.getByRole('button', { name: 'Oui, annuler le scan' }).click();
     await expect(page.getByRole('heading', { name: 'Scan annulé' })).toBeVisible();
     await expect(page.getByText('Tes pages ont été rendues.')).toBeVisible();
     await page.getByRole('button', { name: 'Recommencer' }).click();
     await expect(page.getByRole('heading', { name: 'Scanner un cours' })).toBeVisible();
-    // Constat: juste après l'annulation, le compteur affiche encore l'ancien total (17) jusqu'au rechargement. Le serveur a bien rendu les pages.
-    await page.reload();
+    // le compteur est relu tout de suite après l'annulation
     if (isMock) await expect(page.getByRole('status').filter({ hasText: 'Il te reste 20 pages' })).toBeVisible();
-    // le scan annulé est listé comme « Pas réussi »
+    // le scan annulé n'est plus listé
     await page.goto('/#/docs?status=echec');
-    await expect(page.locator('.scan-card .pill-warn', { hasText: 'Pas réussi' }).first()).toBeVisible({ timeout: SLOW });
+    await expect(page.getByText('Aucun cours ne correspond.')).toBeVisible({ timeout: SLOW });
   });
 });

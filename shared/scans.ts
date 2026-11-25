@@ -83,6 +83,9 @@ export function stageOf(job: Record<string, unknown>): Stage {
       return 'echec'; // rejete, echec, expire, et tout etat inconnu
   }
 }
+/** Un job annule est `rejete` avec « Annule par l'eleve » (accents et casse ignores). */
+export const isCancelled = (job: Record<string, unknown>): boolean =>
+  job.state === 'rejete' && typeof job.message === 'string' && job.message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().startsWith("annule par l'eleve");
 export const isFinalStage = (s: Stage): boolean => s === 'termine' || s === 'echec';
 
 const FAIL_MESSAGE = 'Le traitement a échoué, réessaie';
@@ -182,6 +185,7 @@ export function listScans(input: ListInput): ScanList {
   };
 
   for (const job of input.jobs) {
+    if (isCancelled(job)) continue; // annule par l'eleve: rien a montrer (ses pages sont rendues), plus de « Pas reussi » dans la liste
     const sid = sidOf(job);
     const jobId = job.SK.slice('JOB#'.length);
     // Un scan peut donner plusieurs fiches (`docIds`); un job d'avant 1.3 n'a que `docId`.
@@ -235,7 +239,8 @@ export function listScans(input: ListInput): ScanList {
     group.sort((a, b) => (a.sectionIndex ?? 0) - (b.sectionIndex ?? 0));
     for (const [k, e] of group.entries()) {
       const count = Math.max(group.length, e._count ?? 0);
-      if (count > 1 || e.sectionIndex !== undefined) {
+      // Sans `coursId` ni `sectionCount` sur la fiche (cours supprime en gardant les fiches), le scan n'est plus un cours groupe.
+      if ((e.coursId || e._count !== undefined) && (count > 1 || e.sectionIndex !== undefined)) {
         e.sectionIndex = e.sectionIndex ?? k;
         e.sectionCount = Math.min(MAX_SECTIONS, count);
         e.docIds = group.map((g) => g.docId!).slice(0, MAX_SECTIONS);

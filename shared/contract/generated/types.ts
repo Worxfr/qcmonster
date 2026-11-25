@@ -587,7 +587,7 @@ export interface components {
             message?: string;
         };
         ScanSummary: {
-            /** @description Etat precis du job (distingue rejete, echec, expire; un job annule est `rejete` avec le message « Annule par l'eleve »). Une fiche dont le job a expire est `termine`. */
+            /** @description Etat precis du job (distingue rejete, echec, expire). Un job annule par l eleve n est pas liste. Une fiche dont le job a expire est `termine`. */
             state: components["schemas"]["JobState"];
             /** @description = jobId. Pour une fiche ancienne dont le job a expire: jobId de la fiche, ou docId si elle n'en a pas */
             scanId: string;

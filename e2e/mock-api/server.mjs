@@ -98,6 +98,7 @@ function listScans(q) {
   let items = [];
   for (const j of S.jobs) {
     advance(j);
+    if (j.state === 'rejete' && /^annul/i.test(j.message ?? '')) continue; // comme l'API: un scan annule n'est pas liste
     if (j.state === 'termine') items.push(...S.docs.filter((d) => d.jobId === j.jobId).map((d) => scanItem(j, d)));
     else items.push(scanItem(j));
   }
