@@ -1507,7 +1507,7 @@ export interface operations {
                      *       "state": "rejete",
                      *       "pages": 2,
                      *       "createdAt": "2026-12-01T10:00:00Z",
-                     *       "message": "Annule par l'eleve"
+                     *       "message": "Annulé par l'élève"
                      *     }
                      */
                     "application/json": components["schemas"]["Job"];
@@ -1885,7 +1885,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "code": "dossier_nom_pris",
-                     *       "message": "Tu as deja un dossier avec ce nom"
+                     *       "message": "Tu as déjà un dossier avec ce nom"
                      *     }
                      */
                     "application/json": components["schemas"]["Error"];
@@ -1964,7 +1964,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "code": "dossier_nom_pris",
-                     *       "message": "Tu as deja un dossier avec ce nom"
+                     *       "message": "Tu as déjà un dossier avec ce nom"
                      *     }
                      */
                     "application/json": components["schemas"]["Error"];
