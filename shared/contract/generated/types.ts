@@ -26,6 +26,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scans/{scanId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * L'eleve supprime un scan non confirme, a tout moment (handler scans-delete)
+         * @description `scanId` = `jobId`. Eleve proprietaire seulement: le parent repond 403, un scan d'un autre eleve (ou d'une autre famille) 404.
+         *     Autorise tant que le scan n'est pas confirme: envoi, lecture, `a_confirmer`, et scans en echec ou expires encore listes. Efface la photo et le texte de travail, rend les pages du quota UNE seule fois (une suppression rejouee ne rend rien de plus), libere la machine de traitement (jeton d'envoi ou de confirmation): une confirmation tardive repond 409 et ne cree aucune fiche.
+         *     Un scan deja supprime ou annule repond 404 (idempotent: rien n'est rendu une seconde fois). Un scan confirme (verification, generation) repond 409 `etat_invalide`; un scan termine se supprime par ses fiches (`DELETE /docs/{docId}`).
+         */
+        delete: operations["deleteScan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{jobId}": {
         parameters: {
             query?: never;
@@ -1110,6 +1132,7 @@ export interface components {
         };
     };
     parameters: {
+        ScanId: string;
         JobId: string;
         DocId: string;
         CoursId: string;
@@ -1317,6 +1340,29 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             429: components["responses"]["QuotaExceeded"];
+        };
+    };
+    deleteScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scanId: components["parameters"]["ScanId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Supprime */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getJob: {

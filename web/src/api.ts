@@ -53,6 +53,7 @@ export const api = {
   confirm: (id: string, corrections: Sentence[], extra: { sections?: ConfirmSection[]; subject?: Subject; topic?: string; folderId?: string } = {}) =>
     call<Job>('POST', `/jobs/${e(id)}/confirm`, { corrections, ...extra }),
   cancel: (id: string) => call<Job>('POST', `/jobs/${e(id)}/cancel`),
+  deleteScan: (id: string) => call<void>('DELETE', `/scans/${e(id)}`),
   docs: () => call<{ items: DocSummary[] }>('GET', '/docs'),
   doc: (id: string) => call<Doc>('GET', `/docs/${e(id)}`),
   deleteDoc: (id: string) => call<void>('DELETE', `/docs/${e(id)}`),

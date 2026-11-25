@@ -78,7 +78,9 @@ test.describe('Parcours d\'erreur', () => {
     // le compteur est relu tout de suite après l'annulation
     if (isMock) await expect(page.getByRole('status').filter({ hasText: 'Il te reste 20 pages' })).toBeVisible();
     // le scan annulé n'est plus listé
-    await page.goto('/#/docs?status=echec');
-    await expect(page.getByText('Aucun cours ne correspond.')).toBeVisible({ timeout: SLOW });
+    await page.goto('/#/docs');
+    await expect(page.getByText('Scanne ton premier cours !')).toBeVisible({ timeout: SLOW });
+    await page.goto('/#/scan');
+    await expect(page.getByRole('region', { name: 'Mes scans en cours' })).toHaveCount(0);
   });
 });

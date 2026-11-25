@@ -425,14 +425,34 @@ describe('liste Mes cours', () => {
     await waitFor(() => expect(calls.find((c) => c.url.endsWith('/folders/F1/scans'))?.body).toEqual({ docIds: ['D1', 'D2'] }));
   });
 
-  it('bandeau En cours avec 429 toléré; scan en échec lisible', async () => {
-    routes['GET /scans*'] = (c) => (c.url.includes('status=en_cours')
-      ? json(list([{ ...scan(3), state: 'a_confirmer', docId: undefined, title: undefined, status: status('a_confirmer', { expiresAt: new Date(Date.now() + 3 * 3600e3).toISOString() }) }]))
-      : json(list([scan(4, { state: 'echec', title: 'Raté', status: status('echec', { message: 'Le texte est trop court' }) })], { inProgress: 1 })));
+  it('Mes cours ne demande que les scans terminés (jamais en cours, à relire ni ratés)', async () => {
+    routes['GET /scans*'] = () => json(list([scan(1)]));
     await open('#/docs');
-    expect(await screen.findByRole('region', { name: 'En cours' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Vérifier/ })).toBeInTheDocument();
-    expect(screen.getByText('Le texte est trop court')).toBeInTheDocument();
+    expect(await screen.findByText('Fiche 1')).toBeInTheDocument();
+    const urls = calls.filter((c) => c.url.includes('/scans?')).map((c) => c.url);
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) expect(u).toContain('status=termine');
+    expect(screen.queryByRole('region', { name: /En cours/ })).toBeNull();
+  });
+
+  it('Scanner: scans en cours, à relire et ratés; suppression avec confirmation, 404 toléré', async () => {
+    let gone = false;
+    routes['GET /scans*'] = (c) => json(list(gone ? [] : c.url.includes('status=en_cours')
+      ? [{ ...scan(3), scanId: 'S3', state: 'a_confirmer', docId: undefined, title: 'À relire', status: status('a_confirmer', { expiresAt: new Date(Date.now() + 3 * 3600e3).toISOString() }) }]
+      : [scan(4, { scanId: 'S4', state: 'echec', docId: undefined, title: 'Raté', status: status('echec', { message: 'Le texte est trop court' }) })]));
+    routes['DELETE /scans/S4'] = () => { gone = true; return new Response(null, { status: 204 }); };
+    await open('#/scan');
+    const box = await screen.findByRole('region', { name: 'Mes scans en cours' });
+    expect(within(box).getByText('Le texte est trop court')).toBeInTheDocument();
+    expect(within(box).getByRole('button', { name: /Vérifier/ })).toBeInTheDocument();
+    await userEvent.click(within(box).getAllByRole('button', { name: /Supprimer/ })[1]);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false); // rien avant la confirmation
+    await userEvent.click(within(box).getByRole('button', { name: 'Non, garder' }));
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    await userEvent.click(within(box).getAllByRole('button', { name: /Supprimer/ })[1]);
+    await userEvent.click(within(box).getByRole('button', { name: 'Oui, supprimer' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith('/scans/S4'))).toBe(true));
+    await waitFor(() => expect(screen.queryByText('Le texte est trop court')).toBeNull());
   });
 
   it('parent: lecture seule, aucune sélection ni lien vers le texte', async () => {

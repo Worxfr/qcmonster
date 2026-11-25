@@ -46,6 +46,7 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'GET /jobs/{jobId}/transcription', handler: 'jobs-transcription', owner: 'pipeline' },
   { route: 'POST /jobs/{jobId}/confirm', handler: 'jobs-confirm', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
   { route: 'POST /jobs/{jobId}/cancel', handler: 'jobs-cancel', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
+  { route: 'DELETE /scans/{scanId}', handler: 'scans-delete', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
   { route: 'GET /docs', handler: 'docs-read', owner: 'pipeline' },
   { route: 'GET /docs/{docId}', handler: 'docs-read', owner: 'pipeline' },
   { route: 'DELETE /docs/{docId}', handler: 'docs-delete', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
@@ -88,7 +89,7 @@ export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A'> = {
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3',
   'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-mark-read': 'L3', 'family-create': 'L3', 'admin-invitations': 'L3',
-  'scans-list': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A', 'cours-delete': 'FEAT-A',
+  'scans-list': 'FEAT-A', 'scans-delete': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A', 'cours-delete': 'FEAT-A',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */

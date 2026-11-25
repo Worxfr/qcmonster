@@ -70,6 +70,7 @@ export const API_FUNCTIONS = {
   'jobs-transcription': 'jobsTranscriptionHandler',
   'jobs-confirm': 'jobsConfirmHandler',
   'jobs-cancel': 'jobsCancelHandler',
+  'scans-delete': 'scansDeleteHandler',
   'docs-read': 'docsReadHandler',
   'docs-delete': 'docsDeleteHandler',
   'docs-report': 'docsReportHandler',
@@ -246,7 +247,7 @@ export class PipelineStack extends Stack {
     };
 
     const apiRoleOf: Record<keyof typeof API_FUNCTIONS, iam.Role> = {
-      'scans-create': writeRole, 'jobs-confirm': confirmRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
+      'scans-create': writeRole, 'jobs-confirm': confirmRole, 'scans-delete': confirmRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
       'jobs-get': readRole, 'jobs-transcription': readRole, 'docs-read': readRole,
       'docs-delete': deleteRole,
       'scans-list': listRole,
