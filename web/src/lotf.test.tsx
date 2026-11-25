@@ -262,9 +262,33 @@ describe('découper en sections', () => {
     await userEvent.type(await screen.findByLabelText('Phrase 1'), ' ajout');
     expect(sessionStorage.getItem('qcm.confirm.J1')).not.toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Annuler et récupérer mes pages' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Oui, annuler le scan' }));
     expect(await screen.findByText('Annulé')).toBeInTheDocument();
     expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull();
     expect(sessionStorage.getItem('qcm.confirm.sections.J1')).toBeNull();
+  });
+
+  it("FIX-T4 B1: un premier clic sur « Annuler » demande confirmation et n'annule rien; « Non » garde le scan", async () => {
+    review({ pages: [{ sentences: [sn(1, 1)] }], subject: 'svt' });
+    routes['POST /jobs/J1/cancel'] = () => json({ jobId: 'J1', state: 'rejete', pages: 1, createdAt: T0, status: status('echec', { message: "Annulé par l'élève" }) });
+    await open('#/job/J1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler et récupérer mes pages' }));
+    expect(screen.getByText(/La lecture déjà faite sera perdue/)).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith('/jobs/J1/cancel'))).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Non, continuer' }));
+    expect(screen.getByRole('button', { name: 'Annuler et récupérer mes pages' })).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith('/jobs/J1/cancel'))).toBe(false);
+  });
+
+  it("FIX-T4: après l'annulation, le compteur de pages est relu", async () => {
+    review({ pages: [{ sentences: [sn(1, 1)] }], subject: 'svt' });
+    routes['POST /jobs/J1/cancel'] = () => json({ jobId: 'J1', state: 'rejete', pages: 1, createdAt: T0, status: status('echec', { message: "Annulé par l'élève" }) });
+    await open('#/job/J1');
+    const before = calls.filter((c) => c.url.endsWith('/me/progress')).length;
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler et récupérer mes pages' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Oui, annuler le scan' }));
+    await screen.findByText('Annulé');
+    await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/me/progress')).length).toBeGreaterThan(before));
   });
 
   it('un scan expiré efface le texte gardé dans l\'onglet', async () => {

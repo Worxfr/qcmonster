@@ -199,3 +199,5 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 .btn-small { min-height: 44px; }
 .pick-hit { display: grid; place-items: center; min-width: 48px; min-height: 48px; flex: none; cursor: pointer; }
 .pick-hit .pick { margin: 0; }
+.claim .link { margin-right: 1rem; }
+.cancel-ask { scroll-margin-bottom: 6rem; }

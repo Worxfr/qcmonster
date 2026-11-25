@@ -32,8 +32,10 @@ export function Quiz({ docId }: { docId: string }) {
     return (
       <Card title="Bravo !">
         <p role="status">{good} bonne{good > 1 ? 's' : ''} réponse{good > 1 ? 's' : ''} sur {qs.length}, +{xp} XP.</p>
-        <button className="btn" onClick={() => go('/jeu')}>Voir ma progression</button>
-        <button className="btn btn-ghost" onClick={() => go(`/doc/${encodeURIComponent(docId)}`)}>Retour à la fiche</button>
+        <div className="btn-row">
+          <button className="btn" onClick={() => go('/jeu')}>Voir ma progression</button>
+          <button className="btn btn-ghost" onClick={() => go(`/doc/${encodeURIComponent(docId)}`)}>Retour à la fiche</button>
+        </div>
       </Card>
     );
   }

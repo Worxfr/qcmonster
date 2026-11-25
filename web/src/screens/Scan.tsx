@@ -85,6 +85,7 @@ export function Scan() {
       const uploads = scan.uploads ?? [{ page: 1, ...scan.upload }];
       if (uploads.length < pages.length) {
         await api.cancel(jobId).catch(() => undefined);
+        void refreshProgress();
         throw new Error('Le serveur ne prend encore qu\'une page à la fois. Garde une seule photo.');
       }
       await uploadAll(uploads, pages.map((p) => p.file), setSent).catch(async () => {

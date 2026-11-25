@@ -872,7 +872,7 @@ components:
       type: object
       required: [scanId, studentId, state, pages, createdAt, status]
       properties:
-        state: { $ref: '#/components/schemas/JobState', description: "Etat precis du job (distingue rejete, echec, expire; un job annule est `rejete` avec le message « Annule par l'eleve »). Une fiche dont le job a expire est `termine`." }
+        state: { $ref: '#/components/schemas/JobState', description: "Etat precis du job (distingue rejete, echec, expire). Un job annule par l eleve n est pas liste. Une fiche dont le job a expire est `termine`." }
         scanId: { type: string, description: "= jobId. Pour une fiche ancienne dont le job a expire: jobId de la fiche, ou docId si elle n'en a pas" }
         studentId: { type: string }
         docId: { type: string, description: Present quand la fiche existe (etape termine) }

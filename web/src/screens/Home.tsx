@@ -67,7 +67,7 @@ export function Home() {
           {docs.data?.items.map((d) => (
             <li key={`${d.scanId}-${d.docId ?? ''}`}>
               <a className="row-link" href={d.docId ? `#/doc/${encodeURIComponent(d.docId)}` : `#/job/${encodeURIComponent(d.scanId)}`}>
-                <span className="grow"><strong>{d.title ?? 'Cours en lecture…'}</strong><br /><span className="muted">{d.subject && <span className={subjectClass(d.subject)}>{subjectLabel(d.subject)}</span>} {fmtDay(d.createdAt)}</span></span>
+                <span className="grow"><strong>{d.title ?? (d.status.stage === 'echec' ? 'Cours sans titre' : 'Cours en lecture…')}</strong><br /><span className="muted">{d.status.stage === 'echec' ? <span className="pill pill-warn">Pas réussi</span> : d.subject && <span className={subjectClass(d.subject)}>{subjectLabel(d.subject)}</span>} {fmtDay(d.createdAt)}</span></span>
                 <span aria-hidden="true">›</span>
               </a>
             </li>
