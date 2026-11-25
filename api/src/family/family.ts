@@ -49,7 +49,8 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
   for (const s of await deps.store.query(fam, 'STUDENT#')) {
     const sid = s.SK.slice('STUDENT#'.length);
     const part = await deps.store.query(`STUDENT#${sid}`);
-    const { PK: _pk, SK: _sk, v: _v, ...profile } = part.find((i) => i.SK === 'PROFILE') ?? ({ PK: '', SK: '' } as Item);
+    const profile: Record<string, unknown> = { ...part.find((i) => i.SK === 'PROFILE') };
+    for (const k of ['PK', 'SK', 'v']) delete profile[k];
     const c = consent(s);
     students.push({
       ...studentView(s),

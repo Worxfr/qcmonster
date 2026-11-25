@@ -36,11 +36,24 @@ describe('Pipeline (L2a)', () => {
       it('seul le role de traitement peut appeler Bedrock, et il est dans processingRoleNames', () => {
         expect(processingRoleNames(env)).toContain(`qcm-${env}-pipeline-role`);
         const roles = Object.values(t.findResources('AWS::IAM::Role')).map((r) => (r as { Properties: { RoleName?: string } }).Properties.RoleName).filter(Boolean); // la machine d'etats a son role genere (sans Bedrock)
-        expect(roles.sort()).toEqual([`qcm-${env}-pipeline-api-role`, `qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`].sort());
+        expect(roles.sort()).toEqual([`qcm-${env}-pipeline-api-read-role`, `qcm-${env}-pipeline-api-write-role`, `qcm-${env}-pipeline-api-delete-role`, `qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`].sort());
         const bedrock = (re: RegExp) => actions(statements(t, re)).filter((a) => a.startsWith('bedrock:'));
-        expect(bedrock(/pipelineapirole/i)).toEqual([]);
+        expect(bedrock(/pipelineapi/i)).toEqual([]);
         expect(bedrock(/pipelinetriggerrole/i)).toEqual([]);
         expect([...new Set(bedrock(/^pipelinerole/i))]).toEqual(['bedrock:InvokeModel']);
+      });
+      it('C2: roles API separes lecture/ecriture/suppression, DynamoDB limite par LeadingKeys, sans droit superflu', () => {
+        const writes = /Put|Update|Delete|BatchWrite/;
+        const read = actions(statements(t, /pipelineapiread/i));
+        expect(read.filter((a) => (/^(dynamodb|s3):/.test(a) && writes.test(a)) || a.startsWith('states:'))).toEqual([]);
+        const del = actions(statements(t, /pipelineapidelete/i));
+        expect(del.filter((a) => /^(s3|states|bedrock):/.test(a) || /PutItem|UpdateItem/.test(a))).toEqual([]);
+        expect(actions(statements(t, /pipelineapiwrite/i))).not.toContain('dynamodb:DeleteItem');
+        for (const re of [/pipelineapiread/i, /pipelineapiwrite/i, /pipelineapidelete/i]) {
+          const d = statements(t, re).filter((x) => [x.Action].flat().some((a) => a.startsWith('dynamodb:')));
+          expect(d.length).toBeGreaterThan(0);
+          for (const st of d) expect(JSON.stringify((st as unknown as { Condition: unknown }).Condition)).toContain('dynamodb:LeadingKeys');
+        }
       });
       it('aucune action avec joker, pas de s3:PutObject hors role API', () => {
         const all = (Object.values(t.findResources('AWS::IAM::Policy')) as Pol[]).flatMap((p) => p.Properties.PolicyDocument.Statement);

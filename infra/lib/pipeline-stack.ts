@@ -95,20 +95,34 @@ export class PipelineStack extends Stack {
 
     // --- Roles de moindre privilege. Seul `pipeline-role` appelle Bedrock (liste `processingRoleNames`, action du budget securite-40).
     const mkRole = (name: string) => new iam.Role(this, name, { roleName: `qcm-${envName}-${name}`, assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') });
-    const apiRole = mkRole('pipeline-api-role');
+    // C2: trois roles pour les 8 fonctions HTTP (lecture, ecriture, suppression), comme game-stack.
+    const readRole = mkRole('pipeline-api-read-role');
+    const writeRole = mkRole('pipeline-api-write-role');
+    const deleteRole = mkRole('pipeline-api-delete-role');
     const triggerRole = mkRole('pipeline-trigger-role');
     const procRole = mkRole('pipeline-role');
     const ddb = (actions: string[]) => new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`] });
     const rw = ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:BatchWriteItem'];
+    // Les fonctions HTTP ne touchent que ces partitions (famille, eleve, fiche, job): `dynamodb:LeadingKeys` ecarte COST#, INVITE#, ACTIVATION#, PASSAGE#...
+    // shortcut: IAM filtre la cle de partition, pas la cle de tri; le code et ses tests restent la garde des types d'elements. A resserrer si les partitions changent.
+    const ddbApi = (actions: string[]) =>
+      new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`], conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['FAMILY#*', 'STUDENT#*', 'DOC#*', 'JOB#*'] } } });
     const objects = `${bucketArn}/${SCAN_EVENT_PREFIX}*`;
     const listScans = new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [bucketArn], conditions: { StringLike: { 's3:prefix': [`${SCAN_EVENT_PREFIX}*`] } } });
     const sendTask = new iam.PolicyStatement({ actions: ['states:SendTaskSuccess', 'states:SendTaskFailure'], resources: ['*'] }); // l'API n'accepte pas de ressource
     // API: lit/ecrit la table, signe les POST (PutObject), lit et supprime les photos, demarre et reprend la machine.
-    apiRole.addToPolicy(ddb(rw));
-    apiRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'], resources: [objects] }));
-    apiRole.addToPolicy(listScans);
-    apiRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [smArn] }));
-    apiRole.addToPolicy(sendTask);
+    // Lecture (jobs-get, jobs-transcription, docs-read): lit la table, liste et signe la lecture des photos. Rien d'autre.
+    readRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query']));
+    readRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [objects] }));
+    readRole.addToPolicy(listScans);
+    // Ecriture (scans-create, jobs-confirm, jobs-cancel, docs-report): ecrit des elements, signe le depot (PutObject), efface les photos d'un job annule, pilote la machine.
+    writeRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem']));
+    writeRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [objects] }));
+    writeRole.addToPolicy(listScans);
+    writeRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [smArn] }));
+    writeRole.addToPolicy(sendTask);
+    // Suppression (docs-delete): lit pour verifier l'appartenance, supprime la fiche et le texte lu. Aucune photo, aucune ecriture.
+    deleteRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem']));
     // Declencheur S3: compte les fichiers recus, lit le job, reprend la machine.
     triggerRole.addToPolicy(ddb(['dynamodb:GetItem', 'dynamodb:UpdateItem']));
     triggerRole.addToPolicy(sendTask);
@@ -157,7 +171,12 @@ export class PipelineStack extends Stack {
       });
     };
 
-    const apiFns = Object.entries(API_FUNCTIONS).map(([name, exp]) => mk(name, exp, apiRole));
+    const apiRoleOf: Record<keyof typeof API_FUNCTIONS, iam.Role> = {
+      'scans-create': writeRole, 'jobs-confirm': writeRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
+      'jobs-get': readRole, 'jobs-transcription': readRole, 'docs-read': readRole,
+      'docs-delete': deleteRole,
+    };
+    const apiFns = (Object.entries(API_FUNCTIONS) as [keyof typeof API_FUNCTIONS, string][]).map(([name, exp]) => mk(name, exp, apiRoleOf[name]));
     for (const f of apiFns) {
       f.addPermission('ApiGateway', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: this.formatArn({ service: 'execute-api', resource: apiId, resourceName: '*/*' }) });
     }
