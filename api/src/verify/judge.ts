@@ -19,11 +19,12 @@ Pour chaque affirmation, choisis:
 - "verifiee": un passage la soutient clairement;
 - "erreur": un passage la contredit explicitement;
 - "non_verifiable": sinon (passage absent, hors sujet, ambigu).
+Si un passage traite du MEME fait precis (meme sujet, meme evenement) et donne une autre valeur (date, nombre, lieu, nom, nature), l'affirmation est une "erreur" meme si le passage ne la nie pas en toutes lettres. Un passage sur un autre sujet ou un autre evenement ne prouve rien.
 Pour verifiee et erreur, donne dans "citations" l'identifiant du passage et la citation EXACTE copiee du passage (une phrase, sans la modifier). N'invente aucun identifiant. Pas d'URL.
 Reponds par le SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code, sans commentaire. Un verdict par affirmation, dans l'ordre: {"verdicts":[{"id":"C1","verdict":"verifiee","citations":[{"passage":"P1","citation":"..."}]}]}`;
 
 const SECOND_SYSTEM = `Seconde lecture independante. ${DATA_NOTICE}
-Pour chaque affirmation, dis seulement si les passages la CONTREDISENT explicitement ("erreur"), la SOUTIENNENT clairement ("verifiee"), ou ni l'un ni l'autre ("non_verifiable"). Sois strict: un doute vaut "non_verifiable".
+Pour chaque affirmation, dis seulement si les passages la CONTREDISENT explicitement ("erreur"), la SOUTIENNENT clairement ("verifiee"), ou ni l'un ni l'autre ("non_verifiable"). Sois strict: un doute vaut "non_verifiable". Une autre valeur (date, nombre, lieu, nom) donnee par un passage pour le MEME fait precis est une contradiction explicite.
 Recopie la phrase exacte du passage qui justifie ta reponse dans "citations". Pas d'URL.
 Reponds par le SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code, sans commentaire. Un verdict par affirmation, dans l'ordre: {"verdicts":[{"id":"C1","verdict":"erreur","citations":[{"passage":"P2","citation":"..."}]}]}`;
 
