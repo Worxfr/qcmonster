@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.2.0
+  version: 1.3.0
   description: |
-    Contrat d'API QCMonster (contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -17,6 +17,8 @@ tags:
   - { name: game }
   - { name: family }
   - { name: admin }
+  - { name: folders }
+  - { name: cours }
 paths:
   /scans:
     post:
@@ -28,10 +30,12 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ScanCreateRequest' }
-            example: { pages: 2, contentType: image/jpeg }
+            example: { pages: 2, contentType: image/jpeg, contentTypes: [image/jpeg, image/png], folderId: 01JEXAMPLE0FLD0000000000AA }
       responses:
         '201':
-          description: Job cree
+          description: |
+            Job cree. **Une page = une photo = une URL pre-signee** (`uploads`, dans l'ordre des pages). Les `pages` sont reservees toutes ensemble
+            (tout ou rien, `429` sinon) et rendues si le job echoue, est annule ou expire. Le traitement demarre quand les `pages` fichiers sont arrives.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ScanCreateResponse' }
@@ -39,9 +43,16 @@ paths:
                 jobId: 01JEXAMPLE0JOB0000000000AA
                 upload:
                   url: https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/
-                  fields: { key: scans/01JEXAMPLE0JOB0000000000AA/0, Content-Type: image/jpeg }
+                  fields: { key: scans/01JEXAMPLE0STU0000000000AA/01JEXAMPLE0JOB0000000000AA/0, Content-Type: image/jpeg }
+                uploads:
+                  - page: 1
+                    url: https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/
+                    fields: { key: scans/01JEXAMPLE0STU0000000000AA/01JEXAMPLE0JOB0000000000AA/0, Content-Type: image/jpeg }
+                  - page: 2
+                    url: https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/
+                    fields: { key: scans/01JEXAMPLE0STU0000000000AA/01JEXAMPLE0JOB0000000000AA/1, Content-Type: image/png }
                 expiresAt: '2026-12-01T10:15:00Z'
-                pagesRemaining: 18
+                pagesRemaining: 16
         '400':
           description: |
             Requete invalide. **PDF refuse en v1**: `contentType: application/pdf` (valeur encore listee dans l'enum, reservee a une version suivante) repond 400 `requete_invalide`
@@ -52,12 +63,77 @@ paths:
               examples:
                 pdf: { summary: PDF non pris en charge en v1, value: { code: requete_invalide, message: 'Les PDF ne sont pas encore pris en charge: envoie des photos' } }
                 champ: { summary: Champ manquant ou hors limites, value: { code: requete_invalide, message: Demande invalide } }
+                types: { summary: "`contentTypes` n'a pas `pages` elements", value: { code: requete_invalide, message: Demande invalide } }
+        '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/QuotaExceeded' }
+    get:
+      operationId: listScans
+      tags: [scans]
+      summary: Liste des scans de l'eleve (en cours, termines, en echec), filtrable et triable (handler scans-list)
+      description: |
+        Un scan = un job (`scanId` = `jobId`). La liste reunit les jobs encore presents (7 jours) et les fiches (sans limite de duree): un scan termine dont le job a expire reste liste, avec `status.stage: termine`.
+        **Eleve**: voit uniquement ses scans. **Parent**: voit ceux de ses eleves (tous, ou un seul avec `studentId`; un eleve d'une autre famille repond 404). Lecture seule pour le parent.
+        Les filtres se combinent (ET). `facets` et `inProgress` portent sur tous les scans visibles, sans les filtres, pour construire les menus.
+        **Scans a relire**: un scan `a_confirmer` reste ouvert jusqu'a `status.expiresAt` (12 h apres la fin de la lecture). L'eleve le reprend par `scanId` (= `jobId`) avec `GET /jobs/{jobId}/transcription` puis `POST /jobs/{jobId}/confirm`, depuis n'importe quel appareil connecte au meme compte, apres rechargement ou changement d'ecran: le front n'a rien a retenir. `toReview` compte ces scans, `status=a_confirmer` les liste, `sort=date&order=asc` donne en premier le plus ancien (le plus proche de l'expiration). Passe l'echeance, le scan devient `echec` (`Job.state: expire`) avec un message lisible, visible 7 jours.
+        Le front interroge cette route toutes les 3 s tant qu'un scan est `en_cours` (voir docs/scan-screens.md), sans nouvelle ressource AWS.
+        Aucun texte de cours dans la reponse, sauf le titre et le sujet (courts, `title` et `topic`). Le parent voit donc l'etape, les pages, le titre et le sujet des scans de ses eleves, y compris en cours, jamais le texte lu.
+      parameters:
+        - { name: studentId, in: query, required: false, description: "Parent seulement: un eleve de la famille. Un eleve qui passe un identifiant, le sien excepte, recoit 404 (comme un parent dont l'eleve n'est pas de sa famille: jamais de 403 qui confirmerait l'existence).", schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: subject, in: query, required: false, description: "Matiere, ou `none` pour les scans sans matiere (job en cours de lecture)", schema: { type: string, enum: [maths, physique, svt, histoire_geo, francais, autre, none] } }
+        - { name: topic, in: query, required: false, description: "Sujet, comparaison sans casse ni accents (egalite exacte apres normalisation)", schema: { type: string, minLength: 1, maxLength: 80 } }
+        - { name: folderId, in: query, required: false, description: "Un dossier de l'eleve, ou `none` pour les scans hors dossier. Un dossier inconnu (ou d'un autre eleve) repond 404.", schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: status, in: query, required: false, description: "`en_cours` = tout ce qui n'est pas termine ni en echec (y compris `a_confirmer`)", schema: { type: string, enum: [en_cours, a_confirmer, termine, echec] } }
+        - { name: sort, in: query, required: false, description: "Tri principal (defaut `date`). `subject` puis `topic` puis date; `topic` puis date; `status` = ordre des etapes. Les valeurs absentes passent en dernier.", schema: { type: string, enum: [date, subject, topic, status], default: date } }
+        - { name: order, in: query, required: false, description: "Sens du tri principal. Defaut selon `sort`: `desc` pour `date` et `status`, `asc` pour `subject` et `topic`. A egalite, la date decroissante departage toujours.", schema: { type: string, enum: [asc, desc] } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: cursor, in: query, required: false, description: "Valeur opaque `nextCursor` de la page precedente. Valable seulement avec les memes filtres et le meme tri; sinon la page peut avoir des doublons ou des trous. Un curseur invalide repond 400.", schema: { type: string, maxLength: 200 } }
+      responses:
+        '200':
+          description: Scans
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanList' }
+              example:
+                items:
+                  - scanId: 01JEXAMPLE0JOB0000000000AA
+                    studentId: 01JEXAMPLE0STU0000000000AA
+                    state: termine
+                    docId: 01JEXAMPLE0DOC0000000000AA
+                    title: La Revolution francaise
+                    subject: histoire_geo
+                    topic: La Revolution francaise
+                    folderId: 01JEXAMPLE0FLD0000000000AA
+                    pages: 2
+                    createdAt: '2026-12-01T10:00:00Z'
+                    status: { stage: termine, pagesDone: 2, pagesTotal: 2, startedAt: '2026-12-01T10:00:00Z', finishedAt: '2026-12-01T10:03:00Z' }
+                  - scanId: 01JEXAMPLE0JOB0000000000AB
+                    studentId: 01JEXAMPLE0STU0000000000AA
+                    state: transcription
+                    pages: 3
+                    createdAt: '2026-12-01T11:00:00Z'
+                    status: { stage: lecture, pagesDone: 1, pagesTotal: 3, startedAt: '2026-12-01T11:00:00Z' }
+                  - scanId: 01JEXAMPLE0JOB0000000000AC
+                    studentId: 01JEXAMPLE0STU0000000000AA
+                    state: a_confirmer
+                    subject: svt
+                    topic: La photosynthese
+                    pages: 1
+                    createdAt: '2026-12-01T09:00:00Z'
+                    status: { stage: a_confirmer, pagesDone: 1, pagesTotal: 1, startedAt: '2026-12-01T09:00:00Z', expiresAt: '2026-12-01T21:00:00Z', expiresSoon: false }
+                inProgress: 2
+                toReview: 1
+                facets:
+                  subjects: [{ subject: histoire_geo, count: 1 }]
+                  topics: [{ topic: La Revolution francaise, count: 1 }]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /jobs/{jobId}:
     get:
       operationId: getJob
       tags: [scans]
-      summary: Etat du traitement (handler jobs-get, L2a)
+      summary: Etat du traitement; `status` donne l'etape, les pages traitees et le message d'echec (handler jobs-get, L2a)
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       responses:
         '200':
@@ -70,12 +146,14 @@ paths:
                 state: transcription
                 pages: 2
                 createdAt: '2026-12-01T10:00:00Z'
+                status: { stage: lecture, pagesDone: 1, pagesTotal: 2, startedAt: '2026-12-01T10:00:00Z' }
         '404': { $ref: '#/components/responses/NotFound' }
   /jobs/{jobId}/transcription:
     get:
       operationId: getTranscription
       tags: [scans]
       summary: Texte numerote et URL pre-signee de lecture de la photo, 5 min (handler jobs-transcription, L2a)
+      description: "Appelable autant de fois que voulu, depuis n'importe quel appareil de l'eleve, tant que le job est `a_confirmer` (jusqu'a `status.expiresAt`). Les URL de photo sont re-signees a chaque appel. Apres l'echeance: 409 `etat_invalide`."
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       responses:
         '200':
@@ -90,6 +168,12 @@ paths:
                   - page: 1
                     sentences:
                       - { id: p1-s1, text: La photosynthese produit du dioxygene. }
+                      - { id: p1-s2, text: 'Les plantes vertes utilisent la lumiere du soleil pour fabriquer leur matiere a partir du gaz carbonique de l''air.', pages: [1, 2] }
+                  - page: 2
+                    sentences:
+                      - { id: p2-s2, text: Ce phenomene a lieu dans les chloroplastes. }
+                suggestedSubject: svt
+                suggestedTopic: La photosynthese
                 photoUrls: ['https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/0?X-Amz-Signature=example']
                 photoUrlsExpireAt: '2026-12-01T10:05:00Z'
         '404': { $ref: '#/components/responses/NotFound' }
@@ -98,14 +182,23 @@ paths:
     post:
       operationId: confirmJob
       tags: [scans]
-      summary: Texte corrige, reprend le workflow (handler jobs-confirm, L2a)
+      summary: Texte corrige, decoupage en sections, reprend le workflow (handler jobs-confirm, L2a)
+      description: |
+        `corrections` remplace le texte de phrases existantes. **`sections` (v1.3)** decoupe le texte en sections par sujet: chaque section non ignoree devient UNE fiche (matiere, sujet, titre, dossier propres; extraction, verification et QCM sur son seul texte). Le cours complet corrige est conserve (voir `Cours`); la photo est supprimee a la confirmation comme avant.
+        Une section commence a la phrase `fromSentenceId` et va jusqu'a la phrase qui precede la section suivante (ou la fin). Les coupes tombent entre deux phrases, sur une page ou a cheval sur deux (une phrase recollee sur deux pages ne se coupe pas). `ignore: true` garde le texte dans le cours mais ne cree pas de fiche (par exemple la fin d'un autre chapitre).
+        Sans `sections` (client 1.2: `{ corrections: [...] }`, ou avec `subject`, `topic`, `folderId`): une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). **Replis (client 1.2 sans matiere)**: matiere = `suggestedSubject`, sinon `draftSubject` du job, sinon `autre`, jamais un 400. Un `folderId` absent prend celui donne a la creation du scan (`POST /scans`). `sections` et `subject`/`topic`/`folderId` ensemble: 400. **Avec `sections`, une section sans `folderId` herite du `folderId` du job** (creation ou confirmation precedente); `title` et `topic` sont nettoyes (espaces, chevrons, caracteres invisibles) par le serveur.
+        Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections **et au plus 2 par page du scan** (`min(6, 2 x pages)`: 2 pour 1 page, 4 pour 2, 6 des 3 pages); la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; le texte des sections non ignorees compte moins de 40 mots **au total** (seuil `MIN_WORDS` de la transcription; il s'applique a l'ensemble des sections retenues, jamais a chaque section: une petite section isolee reste acceptee); un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ConfirmRequest' }
-            example: { corrections: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }] }
+            example:
+              corrections: []
+              sections:
+                - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese }
+                - { fromSentenceId: p2-s2, subject: histoire_geo, topic: La Revolution francaise, folderId: 01JEXAMPLE0FLD0000000000AA }
       responses:
         '200':
           description: Job repris
@@ -117,6 +210,17 @@ paths:
                 state: verification
                 pages: 2
                 createdAt: '2026-12-01T10:00:00Z'
+        '400':
+          description: "Demande invalide. Cas propres aux sections: phrase inconnue, coupes pas dans l'ordre ou en double, premiere section pas au debut, plus de 6 sections, aucune section non ignoree, `sections` avec `subject`/`topic`/`folderId`, `topic` ou `title` vide apres nettoyage."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                inconnu: { summary: Identifiant inconnu, value: { code: requete_invalide, message: Phrase inconnue } }
+                ordre: { summary: Coupes dans le desordre ou en double, value: { code: requete_invalide, message: Les coupes doivent suivre l'ordre du texte } }
+                debut: { summary: Premiere section pas au debut, value: { code: requete_invalide, message: La premiere section doit commencer au debut du texte } }
+                rien: { summary: Tout ignore, value: { code: requete_invalide, message: Il faut au moins une fiche } }
+                court: { summary: Moins de 40 mots retenus, value: { code: requete_invalide, message: Il faut au moins 40 mots dans les parties gardees } }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /jobs/{jobId}/cancel:
@@ -152,7 +256,7 @@ paths:
               schema: { $ref: '#/components/schemas/DocList' }
               example:
                 items:
-                  - { docId: 01JEXAMPLE0DOC0000000000AA, title: La photosynthese, subject: svt, createdAt: '2026-12-01T10:03:00Z' }
+                  - { docId: 01JEXAMPLE0DOC0000000000AA, title: La photosynthese, subject: svt, createdAt: '2026-12-01T10:03:00Z', topic: La photosynthese, folderId: 01JEXAMPLE0FLD0000000000AA }
   /docs/{docId}:
     get:
       operationId: getDoc
@@ -183,6 +287,27 @@ paths:
                         titre: Photosynthese
                         extrait: La photosynthese libere du dioxygene.
                         niveau: 2
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateDoc
+      tags: [docs]
+      summary: "L'eleve change la matiere et/ou le sujet de sa fiche (handler docs-patch). Le parent n'a pas ce droit (403)."
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocUpdateRequest' }
+            example: { subject: histoire_geo, topic: La Revolution francaise }
+      responses:
+        '200':
+          description: Fiche mise a jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocSummary' }
+              example: { docId: 01JEXAMPLE0DOC0000000000AA, title: La Revolution francaise, subject: histoire_geo, createdAt: '2026-12-01T10:03:00Z', topic: La Revolution francaise }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
       operationId: deleteDoc
@@ -251,6 +376,164 @@ paths:
                   - questionId: gap-01
                     kind: gap
                     prompt: La photosynthese produit du ____.
+        '404': { $ref: '#/components/responses/NotFound' }
+  /folders:
+    get:
+      operationId: listFolders
+      tags: [folders]
+      summary: "Dossiers de l'eleve avec le nombre de scans (handler folders-api). Parent: lecture des dossiers de ses eleves, `studentId` obligatoire."
+      parameters:
+        - { name: studentId, in: query, required: false, description: "Parent seulement (obligatoire pour lui); 404 si l'eleve n'est pas de sa famille", schema: { type: string, minLength: 1, maxLength: 64 } }
+      responses:
+        '200':
+          description: Dossiers, par nom croissant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FolderList' }
+              example:
+                items: [{ folderId: 01JEXAMPLE0FLD0000000000AA, name: Controle de juin, createdAt: '2026-12-01T09:00:00Z', scanCount: 3 }]
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createFolder
+      tags: [folders]
+      summary: "L'eleve cree un dossier (50 au plus, nom unique sans tenir compte de la casse ni des accents; handler folders-api)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderNameRequest' }
+            example: { name: Controle de juin }
+      responses:
+        '201':
+          description: Dossier cree
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+              example: { folderId: 01JEXAMPLE0FLD0000000000AA, name: Controle de juin, createdAt: '2026-12-01T09:00:00Z', scanCount: 0 }
+        '400':
+          description: "Requete invalide: nom vide apres nettoyage (`requete_invalide`) ou 50 dossiers atteints (`dossiers_limite`)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                limite: { summary: 50 dossiers, value: { code: dossiers_limite, message: Tu as atteint 50 dossiers } }
+                nom: { summary: Nom vide apres nettoyage, value: { code: requete_invalide, message: Demande invalide } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: "Nom de dossier deja pris (sans tenir compte de la casse ni des accents)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: dossier_nom_pris, message: Tu as deja un dossier avec ce nom }
+  /folders/{folderId}:
+    patch:
+      operationId: renameFolder
+      tags: [folders]
+      summary: "L'eleve renomme son dossier (handler folders-api)"
+      parameters: [{ $ref: '#/components/parameters/FolderId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderNameRequest' }
+            example: { name: Brevet blanc }
+      responses:
+        '200':
+          description: Dossier renomme
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+              example: { folderId: 01JEXAMPLE0FLD0000000000AA, name: Brevet blanc, createdAt: '2026-12-01T09:00:00Z', scanCount: 3 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "Nom de dossier deja pris (sans tenir compte de la casse ni des accents)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: dossier_nom_pris, message: Tu as deja un dossier avec ce nom }
+    delete:
+      operationId: deleteFolder
+      tags: [folders]
+      summary: "L'eleve supprime son dossier. Les scans qu'il contient ne sont PAS supprimes: ils sortent du dossier (handler folders-api)"
+      parameters: [{ $ref: '#/components/parameters/FolderId' }]
+      responses:
+        '204': { description: Supprime }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /folders/{folderId}/scans:
+    post:
+      operationId: addScansToFolder
+      tags: [folders]
+      summary: "Ajoute des fiches au dossier (selection multiple). Une fiche deja dans un autre dossier y est deplacee (un scan, 0 ou 1 dossier). Tout ou rien: un docId inconnu ou d'un autre eleve annule l'ensemble (404). Handler folders-api"
+      parameters: [{ $ref: '#/components/parameters/FolderId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderScansRequest' }
+            example: { docIds: [01JEXAMPLE0DOC0000000000AA, 01JEXAMPLE0DOC0000000000AB] }
+      responses:
+        '200':
+          description: Dossier mis a jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+              example: { folderId: 01JEXAMPLE0FLD0000000000AA, name: Controle de juin, createdAt: '2026-12-01T09:00:00Z', scanCount: 2 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /folders/{folderId}/scans/{docId}:
+    delete:
+      operationId: removeScanFromFolder
+      tags: [folders]
+      summary: "Retire une fiche du dossier (la fiche reste). 404 si la fiche n'est pas dans ce dossier (handler folders-api)"
+      parameters: [{ $ref: '#/components/parameters/FolderId' }, { $ref: '#/components/parameters/DocId' }]
+      responses:
+        '204': { description: Retiree }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /cours/{coursId}:
+    get:
+      operationId: getCours
+      tags: [cours]
+      summary: "Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent a 403 (l'export parent n'a pas le texte)."
+      description: "`coursId` vient de `DocSummary.coursId` ou de `ScanSummary.coursId`. Un lien de section vers une fiche supprimee n'a plus de `docId` (statut `supprimee`)."
+      parameters: [{ $ref: '#/components/parameters/CoursId' }]
+      responses:
+        '200':
+          description: Cours
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cours' }
+              example:
+                coursId: 01JEXAMPLE0CRS0000000000AA
+                createdAt: '2026-12-01T10:05:00Z'
+                pages: 2
+                texts:
+                  - page: 1
+                    sentences: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }]
+                  - page: 2
+                    sentences: [{ id: p2-s1, text: La Revolution commence en 1789. }]
+                sections:
+                  - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese, status: fiche, docId: 01JEXAMPLE0DOC0000000000AA }
+                  - { fromSentenceId: p2-s1, subject: histoire_geo, status: ignoree }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteCours
+      tags: [cours]
+      summary: "Supprime le texte du cours (eleve seulement: 403 pour le parent, qui supprime par le compte de l'eleve). Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours: `coursId`, `sectionIndex` et `sectionCount` retires) ou `supprimer` (les fiches du cours sont supprimees aussi). La copie de travail du texte (7 jours) est supprimee aussi. Supprimer une fiche ne supprime jamais le cours (handler cours-api)"
+      parameters:
+        - { $ref: '#/components/parameters/CoursId' }
+        - { name: fiches, in: query, required: true, description: "Obligatoire, pas de valeur par defaut: l'eleve choisit", schema: { type: string, enum: [garder, supprimer] } }
+      responses:
+        '204': { description: Supprime }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /answers:
     post:
@@ -449,7 +732,7 @@ paths:
     get:
       operationId: exportFamily
       tags: [family]
-      summary: Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Le texte brut lu sur les photos (7 jours) n'est pas exporte.
+      summary: Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Les cours conserves sont exportes SANS leur texte (structure et liens vers les fiches), l'eleve lit son texte par GET /cours/{coursId} (droit d'acces), le parent ne recoit jamais le texte des cours. Le texte brut lu sur les photos (7 jours) n'est pas exporte.
       responses:
         '200':
           description: Export
@@ -511,6 +794,8 @@ components:
   parameters:
     JobId: { name: jobId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    CoursId: { name: coursId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    FolderId: { name: folderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     StudentId: { name: sid, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
   responses:
     BadRequest:
@@ -522,6 +807,9 @@ components:
     NotFound:
       description: Introuvable
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: introuvable, message: Introuvable } } }
+    TooManyRequests:
+      description: "Limite de debit de la route depassee (la limite est globale a la route, voir infra). Le client reessaie apres quelques secondes, en espacant son interrogation. Corps produit par API Gateway, pas par le contrat Error."
+      content: { application/json: { schema: { type: object, properties: { message: { type: string } } }, example: { message: Too Many Requests } } }
     Conflict:
       description: Etat incompatible
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Le job n'est pas a confirmer } } }
@@ -533,7 +821,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise] }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite], description: "`dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -551,37 +839,221 @@ components:
         costCents: { type: integer, minimum: 0, description: Cout Bedrock du traitement en centimes d'euro (mesure, pas estime) }
         docId: { type: string, description: Present quand state = termine }
         message: { type: string, maxLength: 500 }
+        status: { $ref: '#/components/schemas/ScanStatus' }
+        docIds: { type: array, maxItems: 6, items: { type: string }, description: "Fiches du scan, dans l'ordre des sections (v1.3). `docId` = la premiere. Present quand state = termine." }
+    Subject:
+      type: string
+      enum: [maths, physique, svt, histoire_geo, francais, autre]
+      description: "Matiere (liste fermee). Libelles affiches: Maths, Physique-chimie, SVT, Histoire-geo, Francais, Autre. Les identifiants `physique` et `histoire_geo` sont ceux de la v1 (donnees existantes)."
+    Topic:
+      type: string
+      minLength: 1
+      maxLength: 80
+      description: "Sujet en texte libre court (ex. La Revolution francaise). Propose par la lecture du cours, modifiable par l'eleve. Espaces de debut et de fin retires; pas de balises."
+    ScanStage:
+      type: string
+      enum: [envoi, lecture, a_confirmer, fiche, verification, qcm, termine, echec]
+      description: |
+        Etape du traitement, dans l'ordre. Correspondance avec `Job.state`: en_attente_envoi=envoi; verification_fichier et transcription=lecture; a_confirmer=a_confirmer;
+        verification=fiche puis verification (le traitement ecrit l'etape fine; a defaut `verification`); generation=qcm; termine=termine; rejete, echec et expire=echec (le detail reste dans `Job.state`).
+    ScanStatus:
+      type: object
+      required: [stage, pagesDone, pagesTotal, startedAt]
+      properties:
+        stage: { $ref: '#/components/schemas/ScanStage' }
+        pagesDone: { type: integer, minimum: 0, description: "Pages recues (envoi) ou lues (lecture); egal a pagesTotal aux etapes suivantes" }
+        pagesTotal: { type: integer, minimum: 1, maximum: 10 }
+        startedAt: { type: string, format: date-time, description: Creation du scan }
+        finishedAt: { type: string, format: date-time, description: Present aux etapes termine et echec }
+        expiresAt: { type: string, format: date-time, description: "A l'etape a_confirmer seulement: heure ou le scan expire (photo supprimee, pages rendues) si l'eleve ne confirme pas. Absent pour un scan cree avant 1.3." }
+        expiresSoon: { type: boolean, description: "Vrai quand il reste 2 h ou moins avant `expiresAt` (calcule par le serveur). Present avec `expiresAt`." }
+        message: { type: string, maxLength: 500, description: "Message lisible pour l'eleve, present a l'etape echec (ex. Le texte est trop court pour faire une fiche)" }
+    ScanSummary:
+      type: object
+      required: [scanId, studentId, state, pages, createdAt, status]
+      properties:
+        state: { $ref: '#/components/schemas/JobState', description: "Etat precis du job (distingue rejete, echec, expire; un job annule est `rejete` avec le message « Annule par l'eleve »). Une fiche dont le job a expire est `termine`." }
+        scanId: { type: string, description: "= jobId. Pour une fiche ancienne dont le job a expire: jobId de la fiche, ou docId si elle n'en a pas" }
+        studentId: { type: string }
+        docId: { type: string, description: Present quand la fiche existe (etape termine) }
+        title: { type: string, maxLength: 200 }
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        folderId: { type: string }
+        pages: { type: integer, minimum: 1, maximum: 10, description: "Pages du SCAN (pas de la fiche): un scan decoupe en 3 fiches repete la meme valeur sur chaque fiche; ne pas les additionner (regrouper par scanId)." }
+        createdAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/ScanStatus' }
+        coursId: { type: string, description: "Cours complet conserve (v1.3), present des la confirmation" }
+        sectionIndex: { type: integer, minimum: 0, maximum: 5, description: "Rang de la fiche dans son scan (0 = premiere). Un scan decoupe en plusieurs fiches donne UNE entree par fiche, avec le meme `scanId`, `sectionCount` et `docIds`; le client regroupe par `scanId`. Absent pour un scan en cours ou a une seule fiche ancienne." }
+        sectionCount: { type: integer, minimum: 1, maximum: 6, description: "Nombre de fiches du scan" }
+        docIds: { type: array, maxItems: 6, items: { type: string }, description: "Toutes les fiches du scan (v1.3), dans l'ordre; `docId` est celle de cette entree" }
+    ScanList:
+      type: object
+      required: [items, inProgress, toReview, facets]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ScanSummary' } }
+        nextCursor: { type: string, maxLength: 200 }
+        inProgress: { type: integer, minimum: 0, description: "Scans non termines ni en echec (tous, sans filtre): sert a savoir s'il faut continuer d'interroger" }
+        toReview: { type: integer, minimum: 0, description: "Scans a l'etape a_confirmer (tous, sans filtre): « a relire », pour l'accueil" }
+        facets:
+          type: object
+          required: [subjects, topics]
+          properties:
+            subjects:
+              type: array
+              items: { type: object, required: [subject, count], properties: { subject: { $ref: '#/components/schemas/Subject' }, count: { type: integer, minimum: 1 } } }
+            topics:
+              type: array
+              description: Sujets distincts (un seul libelle par sujet normalise), du plus frequent au moins frequent, 100 au plus
+              maxItems: 100
+              items: { type: object, required: [topic, count], properties: { topic: { $ref: '#/components/schemas/Topic' }, count: { type: integer, minimum: 1 } } }
+    CoursMeta:
+      type: object
+      required: [coursId, createdAt, pages, sections]
+      description: "Cours conserve SANS son texte: structure, sections et liens vers les fiches (c'est ce que contient l'export)."
+      properties:
+        coursId: { type: string }
+        createdAt: { type: string, format: date-time }
+        pages: { type: integer, minimum: 1, maximum: 10 }
+        sections:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            required: [fromSentenceId, subject, status]
+            properties:
+              fromSentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+              subject: { $ref: '#/components/schemas/Subject' }
+              topic: { $ref: '#/components/schemas/Topic' }
+              title: { type: string, maxLength: 200 }
+              folderId: { type: string }
+              status: { type: string, enum: [fiche, ignoree, sans_fiche, supprimee], description: "fiche = une fiche existe (`docId`); ignoree = `ignore: true`; sans_fiche = aucune affirmation exploitable dans cette section; supprimee = la fiche a ete supprimee" }
+              docId: { type: string, description: "Present si status = fiche" }
+    Cours:
+      description: "Cours complet corrige, conserve jusqu'a suppression par l'eleve (le parent supprime par le compte de l'eleve) et avec le compte, comme les fiches. Contient le texte lu et corrige, jamais la photo. Lu par l'eleve seulement (`GET /cours/{coursId}`); l'export parent n'a que `CoursMeta`."
+      allOf:
+        - $ref: '#/components/schemas/CoursMeta'
+        - type: object
+          required: [texts]
+          properties:
+            texts:
+              type: array
+              description: "Une entree par page, triee numeriquement; meme forme que `Transcription.pages`"
+              items:
+                type: object
+                required: [page, sentences]
+                properties:
+                  page: { type: integer, minimum: 1 }
+                  sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
+    Folder:
+      type: object
+      required: [folderId, name, createdAt, scanCount]
+      properties:
+        folderId: { type: string }
+        name: { type: string, minLength: 1, maxLength: 60 }
+        createdAt: { type: string, format: date-time }
+        scanCount: { type: integer, minimum: 0 }
+    FolderList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/Folder' } }
+    FolderNameRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60, description: "Espaces de debut et de fin retires; non vide apres retrait" }
+    FolderScansRequest:
+      type: object
+      required: [docIds]
+      properties:
+        docIds: { type: array, minItems: 1, maxItems: 50, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 64 } }
+    DocUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { type: [string, 'null'], minLength: 1, maxLength: 80, description: "Sujet (voir Topic); null efface le sujet" }
+    ConfirmSection:
+      type: object
+      required: [fromSentenceId, subject]
+      properties:
+        fromSentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "Premiere phrase de la section (identifiant de `Transcription`, ex. p2-s3). La section va jusqu'a la phrase qui precede la section suivante." }
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string, minLength: 1, maxLength: 200, description: "Titre de la fiche; a defaut, propose par l'extraction" }
+        folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de la fiche (404 s'il n'existe pas)" }
+        ignore: { type: boolean, description: "true: le texte est garde dans le cours, aucune fiche n'est creee (`subject` reste obligatoire pour l'uniformite, sans effet)." }
+    SuggestedSection:
+      type: object
+      required: [fromSentenceId, subject]
+      description: "Decoupage propose par la lecture du cours (une proposition par section possible), modifiable par l'eleve. Meme sens que ConfirmSection."
+      properties:
+        fromSentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string, minLength: 1, maxLength: 200 }
     ScanCreateRequest:
       type: object
       required: [pages, contentType]
       properties:
         pages: { type: integer, minimum: 1, maximum: 10, description: "Nombre de pages de l'envoi (10 max). v1: une image = 1 page (PDF refuse, voir contentType)" }
-        contentType: { type: string, enum: [image/jpeg, image/png, application/pdf], description: "v1: seules les images (image/jpeg, image/png) sont acceptees. application/pdf est refuse (400 requete_invalide) tant que la prise en charge des PDF n'existe pas." }
+        contentType: { type: string, enum: [image/jpeg, image/png, application/pdf], description: "v1: seules les images (image/jpeg, image/png) sont acceptees. application/pdf est refuse (400 requete_invalide) tant que la prise en charge des PDF n'existe pas. Pour des pages de types differents, voir `contentTypes`." }
+        contentTypes:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: string, enum: [image/jpeg, image/png] }
+          description: "Facultatif (v1.3): type de chaque page, dans l'ordre. Doit avoir exactement `pages` elements, sinon 400. S'il est absent, toutes les pages ont `contentType`. S'il est present, il prime sur `contentType`."
+        folderId: { type: string, minLength: 1, maxLength: 64, description: "Facultatif (v1.3): dossier de l'eleve ou ranger la fiche une fois creee. Dossier inconnu: 404, avant toute reservation de page." }
+    UploadTarget:
+      type: object
+      required: [url, fields]
+      properties:
+        url: { type: string, format: uri }
+        fields: { type: object, additionalProperties: { type: string } }
     ScanCreateResponse:
       type: object
       required: [jobId, upload, expiresAt, pagesRemaining]
       properties:
         jobId: { type: string }
         upload:
-          type: object
-          required: [url, fields]
-          properties:
-            url: { type: string, format: uri }
-            fields: { type: object, additionalProperties: { type: string } }
+          deprecated: true
+          description: "= uploads[0] (compatibilite v1.2). Un client v1.2 qui envoie plus d'une page n'a qu'une URL: son job expire et rend les pages."
+          allOf: [{ $ref: '#/components/schemas/UploadTarget' }]
+        uploads:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: "Une entree par page, dans l'ordre. Facultatif dans le schema pour que le contrat reste deployable avant le lot back FEAT-A; le client lit `uploads ?? [{ page: 1, ...upload }]`. Present dans toute reponse du lot back. La cle S3 de la page p est scans/<eleve>/<job>/<p-1> (fixee par l'URL: le client ne choisit pas la cle)."
+          items:
+            allOf:
+              - $ref: '#/components/schemas/UploadTarget'
+              - type: object
+                required: [page]
+                properties:
+                  page: { type: integer, minimum: 1, maximum: 10 }
         expiresAt: { type: string, format: date-time }
         pagesRemaining: { type: integer, minimum: 0 }
     Sentence:
       type: object
       required: [id, text]
       properties:
-        id: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+        id: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "`p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin." }
         text: { type: string, maxLength: 2000 }
+        pages:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { type: integer, minimum: 1, maximum: 10 }
+          description: "Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent)."
     Transcription:
       type: object
       required: [jobId, docType, pages, photoUrls, photoUrlsExpireAt]
+      description: "Le scan est lu comme UN document (v1.3): pages lues dans l'ordre, avec le contexte des pages voisines; `docType`, `suggestedSubject` et `suggestedTopic` sont decides une seule fois sur l'ensemble; les phrases coupees entre deux pages sont recollees (`Sentence.pages`). `pages` est trie par numero de page croissant (numerique, jamais lexical) et contient une entree par page, meme sans phrase."
       properties:
         jobId: { type: string }
-        docType: { type: string, enum: [cours, exercice, autre] }
+        docType: { type: string, enum: [cours, exercice, autre], description: "Un seul type pour tout le scan" }
         pages:
           type: array
           items:
@@ -590,21 +1062,41 @@ components:
             properties:
               page: { type: integer, minimum: 1 }
               sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
-        photoUrls: { type: array, items: { type: string, format: uri } }
+        suggestedSubject: { $ref: '#/components/schemas/Subject' }
+        suggestedTopic: { $ref: '#/components/schemas/Topic' }
+        suggestedSections:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/SuggestedSection' }
+          description: "Decoupage suggere (v1.3), au plus 6 sections; la premiere commence a la premiere phrase. Absent: pas de decoupage suggere (une seule section)."
+        photoUrls: { type: array, items: { type: string, format: uri }, description: "Dans l'ordre des pages (1 par page)" }
         photoUrlsExpireAt: { type: string, format: date-time }
     ConfirmRequest:
       type: object
       required: [corrections]
       properties:
         corrections: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/Sentence' } }
+        sections:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ConfirmSection' }
+          description: "Facultatif (v1.3): decoupage du texte en sections par sujet, dans l'ordre du texte (voir la route). Absent: une seule section."
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { $ref: '#/components/schemas/Topic', description: "Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle." }
+        folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation" }
     DocSummary:
       type: object
       required: [docId, title, subject, createdAt]
       properties:
         docId: { type: string }
         title: { type: string, maxLength: 200 }
-        subject: { type: string, enum: [maths, physique, svt, histoire_geo, francais, autre] }
+        subject: { $ref: '#/components/schemas/Subject' }
         createdAt: { type: string, format: date-time }
+        topic: { $ref: '#/components/schemas/Topic' }
+        folderId: { type: string }
+        coursId: { type: string, description: "Cours complet d'ou vient la fiche (v1.3); absent pour une fiche ancienne ou si le cours a ete supprime" }
+        sectionIndex: { type: integer, minimum: 0, maximum: 5 }
     DocList:
       type: object
       required: [items]
@@ -830,6 +1322,8 @@ components:
           properties:
             consentement: { $ref: '#/components/schemas/Consent' }
             createdAt: { type: string }
+            folders: { type: array, items: { $ref: '#/components/schemas/Folder' }, description: "Dossiers de l'eleve (v1.3)" }
+            cours: { type: array, items: { $ref: '#/components/schemas/CoursMeta' }, description: "Cours conserves (v1.3), SANS le texte (structure, sections, liens vers les fiches). Le texte se lit par GET /cours (eleve)." }
             profile:
               type: object
               description: Profil de jeu (XP, serie, badges, signalements valides)

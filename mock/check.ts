@@ -6,9 +6,12 @@ import { parse } from 'yaml';
 const base = process.env.MOCK_URL ?? 'http://127.0.0.1:4010';
 const spec = parse(readFileSync('shared/contract/openapi.yaml', 'utf8'));
 let failed = 0;
-for (const [path, item] of Object.entries<Record<string, { requestBody?: { content: { 'application/json': { example: unknown } } } }>>(spec.paths)) {
+type Param = { name: string; in: string; required?: boolean; schema?: { enum?: string[] } };
+for (const [path, item] of Object.entries<Record<string, { requestBody?: { content: { 'application/json': { example: unknown } } }; parameters?: Param[] }>>(spec.paths)) {
   for (const [method, op] of Object.entries(item)) {
-    const url = base + path.replace(/\{[^}]+\}/g, 'x1');
+    // Parametres de requete obligatoires: premiere valeur de l'enumeration (ex. DELETE /cours/{coursId}?fiches=garder).
+    const query = (op.parameters ?? []).filter((p) => p.in === 'query' && p.required).map((p) => `${p.name}=${p.schema?.enum?.[0] ?? 'x1'}`).join('&');
+    const url = base + path.replace(/\{[^}]+\}/g, 'x1') + (query ? `?${query}` : '');
     const body = op.requestBody?.content['application/json'].example;
     const res = await fetch(url, {
       method: method.toUpperCase(),

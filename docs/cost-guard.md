@@ -1,6 +1,6 @@
 # Garde de cout des essais Bedrock (dev)
 
-Decision du proprietaire (2026-11-24, relevee le 2026-11-25): **50 EUR au plus d'essais Bedrock en `dev`** (12 EUR avant le 2026-11-25). Le plafond est la constante unique `DEV_TRIAL_CAP_EUR` de `shared/names.ts`; tests et docs la citent. Le plafond par traitement (0,25 EUR) reste obligatoire et inchange. Le garde est dans le code, pas dans la bonne volonte.
+Decision du proprietaire (2026-11-24, relevee le 2026-11-25): **50 EUR au plus d'essais Bedrock en `dev`** (12 EUR avant le 2026-11-25). Le plafond est la constante unique `DEV_TRIAL_CAP_EUR` de `shared/names.ts`; tests et docs la citent. Le plafond par traitement reste obligatoire; depuis le 2026-11-25 il est proportionnel au nombre de pages (voir ci-dessous). Le garde est dans le code, pas dans la bonne volonte.
 
 ## Ce qui est applique par le code
 
@@ -12,6 +12,7 @@ Decision du proprietaire (2026-11-24, relevee le 2026-11-25): **50 EUR au plus d
 | Compteur illisible | `shared/cost.ts` | Valeur non numerique ou non finie: erreur, donc appel refuse. Compteur absent = 0 (debut de periode) |
 | Seuils `prod` (alerte 10, blocage des nouveaux envois 15, arret 18 EUR) | `shared/cost.ts` (`costGate`) | inchanges |
 | Plafond par traitement `JOB_COST_CAP_EUR = 0,25` | `shared/bedrock.ts` | `jobSpentEur` est **obligatoire** (somme des `costEur` des appels du job, tenue par l'appelant dans l'element Job): refus avant l'appel si 0,25 EUR est atteint (`JobBudgetExceededError`); les affirmations restantes sont `non_verifiable`. Une requete est bornee (`LIMITS`: 8 192 tokens de sortie, 10 images de 5 Mo, 400 000 caracteres) pour qu'un seul appel ne depasse pas ce plafond |
+| Plafond par traitement proportionnel aux pages (decision du 2026-11-25, FEAT-A, **a implementer par le lot B1**) | `shared/names.ts` (`jobCapEur(pages)`), `api/src/pipeline/ctx.ts`, `steps-doc.ts`, `api/src/verify/run.ts` | `jobCapEur(pages) = max(0,25 ; 0,15 x pages)` EUR: 0,25 pour 1 a 1 page et demie, 0,45 pour 3 pages, **1,50 pour 10 pages**. Motif: le cout mesure est d'environ 0,09 EUR par page (p95 0,12), donc un plafond fixe de 0,25 EUR rendrait `non_verifiable` la fin de tout scan de 3 pages ou plus. `JOB_COST_CAP_EUR = 0,25` reste le plancher. Meme garde que ci-dessus (refus **avant** l'appel, `jobSpentEur` obligatoire), seul le plafond change; le nombre de pages vient du job (`pages`), jamais du client apres creation. Le plafond d'essais dev de 50 EUR et les seuils mensuels sont inchanges et priment: un scan de 10 pages ne peut pas depasser 1,50 EUR, soit 3 % du plafond d'essais |
 | Compte immediat | `shared/bedrock.ts` | le cout est ajoute des la reponse, avec 3 essais (100, 400, 1600 ms). Si l'ecriture echoue 3 fois: journal d'erreur avec `costEur` (a rattraper a la main) et **pas d'exception** (un `Retry` Step Functions rappellerait le modele et doublerait la facture); `counted: false` est renvoye |
 | Un seul client | `scripts/guards.test.ts` | le SDK `client-bedrock-runtime` n'est importable que par `shared/bedrock.ts` |
 | Profil d'application obligatoire | `assertApplicationProfileArn` | un ARN de profil systeme ou d'une autre region est refuse |
@@ -49,3 +50,19 @@ Des tests negatifs construisent de vrais templates fautifs (politique geree Bedr
 - `eval/` a son propre garde (5 EUR d'apres le design 9); il n'est pas modifie ici. A aligner sur le cumul `COST#dev / TOTAL` par son proprietaire.
 - Le prix `shared/pricing.ts` est celui de l'offre lue le 2026-11-23; un ecart de facturation reelle se verifie au controle J+2 (design 4.6). Le taux `USD_PER_EUR` est une constante.
 - L'ARN du profil est valide par son format (region, 12 chiffres, `application-inference-profile/`); il n'est pas compare a l'identifiant de compte attendu (il ne doit pas etre ecrit dans le depot). Un lot peut ajouter cette comparaison avec `CDK_DEFAULT_ACCOUNT`.
+
+## Alarme de cout de 10 EUR (a corriger, lot B1 + lot I)
+
+Constat (`FEAT-D-report.md` section 4): l'alarme `qcm-<env>-cout-mensuel-10` (stack Budget) ne recoit aucune metrique. `publishCostMetric` (`shared/cost.ts`) n'est appelee nulle part et aucun role n'a `cloudwatch:PutMetricData`; avec `treatMissingData: NOT_BREACHING` elle reste donc toujours en OK. Correctif retenu: publier le total du mois au point unique d'ecriture du compteur, `costStoreFromDynamo(...).add` de `shared/bedrock.ts` (utilise par le pipeline ET par `verify-run`), au mieux (une erreur CloudWatch est journalisee sans identifiant de cours et n'echoue jamais l'appel), avec `PutMetricData` limite a l'espace de noms `QCMonster` sur les deux roles qui ecrivent le compteur. Cout: une metrique personnalisee (environ 0,30 USD par mois) et 0,01 USD par 1000 requetes. Repartition: `docs/feat-a-lots.md`, lot « Alarme de cout 10 EUR ».
+
+### Risque accepte: plafond proportionnel
+
+Decision du 2026-11-25. Avant, un scan coutait au plus 0,25 EUR quel que soit son nombre de pages (environ 0,025 EUR par page a 10 pages, au prix de fiches « non verifiables »). Apres, il peut coûter jusqu'a 1,50 EUR a 10 pages: la consommation des essais dev peut donc etre plus rapide (jusqu'a 6 fois par scan de 10 pages). Ce qui protege: le plafond dur d'essais de 50 EUR (`DEV_TRIAL_CAP_EUR`, cumul `COST#dev / TOTAL`, arret avant l'appel) et la limite de 10 transcriptions par jour et par eleve; le depassement possible est borne par ce qui est en vol au moment du blocage (voir « La garde n'est pas atomique »). Un scan de 10 pages pesant au plus 3 % du plafond d'essais, le risque est accepte.
+
+### Lecture du scan comme un seul document (FEAT-A)
+
+La transcription passe de N appels d'une image a un appel de 4 images au plus (ou des fenetres de 3 pages plus une page de contexte), suivi d'un appel de texte seul qui decide type, matiere et sujet. Estimation (a mesurer, voir `docs/feat-a-lots.md`): environ 0,002 EUR pour 3 pages, moins de 3 % du plafond `max(0,25 ; 0,15 x pages)`, qui ne change pas. Les bornes de requete (`LIMITS`: 8 192 jetons de sortie, 10 images) restent, avec 4 images au plus par appel; la limite de taille d'image de Bedrock (a verifier, peut-etre 3,75 Mo) est a controler par un appel reel avant la fusion de B1. Une fenetre dont la sortie est tronquee est rejouee page par page (cout d'avant).
+
+### Un scan, plusieurs fiches (sections)
+
+Le plafond `jobCapEur(pages)` vaut pour **tout le job**, somme des sections (le cout s'accumule dans `Job.coutMicros`). Pour qu'une premiere section n'epuise pas le plafond, le budget restant de chaque section (`budgetRestantCentimes` de `extract`, repris par `verify-run`) est la part du reste proportionnelle aux mots des sections encore a traiter. Chaque section ajoute une extraction, une verification et une generation: un surcout fixe estime a quelques pourcents (invites systeme repetees), non mesure; a mesurer avec la lecture en un seul document, sur un cours de 3 pages coupe en 2 sections. Le plafond d'essais de 50 EUR et les seuils mensuels sont inchanges.
