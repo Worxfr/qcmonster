@@ -13,7 +13,7 @@ import { extractPrompt, generatePrompt, solvePrompt, SYSTEM_JSON } from './promp
 import type { Item } from './ports.js';
 import { MSG, purgeScan, type WfInput } from './steps.js';
 import { addVerifyCostOnce, currentAttempt, draftKey } from './steps-cost.js';
-import { ModelOutputError, normalize, parseModelJson, words } from './text.js';
+import { ModelOutputError, normalize, parseModelJson, salvageTruncatedList, words } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
 export const MAX_CLAIMS = 60;
@@ -116,6 +116,23 @@ async function setCoursStatus(ctx: Ctx, sid: string, job: Item, planIndex: numbe
   await ctx.db.put({ ...head, sections });
 }
 
+/** Sortie d'extraction; si elle est coupee par la limite de jetons (section tres dense), on garde les affirmations entieres deja recues. */
+function parseExtract(raw: string): z.infer<typeof ExtractOut> {
+  try {
+    return parseModelJson(raw, ExtractOut);
+  } catch (e) {
+    if (!(e instanceof ModelOutputError)) throw e;
+    const items = salvageTruncatedList(raw, 'affirmations');
+    const r = ExtractOut.safeParse({
+      titre: /"titre"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(raw)?.[1] ?? '',
+      matiere: /"matiere"\s*:\s*"([a-z_]*)"/.exec(raw)?.[1] ?? 'autre',
+      affirmations: (items ?? []).filter((x) => ExtractOut.shape.affirmations.element.safeParse(x).success),
+    });
+    if (!r.success || r.data.affirmations.length === 0) throw e;
+    return r.data;
+  }
+}
+
 export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
   const job0 = await ctx.db.get(jobKey(i.sid, i.jobId));
   if (!job0 || job0.state !== 'verification') return { ok: false };
@@ -132,7 +149,7 @@ export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
   const sentences = new Map(sec.sentences.map((s) => [s.id, s.text]));
   const numbered = sec.sentences.map((s) => `[${s.id}] ${s.text}`).join('\n');
   const raw = await callModel(ctx, i, 'extraction', 'haiku', { system: SYSTEM_JSON, prompt: extractPrompt(numbered), maxTokens: 8000 });
-  const out = parseModelJson(raw, ExtractOut);
+  const out = parseExtract(raw);
   const { kept } = anchorClaims(out.affirmations, sentences);
   const sectionsDone = sec.plan ? (await ctx.db.update(jobKey(i.sid, i.jobId), { addSet: { extractedSections: [sec.rank] } }))?.extractedSections ?? [] : [];
 

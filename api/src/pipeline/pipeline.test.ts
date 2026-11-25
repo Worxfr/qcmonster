@@ -126,6 +126,31 @@ describe('parcours complet', () => {
     expect(k.s3.objects.size).toBe(0);
   });
 
+  it('F8: extraction coupee par la limite de jetons: les affirmations entieres sont gardees', async () => {
+    const full = JSON.stringify(JSON.parse(goodScript().extraction as string));
+    const cut = full.slice(0, full.indexOf('"phraseId":"p1-s5"') - 2); // coupe en plein tableau, 2 affirmations entieres + la 3e commencee
+    const k = await makeCtx(goodScript({ extraction: cut + '{"phraseId":"p1-s5","extrait":"rej' }));
+    const u = await toConfirm(k);
+    await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
+    const ex = await extract(k.ctx, u.i);
+    expect(ex.ok).toBe(true);
+    expect(await k.db.query(`DOC#${ex.docId}`, 'CLAIM#')).toHaveLength(2);
+  });
+
+  it('F8: extraction sans aucune affirmation entiere: toujours une erreur', async () => {
+    const k = await makeCtx(goodScript({ extraction: '{"titre":"x","matiere":"svt","affirmations":[{"phraseId":"p1-s2","extr' }));
+    const u = await toConfirm(k);
+    await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
+    await expect(extract(k.ctx, u.i)).rejects.toThrow('sortie du modele');
+  });
+
+  it('F8: une sortie de modele inutilisable donne un message precis a l eleve', async () => {
+    const k = await makeCtx(goodScript());
+    const u = await toConfirm(k);
+    await failJob(k.ctx, { ...u.i, error: { Error: 'ModelOutputError' } });
+    expect((await job(k, u.jobId)).message).toContain('trop dense');
+  });
+
   it('un second scan du meme cours est un doublon', async () => {
     const k = await makeCtx(goodScript());
     const ids: string[] = [];
