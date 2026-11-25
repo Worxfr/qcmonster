@@ -4,8 +4,10 @@ import { BatchWriteCommand, DynamoDBDocumentClient, QueryCommand } from '@aws-sd
 import type { Key } from './ddb/keys.js';
 
 /** Port minimal: liste les cles d'une partition (avec prefixe de SK facultatif) et supprime des cles. */
+export type TreeKey = Key & { studentId?: string; docId?: string };
 export interface TreeDb {
-  list(pk: string, skPrefix?: string): Promise<Key[]>;
+  /** `studentId` et `docId` (signalements) sont lus pour rattacher un signalement a l'eleve; les autres elements n'en portent pas. */
+  list(pk: string, skPrefix?: string): Promise<TreeKey[]>;
   remove(keys: Key[]): Promise<void>;
 }
 
@@ -49,12 +51,18 @@ export async function deleteStudentTree(db: TreeDb, familyId: string, sid: strin
   const fam = await db.list(`FAMILY#${familyId}`);
   if (!fam.some((k) => k.SK === `STUDENT#${sid}`)) return 0;
   let n = 0;
+  const docIds = new Set<string>();
   for (const k of await db.list(`STUDENT#${sid}`)) {
-    if (k.SK.startsWith('DOC#')) n += await deleteDocTree(db, sid, k.SK.slice(4));
+    if (k.SK.startsWith('DOC#')) {
+      docIds.add(k.SK.slice(4));
+      n += await deleteDocTree(db, sid, k.SK.slice(4));
+    }
     if (k.SK.startsWith('JOB#')) n += await removeAll(db, await db.list(`JOB#${k.SK.slice(4)}`)); // TEXT#
   }
   n += await removeAll(db, (await db.list(`STUDENT#${sid}`)).filter((k) => !k.SK.startsWith('DOC#')));
-  n += await removeAll(db, (await db.list(`FAMILY#${familyId}`)).filter((k) => isFamilyStudentItem(k, sid)));
+  // Signalements de l'eleve (commentaire libre): ceux qui portent son `studentId`, ou, pour les anciens sans `studentId`, ceux d'une de ses fiches.
+  const mine = (k: TreeKey): boolean => k.SK.startsWith('REPORT#') && (k.studentId === sid || (k.studentId === undefined && k.docId !== undefined && docIds.has(k.docId)));
+  n += await removeAll(db, (await db.list(`FAMILY#${familyId}`)).filter((k) => isFamilyStudentItem(k, sid) || mine(k)).map(({ PK, SK }) => ({ PK, SK })));
   return n;
 }
 
@@ -71,7 +79,7 @@ export async function deleteFamilyTree(db: TreeDb, familyId: string): Promise<nu
 export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): TreeDb {
   return {
     async list(pk, skPrefix) {
-      const out: Key[] = [];
+      const out: TreeKey[] = [];
       let start: Record<string, unknown> | undefined;
       do {
         const r = await client.send(
@@ -79,12 +87,12 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, slee
             TableName: table,
             KeyConditionExpression: skPrefix ? 'PK = :p AND begins_with(SK, :s)' : 'PK = :p',
             ExpressionAttributeValues: skPrefix ? { ':p': pk, ':s': skPrefix } : { ':p': pk },
-            ProjectionExpression: 'PK, SK',
+            ProjectionExpression: 'PK, SK, studentId, docId',
             ExclusiveStartKey: start,
             ConsistentRead: true, // un element ecrit juste avant ne doit pas echapper a une suppression (RGPD)
           }),
         );
-        for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string });
+        for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}) });
         start = r.LastEvaluatedKey;
       } while (start);
       return out;
@@ -104,10 +112,10 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, slee
 }
 
 /** Implementation memoire (tests). */
-export function memoryTreeDb(initial: Key[]): TreeDb & { keys: () => Key[] } {
+export function memoryTreeDb(initial: TreeKey[]): TreeDb & { keys: () => Key[] } {
   const set = new Map(initial.map((k) => [`${k.PK}|${k.SK}`, k]));
   return {
-    keys: () => [...set.values()],
+    keys: () => [...set.values()].map(({ PK, SK }) => ({ PK, SK })),
     async list(pk, skPrefix) {
       return [...set.values()].filter((k) => k.PK === pk && (!skPrefix || k.SK.startsWith(skPrefix)));
     },

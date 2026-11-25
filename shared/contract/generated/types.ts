@@ -353,7 +353,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export des donnees de la famille (handler family-admin, L3) */
+        /** Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Le texte brut lu sur les photos (7 jours) n'est pas exporte. */
         get: operations["exportFamily"];
         put?: never;
         post?: never;
@@ -372,7 +372,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Premiere connexion d'un parent invite - cree la famille, pose famille_id et le groupe parent. Le jeton deja emis ne les contient pas, le front se reconnecte (handler family-create, L3) */
+        /** Premiere connexion d'un parent invite - cree la famille, pose famille_id et le groupe parent. Le jeton deja emis ne les contient pas, le front se reconnecte (handler family-create, L3). Exige le consentement explicite du parent a la politique de confidentialite (date et version enregistrees). */
         post: operations["createFamily"];
         /** Suppression complete de la famille (handler family-admin, L3) */
         delete: operations["deleteFamily"];
@@ -570,8 +570,19 @@ export interface components {
             /** @enum {string} */
             schoolLevel: "seconde" | "premiere" | "terminale";
             under15: boolean;
-            /** @constant */
+            /**
+             * @description Case cochee par le parent (autorite parentale et lecture de la politique)
+             * @constant
+             */
             parentalAuthority: true;
+            policyVersion: components["schemas"]["PolicyVersion"];
+        };
+        /** @description Version de la politique affichee au parent. Refusee si ce n'est pas la version en vigueur. */
+        PolicyVersion: string;
+        FamilyCreateRequest: {
+            /** @constant */
+            consent: true;
+            policyVersion: components["schemas"]["PolicyVersion"];
         };
         ActivationLink: {
             /** Format: uri */
@@ -583,10 +594,13 @@ export interface components {
             student: components["schemas"]["Student"];
             activationLink: components["schemas"]["ActivationLink"];
         };
+        /** @description Le pseudo et under15 ne se modifient pas (supprimer puis recreer l'eleve). */
         StudentUpdateRequest: {
             /** @enum {string} */
             status?: "actif" | "suspendu";
             pageQuota?: number;
+            /** @enum {string} */
+            schoolLevel?: "seconde" | "premiere" | "terminale";
         };
         Dashboard: {
             students: {
@@ -609,8 +623,55 @@ export interface components {
             familyId: string;
             /** Format: date-time */
             exportedAt: string;
-            students: components["schemas"]["Student"][];
-            docs: components["schemas"]["DocSummary"][];
+            parentEmail?: string;
+            consentement?: components["schemas"]["Consent"];
+            students: components["schemas"]["StudentExport"][];
+            docs: components["schemas"]["DocExport"][];
+            reports: components["schemas"]["ReportExport"][];
+        };
+        Consent: {
+            /** Format: date-time */
+            consentementLe?: string;
+            versionPolitique?: string;
+        };
+        StudentExport: components["schemas"]["Student"] & {
+            consentement?: components["schemas"]["Consent"];
+            createdAt?: string;
+            /** @description Profil de jeu (XP, serie, badges, signalements valides) */
+            profile: {
+                [key: string]: unknown;
+            };
+            /** @description Jours (Paris) ou l'eleve a joue */
+            activeDays: string[];
+            attempts: {
+                questionId: string;
+                date: string;
+                attempts: number;
+            }[];
+        };
+        ExportQuestion: {
+            questionId: string;
+            /** @enum {string} */
+            kind: "qcm" | "gap";
+            prompt: string;
+            choices?: string[];
+            answer: string;
+        };
+        DocExport: components["schemas"]["DocSummary"] & {
+            studentId: string;
+            summary: string;
+            claims: components["schemas"]["Claim"][];
+            questions: components["schemas"]["ExportQuestion"][];
+        };
+        ReportExport: {
+            reportId: string;
+            docId: string;
+            claimId?: string;
+            studentId?: string;
+            comment: string;
+            /** @enum {string} */
+            status: "ouvert" | "valide" | "rejete";
+            createdAt: string;
         };
     };
     responses: {
@@ -1312,7 +1373,8 @@ export interface operations {
                  *       "pseudo": "Lila",
                  *       "schoolLevel": "seconde",
                  *       "under15": false,
-                 *       "parentalAuthority": true
+                 *       "parentalAuthority": true,
+                 *       "policyVersion": "2026-11-25"
                  *     }
                  */
                 "application/json": components["schemas"]["StudentCreateRequest"];
@@ -1583,8 +1645,10 @@ export interface operations {
                      * @example {
                      *       "familyId": "01JEXAMPLE0FAM0000000000AA",
                      *       "exportedAt": "2026-12-01T10:00:00Z",
+                     *       "parentEmail": "parent@example.invalid",
                      *       "students": [],
-                     *       "docs": []
+                     *       "docs": [],
+                     *       "reports": []
                      *     }
                      */
                     "application/json": components["schemas"]["FamilyExport"];
@@ -1600,7 +1664,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "consent": true,
+                 *       "policyVersion": "2026-11-25"
+                 *     }
+                 */
+                "application/json": components["schemas"]["FamilyCreateRequest"];
+            };
+        };
         responses: {
             /** @description Famille creee */
             201: {
@@ -1618,6 +1692,7 @@ export interface operations {
                     "application/json": components["schemas"]["Me"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             409: components["responses"]["Conflict"];
         };
     };

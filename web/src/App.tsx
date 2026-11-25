@@ -14,6 +14,7 @@ import { Game } from './screens/Game';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { Parent } from './screens/Parent';
+import { Policy } from './screens/Policy';
 import { JobView, Scan } from './screens/Scan';
 import { Quiz } from './screens/Quiz';
 import type { Me, Progress } from './types';
@@ -22,6 +23,8 @@ export function App() {
   const [signed, setSigned] = useState(isSignedIn);
   const [activating, setActivating] = useState(isActivationRoute);
   useEffect(() => onSignedOut(() => setSigned(false)), []);
+  const route = useRoute();
+  if (route === '/politique') return <Policy />; // lisible sans connexion
   if (activating) return <Activate onDone={() => setActivating(false)} />;
   if (!signed) return <Login onDone={() => setSigned(true)} />;
   return <Shell />;

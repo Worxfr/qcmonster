@@ -71,6 +71,7 @@ export function Login({ onDone }: { onDone: () => void }) {
           <button className="btn" disabled={busy}>{confirm ? 'Valider le code' : 'Se connecter'}</button>
         </form>
       )}
+      <p className="muted"><a href="#/politique">Politique de confidentialité</a></p>
     </main>
   );
 }

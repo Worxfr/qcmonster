@@ -8,9 +8,11 @@ export interface LogFields {
   tokensIn?: number;
   tokensOut?: number;
   costEur?: number;
+  /** Nom de la classe d'erreur (ex. ThrottlingException), jamais son message. */
+  errorCode?: string;
 }
 
-const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur'] as const;
+const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode'] as const;
 
 /** Ecrit une ligne JSON. Les champs hors liste blanche sont ignores (jamais de texte libre). */
 export function log(fields: LogFields): void {

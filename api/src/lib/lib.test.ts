@@ -52,7 +52,7 @@ describe('identite du jeton', () => {
 });
 
 describe('wrap', () => {
-  it('HttpError -> reponse du contrat; autre erreur relancee; rien du corps dans le journal', async () => {
+  it('HttpError -> reponse du contrat; autre erreur: 500 generique sans relance, seul le nom de la classe d erreur est journalise', async () => {
     const out: string[] = [];
     const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => (out.push(String(s)), true));
     try {
@@ -61,12 +61,14 @@ describe('wrap', () => {
       const ko = await wrap('t', async () => { throw badRequest(); })(ev({ sub: 's' }));
       expect(ko).toMatchObject({ statusCode: 400 });
       expect(JSON.parse(ko.body as string)).toEqual({ code: 'requete_invalide', message: 'Requete invalide' });
-      await expect(wrap('t', async () => { throw new Error('boom MotDePasse-Secret-1'); })(ev({ sub: 's' }))).rejects.toThrow('boom');
+      const boom = await wrap('t', async () => { throw new Error('boom MotDePasse-Secret-1'); })(ev({ sub: 's' }));
+      expect(boom).toMatchObject({ statusCode: 500 });
+      expect(boom.body).not.toContain('boom');
     } finally {
       spy.mockRestore();
     }
     expect(out.join('')).not.toContain('Secret');
-    expect(out.every((l) => Object.keys(JSON.parse(l)).every((k) => ['ts', 'step', 'status', 'durationMs'].includes(k)))).toBe(true);
+    expect(out.every((l) => Object.keys(JSON.parse(l)).every((k) => ['ts', 'step', 'status', 'durationMs', 'errorCode'].includes(k)))).toBe(true);
   });
 });
 

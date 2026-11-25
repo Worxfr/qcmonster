@@ -2,6 +2,7 @@
 // version lue (`when`), et plusieurs elements s'ecrivent en une transaction (tout ou rien). Un conflit renvoie false: l'appelant relit et recommence.
 import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Key } from '../../../shared/ddb/keys.js';
+import type { TreeDb, TreeKey } from '../../../shared/delete-tree.js';
 
 export type Item = Key & { v?: number } & Record<string, unknown>;
 /** 'absent': l'element ne doit pas exister; un nombre: la version lue; 'any': ecriture sans condition. */
@@ -122,10 +123,12 @@ export function memoryStore(): Store & { items: Map<string, Item>; failNextCommi
   };
 }
 
+const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}) });
+
 /** Adaptateur `TreeDb` (shared/delete-tree.ts) au-dessus d'un Store: pour les tests; en production on passe `dynamoTreeDb` de shared. */
-export const storeTreeDb = (store: Store): { list(pk: string, skPrefix?: string): Promise<Key[]>; remove(keys: Key[]): Promise<void> } => ({
+export const storeTreeDb = (store: Store): TreeDb => ({
   async list(pk, skPrefix) {
-    return (await store.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK }));
+    return (await store.query(pk, skPrefix)).map(treeKey);
   },
   async remove(ks) {
     for (const k of ks) await store.remove(k);

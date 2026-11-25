@@ -2,7 +2,7 @@ import { API_URL } from './env';
 import { getToken, signOut } from './auth';
 import type {
   AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
-  Student, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
+  Student, FamilyCreateRequest, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
 } from './types';
 
 export class ApiError extends Error {
@@ -44,11 +44,12 @@ export const api = {
   answer: (questionId: string, choice: string) => call<AnswerResult>('POST', '/answers', { questionId, choice }),
   createStudent: (b: StudentCreateRequest) => call<StudentCreateResponse>('POST', '/students', b),
   activationLink: (sid: string) => call<{ url: string; expiresAt: string }>('POST', `/students/${e(sid)}/activation-link`),
-  updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
+  updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: Student['schoolLevel'] }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
   deleteStudent: (sid: string) => call<void>('DELETE', `/students/${e(sid)}`),
   dashboard: () => call<Dashboard>('GET', '/family/dashboard'),
   markRead: (docId: string) => call<ReadResult>('POST', `/docs/${e(docId)}/read`),
-  createFamily: () => call<Me>('POST', '/family'),
+  createFamily: (b: FamilyCreateRequest) => call<Me>('POST', '/family', b),
+  exportFamily: () => call<unknown>('GET', '/family/export'),
   /** Route publique (sans JWT). Le jeton et le mot de passe ne sont ni journalises ni repris dans une erreur. */
   activate: (token: string, password: string) => call<void>('POST', '/activation', { token, password }, false),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),

@@ -4,9 +4,9 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructured
 import type { ZodType } from 'zod';
 import { log } from '../../../shared/log/index.js';
 
-export type ErrorCode = 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise';
+export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise';
 
-/** Erreur attendue, convertie en reponse du contrat. Toute autre erreur est journalisee puis relancee (500 generique de l'API). */
+/** Erreur attendue, convertie en reponse du contrat. Toute autre erreur est journalisee (code seul) puis devient un 500 generique: rien n'est relance, donc le runtime Lambda ne journalise ni message ni pile (A4). */
 export class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -28,6 +28,8 @@ export interface Auth {
   /** Nom d'utilisateur Cognito: pour un eleve c'est son `studentId` (choisi par le serveur a la creation). */
   username: string;
   role?: Role;
+  /** Claim `email` du jeton d'identite (parent seulement: les eleves n'ont pas d'adresse reelle). */
+  email?: string;
   /** Attribut `custom:famille_id`; absent tant que la famille n'est pas creee (jeton emis avant `POST /family`). */
   familyId?: string;
 }
@@ -48,12 +50,14 @@ export function authOf(event: APIGatewayProxyEventV2WithJWTAuthorizer): Auth {
   const role: Role | undefined = groups.includes('parent') && !groups.includes('eleve') ? 'parent' : groups.includes('eleve') && !groups.includes('parent') ? 'eleve' : undefined;
   const fid = c['custom:famille_id'];
   const username = typeof c['cognito:username'] === 'string' ? c['cognito:username'] : typeof c.username === 'string' ? c.username : '';
-  return { sub, username, role, familyId: typeof fid === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(fid) ? fid : undefined };
+  const email = typeof c.email === 'string' && role === 'parent' ? c.email : undefined;
+  return { sub, username, role, ...(email ? { email } : {}), familyId: typeof fid === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(fid) ? fid : undefined };
 }
 
 export interface ParentCtx {
   sub: string;
   username: string;
+  email?: string;
   familyId: string;
 }
 export interface StudentCtx {
@@ -65,7 +69,7 @@ export interface StudentCtx {
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 export function requireParent(a: Auth): ParentCtx {
   if (a.role !== 'parent' || !a.familyId) throw forbidden('Reserve au parent');
-  return { sub: a.sub, username: a.username, familyId: a.familyId };
+  return { sub: a.sub, username: a.username, ...(a.email ? { email: a.email } : {}), familyId: a.familyId };
 }
 export function requireStudent(a: Auth): StudentCtx {
   if (a.role !== 'eleve' || !a.familyId || !ID.test(a.username)) throw forbidden('Reserve a l\'eleve');
@@ -100,7 +104,7 @@ export const json = (statusCode: number, body: unknown): APIGatewayProxyStructur
 });
 export const noContent = (): APIGatewayProxyStructuredResultV2 => ({ statusCode: 204, headers: { 'cache-control': 'no-store' } });
 
-/** Enveloppe d'un handler: HttpError -> reponse du contrat; le reste est journalise (champs techniques seulement) puis relance. */
+/** Enveloppe d'un handler: HttpError -> reponse du contrat; le reste est journalise (champs techniques seulement) puis repond 500 generique. */
 export function wrap(step: string, fn: (event: APIGatewayProxyEventV2WithJWTAuthorizer) => Promise<APIGatewayProxyStructuredResultV2>) {
   return async (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise<APIGatewayProxyStructuredResultV2> => {
     const t0 = Date.now();
@@ -113,8 +117,9 @@ export function wrap(step: string, fn: (event: APIGatewayProxyEventV2WithJWTAuth
         log({ step, status: 'rejected', durationMs: Date.now() - t0 });
         return json(e.status, { code: e.code, message: e.message });
       }
-      log({ step, status: 'error', durationMs: Date.now() - t0 });
-      throw e;
+      const name = e instanceof Error ? e.name : '';
+      log({ step, status: 'error', durationMs: Date.now() - t0, errorCode: /^[A-Za-z0-9]{1,64}$/.test(name) ? name : 'Unknown' });
+      return json(500, { code: 'erreur_interne' satisfies ErrorCode, message: 'Erreur interne' });
     }
   };
 }

@@ -83,6 +83,8 @@ export const SignalementItemSchema = z.object({
   PK: z.string(),
   SK: z.string(),
   docId: z.string(),
+  /** Eleve proprietaire de la fiche signalee: le signalement part avec lui (suppression). Absent sur les anciens signalements. */
+  studentId: z.string().optional(),
   claimId: z.string().optional(),
   commentaire: z.string().max(500),
   statut: z.enum(['ouvert', 'valide', 'rejete']),

@@ -3,6 +3,7 @@
 import { deleteStudentTree } from '../../../shared/delete-tree.js';
 import { keys } from '../../../shared/ddb/keys.js';
 import { quotaDefaults } from '../../../shared/names.js';
+import { POLICY_VERSION } from '../../../shared/policy.js';
 import { setLimit } from '../../../shared/quota.js';
 import { studentView } from '../game/access.js';
 import { MAX_STUDENTS_PER_FAMILY } from '../game/rules.js';
@@ -19,7 +20,9 @@ const studentOf = async (deps: FamilyDeps, fid: string, sid: string): Promise<It
   return s;
 };
 
-export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { pseudo: string; schoolLevel: string; under15: boolean }) {
+export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { pseudo: string; schoolLevel: string; under15: boolean; parentalAuthority: boolean; policyVersion: string }) {
+  // Consentement explicite (case cochee) a la politique en vigueur: sans lui, rien n'est cree ni dans la base ni dans Cognito.
+  if (body.parentalAuthority !== true || body.policyVersion !== POLICY_VERSION) throw badRequest('Consentement requis');
   const meta = await deps.store.get(keys.family(ctx.familyId));
   if (!meta) throw forbidden();
   const existing = await deps.store.query(`FAMILY#${ctx.familyId}`, 'STUDENT#');
@@ -45,6 +48,8 @@ export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { ps
     pseudo,
     niveau: body.schoolLevel,
     moins15: body.under15,
+    consentementLe: deps.now().toISOString(),
+    versionPolitique: body.policyVersion,
     statut: 'actif',
     cognitoSub: sub,
     quotaPages: quotaDefaults(deps.env).studentPages,
@@ -69,8 +74,8 @@ export async function createLink(deps: FamilyDeps, ctx: ParentCtx, sid: string) 
   return { url: link.url, expiresAt: link.expiresAt };
 }
 
-export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string, body: { status?: 'actif' | 'suspendu'; pageQuota?: number }) {
-  if (body.status === undefined && body.pageQuota === undefined) throw badRequest();
+export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string, body: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: string }) {
+  if (body.status === undefined && body.pageQuota === undefined && body.schoolLevel === undefined) throw badRequest();
   const s = await studentOf(deps, ctx.familyId, sid);
   const meta = await deps.store.get(keys.family(ctx.familyId));
   const familyLimit = Number(meta?.plafondPages ?? quotaDefaults(deps.env).familyPages);
@@ -79,6 +84,7 @@ export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   const next: Item = { ...s };
   if (body.status !== undefined) next.statut = body.status;
   if (body.pageQuota !== undefined) next.quotaPages = body.pageQuota;
+  if (body.schoolLevel !== undefined) next.niveau = body.schoolLevel; // rectification (droit de correction); le pseudo et `under15` se refont en recreant l'eleve
   // Base d'abord: un eleve suspendu est refuse par l'API immediatement, meme si Cognito echoue ensuite.
   if (!(await deps.store.commit([{ item: next, when: s.v ?? 'any' }]))) throw conflict('Reessayez');
   // A chaque requete portant `status` (idempotent): si Cognito a echoue, relancer la meme requete repare.

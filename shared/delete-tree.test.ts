@@ -7,7 +7,7 @@ const k = (PK: string, SK: string) => ({ PK, SK });
 const seed = () => [
   keys.family('f1'), keys.student('f1', 's1'), keys.student('f1', 's2'),
   keys.quota('f1', '2026-12', 's1'), keys.quota('f1', '2026-12', 's2'), keys.quotaFamily('f1', '2026-12'),
-  keys.week('f1', '2026-W49', 's1'), keys.report('f1', 'r1'),
+  keys.week('f1', '2026-W49', 's1'), { ...keys.report('f1', 'r1'), studentId: 's1', docId: 'd1' }, { ...keys.report('f1', 'r0'), docId: 'd1' }, { ...keys.report('f1', 'r2'), studentId: 's2', docId: 'd2' },
   keys.job('s1', 'j1'), keys.text('j1', 1), keys.text('j1', 2),
   keys.doc('s1', 'd1'), keys.claim('d1', 1), keys.verdict('d1', 1), keys.qcm('d1', 1), keys.gap('d1', 1),
   keys.profile('s1'), keys.day('s1', '2026-12-01'), keys.attempt('s1', 'd1:qcm:01', '2026-12-01'), keys.transcriptions('s1', '2026-12-01'),
@@ -29,7 +29,8 @@ describe('suppression en cascade', () => {
     expect(before - db.keys().length).toBe(n);
     const left = db.keys().map((x) => `${x.PK}|${x.SK}`).join('\n');
     expect(left).not.toMatch(/STUDENT#s1|DOC#d1|JOB#j1|#s1\b/);
-    for (const keep of ['FAMILY#f1|META', 'FAMILY#f1|STUDENT#s2', 'STUDENT#s2|PROFILE', 'DOC#d2|CLAIM#01', 'FAMILY#f1|QUOTA#2026-12#FAMILY', 'PASSAGE#p1|META', 'COST#dev|MONTH#2026-12', 'FAMILY#f1|REPORT#r1']) expect(left).toContain(keep);
+    for (const keep of ['FAMILY#f1|META', 'FAMILY#f1|STUDENT#s2', 'STUDENT#s2|PROFILE', 'DOC#d2|CLAIM#01', 'FAMILY#f1|QUOTA#2026-12#FAMILY', 'PASSAGE#p1|META', 'COST#dev|MONTH#2026-12', 'FAMILY#f1|REPORT#r2']) expect(left).toContain(keep);
+    expect(left).not.toMatch(/REPORT#r1|REPORT#r0/); // D3: les signalements de l'eleve partent avec lui (avec studentId, ou anciens via sa fiche)
   });
   it('deleteFamilyTree efface tous les eleves puis la famille', async () => {
     const db = memoryTreeDb(seed());

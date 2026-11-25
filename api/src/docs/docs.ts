@@ -75,12 +75,12 @@ export async function docsReport(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const docId = pathId(event, 'docId');
   const parsed = ReportRequestSchema.safeParse(bodyOf(event));
   if (!parsed.success) return fail('requete_invalide', 'Demande invalide');
-  await findDoc(ctx, c, docId);
+  const { sid } = await findDoc(ctx, c, docId);
   const { claimId, comment } = parsed.data;
   if (claimId !== undefined && !/^[0-9]{2}$/.test(claimId)) return fail('requete_invalide', 'Affirmation inconnue');
   if (claimId !== undefined && !(await ctx.db.get(keys.claim(docId, Number(claimId))))) return fail('requete_invalide', 'Affirmation inconnue');
   const reportId = ctx.newId();
-  const item = SignalementItemSchema.parse({ ...keys.report(c.familyId, reportId), docId, ...(claimId ? { claimId } : {}), commentaire: comment.trim(), statut: 'ouvert', createdAt: iso(ctx) });
+  const item = SignalementItemSchema.parse({ ...keys.report(c.familyId, reportId), docId, studentId: sid, ...(claimId ? { claimId } : {}), commentaire: comment.trim(), statut: 'ouvert', createdAt: iso(ctx) });
   await ctx.db.put({ ...item, reporterRole: c.role });
   return json(201, { reportId, docId, ...(claimId ? { claimId } : {}), status: 'ouvert' });
 }
