@@ -268,6 +268,14 @@ describe('sections: une fiche par sujet', () => {
     expect(planSections(ids, [])).toEqual({ ok: false, error: 'aucune_fiche' });
     expect(planSections([], [sec('p1-s1')])).toEqual({ ok: false, error: 'inconnu' });
   });
+  it('Q6: MIN_WORDS sur le total des sections retenues, pas par section', () => {
+    const wc = [30, 5, 5, 3, 2, 10]; // 55 mots au total
+    expect(planSections(ids, [sec('p1-s1'), sec('p2-s1'), sec('p3-s1')], { wordCounts: wc }).ok).toBe(true); // 40 + 5 + 10 mots; la section de 5 mots n'est pas refusee seule
+    expect(planSections(ids, [sec('p1-s1'), sec('p1-s3', true)], { wordCounts: wc })).toEqual({ ok: false, error: 'trop_court' }); // 30 + 5 = 35 mots retenus, la fin est ignoree
+    expect(planSections(ids, [sec('p1-s1', true), sec('p1-s2')], { wordCounts: wc })).toEqual({ ok: false, error: 'trop_court' }); // 5+5+3+2+10 = 25 mots retenus
+    expect(planSections(ids, [sec('p1-s1', true), sec('p1-s2')], { wordCounts: wc, minWords: 25 }).ok).toBe(true); // seuil inclus
+    expect(planSections(ids, [sec('p1-s1')], { wordCounts: [1, 2] })).toEqual({ ok: false, error: 'inconnu' }); // comptes mal alignes
+  });
   it('6 sections au plus: 6 acceptees', () => {
     expect(planSections(ids, ids.map((id) => sec(id))).ok).toBe(true);
   });

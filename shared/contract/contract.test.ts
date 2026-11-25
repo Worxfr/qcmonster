@@ -171,7 +171,8 @@ describe('contrat OpenAPI', () => {
     const op = spec.paths['/jobs/{jobId}/confirm'].post;
     expect(op.description).toMatch(/au plus 6 sections/);
     expect(op.description).toMatch(/consomme UNE fois/);
-    expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'ordre', 'debut', 'rien']);
+    expect(op.description).toMatch(/au total.*jamais a chaque section/s);
+    expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'ordre', 'debut', 'rien', 'court']);
     expect(z.safeParse(op.requestBody.content['application/json'].example).success).toBe(true); // `example` (et non `examples`): l'API simulee et mock:check l'utilisent comme corps
     expect(z.safeParse({ corrections: [], subject: 'svt', topic: 'La photosynthese', folderId: 'f' }).success).toBe(true); // une seule section
   });

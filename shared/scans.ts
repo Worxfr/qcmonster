@@ -311,7 +311,9 @@ export function listScans(input: ListInput): ScanList {
   };
 }
 
-export type SectionError = 'inconnu' | 'ordre' | 'debut' | 'trop' | 'aucune_fiche' | 'vide';
+/** Seuil de mots du texte retenu (decision du 2026-11-25, Q6): meme valeur que `MIN_WORDS` de la transcription; il s'applique au TOTAL des sections non ignorees, pas a chaque section. */
+export const MIN_WORDS_RETAINED = 40;
+export type SectionError = 'inconnu' | 'ordre' | 'debut' | 'trop' | 'aucune_fiche' | 'vide' | 'trop_court';
 export interface SectionInput {
   fromSentenceId: string;
   ignore?: boolean;
@@ -320,9 +322,10 @@ export interface SectionInput {
  * Decoupage de la relecture: `ids` = identifiants de TOUTES les phrases du cours, dans l'ordre du texte (pages triees numeriquement,
  * phrases dans l'ordre; une phrase recollee compte une fois). Renvoie, pour chaque section, l'intervalle [start, end[ d'indices.
  * Regles (voir `POST /jobs/{jobId}/confirm`): au plus MAX_SECTIONS; la premiere commence a la premiere phrase; coupes connues,
- * strictement croissantes; au moins une section non ignoree; aucune section vide.
+ * strictement croissantes; au moins une section non ignoree; aucune section vide; si `wordCounts` (mots par phrase, meme ordre que `ids`)
+ * est fourni, le total des sections non ignorees atteint `minWords` (40 par defaut).
  */
-export function planSections(ids: string[], sections: SectionInput[]): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
+export function planSections(ids: string[], sections: SectionInput[], opts: { wordCounts?: number[]; minWords?: number } = {}): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
   if (sections.length === 0) return { ok: false, error: 'aucune_fiche' };
   if (sections.length > MAX_SECTIONS) return { ok: false, error: 'trop' };
   const pos = new Map(ids.map((id, k) => [id, k]));
@@ -337,5 +340,11 @@ export function planSections(ids: string[], sections: SectionInput[]): { ok: tru
   const ranges = starts.map((start, n) => ({ start, end: n + 1 < starts.length ? starts[n + 1] : ids.length, ignore: sections[n].ignore === true }));
   if (ranges.some((r) => r.end <= r.start)) return { ok: false, error: 'vide' };
   if (ranges.every((r) => r.ignore)) return { ok: false, error: 'aucune_fiche' };
+  // Q6: le total de mots des sections retenues (non ignorees) doit atteindre le seuil; une petite section isolee n'est pas refusee pour autant.
+  if (opts.wordCounts) {
+    if (opts.wordCounts.length !== ids.length) return { ok: false, error: 'inconnu' };
+    const kept = ranges.filter((r) => !r.ignore).reduce((n, r) => n + opts.wordCounts!.slice(r.start, r.end).reduce((a, b) => a + b, 0), 0);
+    if (kept < (opts.minWords ?? MIN_WORDS_RETAINED)) return { ok: false, error: 'trop_court' };
+  }
   return { ok: true, ranges };
 }
