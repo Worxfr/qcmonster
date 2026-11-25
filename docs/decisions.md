@@ -12,4 +12,5 @@
 | D8 | Région | Paris (UE). Modèles Claude sur Bedrock via profils d'inférence UE. |
 | D9 | Comptes | Comptes élève et parent liés (Cognito). Le parent valide la création du compte élève. |
 | D10 | Images | Supprimées à la confirmation du texte par l'élève, au plus tard après 1 jour. |
+| D10 bis | Cours complet et délai de confirmation | **Proposition à valider.** L'élève découpe son cours en sections (une fiche par sujet). Le texte complet corrigé est conservé jusqu'à suppression par l'élève ou avec le compte, sans accès du parent (ni lecture ni export du texte). L'élève a 12 heures pour confirmer (au lieu de 30 minutes) : la photo est supprimée à la confirmation, donc D10 (« au plus tard après 1 jour ») reste vraie. |
 | D11 | Déploiement | GitHub vers AWS par OIDC. Le propriétaire lance lui-même le script d'amorçage. |
