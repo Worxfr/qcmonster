@@ -3,6 +3,7 @@ import { deleteFamilyTree } from '../../../shared/delete-tree.js';
 import { keys, sha256 } from '../../../shared/ddb/keys.js';
 import { quotaDefaults } from '../../../shared/names.js';
 import { POLICY_VERSION } from '../../../shared/policy.js';
+import { coursMeta } from '../cours/meta.js';
 import { studentView } from '../game/access.js';
 import type { Item } from '../lib/store.js';
 import { badRequest, conflict, forbidden, type Auth, type ParentCtx } from '../lib/http.js';
@@ -38,6 +39,7 @@ export async function createFamily(deps: FamilyDeps, a: Auth, body: { consent: b
  * GET /family/export: toutes les donnees de la famille DU JETON (droit d'acces et portabilite): e-mail du parent, eleves (profil de jeu,
  * jours actifs, tentatives), fiches avec affirmations, sources et questions, signalements. Chaque partition lue (STUDENT#, DOC#) est
  * atteinte depuis la famille du jeton (liste des eleves, GSI1 des fiches): aucun identifiant ne vient de la requete.
+ * Les cours conserves sortent sans leur texte (structure, sections, liens vers les fiches; l'eleve lit le texte par GET /cours).
  * Non exporte (dit dans la politique): le texte brut lu sur les photos (TEXT#, supprime au bout de 7 jours) et les extraits web partages.
  */
 export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
@@ -52,10 +54,20 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
     const profile: Record<string, unknown> = { ...part.find((i) => i.SK === 'PROFILE') };
     for (const k of ['PK', 'SK', 'v']) delete profile[k];
     const c = consent(s);
+    // Dossiers et cours de l'eleve (contrat 1.3). Les cours sortent SANS leur texte (`COURS#<id>#T<nn>` n'est jamais copie): le parent ne lit pas le texte.
+    const partDocs = part.filter((i) => i.SK.startsWith('DOC#'));
+    const existing = new Set(partDocs.map((i) => i.SK.slice('DOC#'.length)));
+    const folders = part
+      .filter((i) => i.SK.startsWith('FOLDER#'))
+      .map((f) => ({ folderId: f.SK.slice('FOLDER#'.length), name: String(f.nom ?? ''), createdAt: String(f.createdAt ?? ''), scanCount: partDocs.filter((d) => d.dossierId === f.SK.slice('FOLDER#'.length)).length }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const cours = part.filter((i) => /^COURS#[^#]+$/.test(i.SK)).map((h) => coursMeta(h, existing)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     students.push({
       ...studentView(s),
       createdAt: String(s.createdAt ?? ''),
       ...(c ? { consentement: c } : {}),
+      folders,
+      cours,
       profile,
       activeDays: part.filter((i) => i.SK.startsWith('DAY#') && Number(i.xp ?? 0) > 0).map((i) => i.SK.slice('DAY#'.length)).sort(),
       attempts: part
@@ -94,6 +106,10 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
       subject: String(d.matiere ?? 'autre'),
       createdAt: String(d.createdAt ?? ''),
       studentId: d.PK.slice('STUDENT#'.length),
+      ...(typeof d.sujet === 'string' && d.sujet ? { topic: d.sujet.slice(0, 80) } : {}),
+      ...(typeof d.dossierId === 'string' && d.dossierId ? { folderId: d.dossierId } : {}),
+      ...(typeof d.coursId === 'string' && d.coursId ? { coursId: d.coursId } : {}),
+      ...(typeof d.sectionIndex === 'number' ? { sectionIndex: d.sectionIndex } : {}),
       summary: typeof d.resume === 'string' ? d.resume : '',
       claims,
       questions,

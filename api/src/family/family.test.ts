@@ -531,3 +531,27 @@ describe('isolation entre familles', () => {
     expect(count(t)).toBe(n);
   });
 });
+
+describe('B2: export famille avec dossiers et cours (sans texte)', () => {
+  it('exporte folders, topic/folderId par fiche et cours en CoursMeta, sans aucune phrase du cours; autre famille absente', async () => {
+    const t = testDeps();
+    await family(t);
+    await t.store.commit([
+      { item: { ...keys.student(FID, SID), cognitoSub: 'sub-stu1', pseudo: 'P' }, when: 'any' },
+      { item: { PK: `STUDENT#${SID}`, SK: 'FOLDER#F1', nom: 'Brevet', nomCle: 'brevet', createdAt: '2026-11-01T00:00:00.000Z' }, when: 'any' },
+      { item: { PK: `STUDENT#${SID}`, SK: 'DOC#dx', titre: 'T', matiere: 'svt', createdAt: '2026-12-01T10:00:00.000Z', sujet: 'Sujet', dossierId: 'F1', coursId: 'C1', sectionIndex: 0, GSI1PK: `FAMILY#${FID}`, GSI1SK: 'DOC#2026-12-01' }, when: 'any' },
+      { item: { PK: `STUDENT#${SID}`, SK: 'COURS#C1', jobId: 'J1', pages: 1, createdAt: '2026-12-01T10:05:00.000Z', nbPhrases: 1, sections: [{ fromSentenceId: 'p1-s1', subject: 'svt', ignore: false, docId: 'dx', statut: 'fiche' }, { fromSentenceId: 'p1-s2', subject: 'svt', ignore: false, docId: 'efface', statut: 'fiche' }] }, when: 'any' },
+      { item: { PK: `STUDENT#${SID}`, SK: 'COURS#C1#T01', page: 1, sentences: [{ id: 'p1-s1', text: 'TEXTE-DU-COURS-SECRET' }] }, when: 'any' },
+      { item: { PK: 'STUDENT#autre', SK: 'COURS#C9', jobId: 'J9', pages: 1, createdAt: 'x', nbPhrases: 1, sections: [] }, when: 'any' },
+    ]);
+    const out = await exportFamily(t.deps, parentCtx);
+    const s = out.students.find((x) => x.studentId === SID) as unknown as { folders: unknown[]; cours: { coursId: string; sections: { status: string }[] }[] };
+    expect(s.folders).toEqual([{ folderId: 'F1', name: 'Brevet', createdAt: '2026-11-01T00:00:00.000Z', scanCount: 1 }]);
+    expect(s.cours.map((c) => c.coursId)).toEqual(['C1']);
+    expect(s.cours[0].sections.map((x) => x.status)).toEqual(['fiche', 'supprimee']);
+    expect(out.docs.find((d) => d.docId === 'dx')).toMatchObject({ topic: 'Sujet', folderId: 'F1', coursId: 'C1', sectionIndex: 0 });
+    const raw = JSON.stringify(out);
+    expect(raw).not.toContain('TEXTE-DU-COURS-SECRET');
+    expect(raw).not.toContain('C9');
+  });
+});
