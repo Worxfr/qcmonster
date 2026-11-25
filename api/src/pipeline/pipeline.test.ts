@@ -264,7 +264,7 @@ describe('refus et nettoyage', () => {
     await failJob(k.ctx, u.i); // deja termine: sans effet
   });
 
-  it('apres consommation du quota, un echec rend les pages (decision d Alexis)', async () => {
+  it('apres consommation du quota, un echec rend les pages (decision du proprietaire)', async () => {
     const k = await makeCtx(goodScript());
     const u = await toConfirm(k);
     await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));

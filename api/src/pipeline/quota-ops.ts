@@ -50,7 +50,7 @@ export async function releaseQuotaOnce(ctx: Ctx, sid: string, jobId: string): Pr
 
 /**
  * Fin d'un job sans fiche: rend les pages quel que soit leur etat, une seule fois. Reservees: rendues. Consommees (echec apres `quotaConsume`):
- * rendues aussi (decision d'Alexis), meme si l'arret est survenu entre l'ecriture du quota et le drapeau `quotaState`. Rejouable sans risque.
+ * rendues aussi (decision du proprietaire), meme si l'arret est survenu entre l'ecriture du quota et le drapeau `quotaState`. Rejouable sans risque.
  */
 export async function returnQuotaOnce(ctx: Ctx, sid: string, jobId: string): Promise<void> {
   const job = await ctx.db.get(jobKey(sid, jobId));

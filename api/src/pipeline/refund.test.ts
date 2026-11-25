@@ -1,4 +1,4 @@
-// Rendu des pages apres un echec serveur survenu APRES la consommation du quota (decision d'Alexis): une seule fois, rejouable,
+// Rendu des pages apres un echec serveur survenu APRES la consommation du quota (decision du proprietaire): une seule fois, rejouable,
 // jamais en double avec le rendu d'annulation, de rejet ou d'expiration.
 import { describe, expect, it } from 'vitest';
 import { keys } from '../../../shared/ddb/keys.js';
