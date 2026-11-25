@@ -26,6 +26,11 @@ aws cognito-idp admin-add-user-to-group --region eu-west-3 \
 ## Quand le code est consommé
 Le déclencheur `PreSignUp` consomme l'invitation à l'envoi du formulaire d'inscription du parent, pas à la confirmation de l'e-mail (voir `inscription-parent.md`, N13). Une faute de frappe dans l'e-mail brûle donc le code: en générer un nouveau.
 
+## Administrateur sans famille
+- Un compte `admin` sans groupe `parent` ni `eleve` et sans famille reçoit `404` sur `GET /me`: le site propose « Créer ma famille ». `POST /family` pose alors la famille et ajoute le groupe `parent`, en gardant `admin`.
+- Le jeton déjà émis ne contient pas encore `parent`: le site le renouvelle, sinon « Se reconnecter ». Un compte élève, ou portant `parent` et `eleve`, reçoit toujours `403`.
+- `admin` ne donne accès à aucune donnée de famille (seule la famille du jeton compte); il ne sert qu'à `POST /admin/invitations`.
+
 ## Garde-fous
 - **Autorisation côté serveur**: la route `POST /admin/invitations` lit `cognito:groups` dans le jeton validé par API Gateway. Sans le groupe `admin` (parent, élève, jeton sans groupe): `403` identique, sans appel AWS. Le masquage du lien dans le site n'est qu'un confort.
 - **Limite**: 20 codes par jour (UTC) et par administrateur; au-delà `429`. Réglage: constante `DAILY_LIMIT` dans `api/src/admin/invitations.ts`.

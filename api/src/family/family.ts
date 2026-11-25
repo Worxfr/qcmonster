@@ -18,7 +18,7 @@ export const familyIdFor = (sub: string): string => `f${sha256(`qcm-family:${sub
  * avant tout autre appel. Un eleve, ou un parent qui a deja une famille, recoit une erreur.
  */
 export async function createFamily(deps: FamilyDeps, a: Auth, body: { consent: boolean; policyVersion: string }) {
-  if (a.role === 'eleve') throw forbidden();
+  if (a.role === 'eleve' || a.conflicting) throw forbidden();
   // Consentement explicite a la politique EN VIGUEUR (la version affichee au parent doit etre la version actuelle).
   if (body.consent !== true || body.policyVersion !== POLICY_VERSION) throw badRequest('Consentement requis');
   if (a.familyId || !a.username) throw conflict('Famille deja creee');
