@@ -18,7 +18,11 @@ TAGS_CLI=(Key=Project,Value=QCMonster Key=Environment,Value=prod Key=ManagedBy,V
 
 # Prefixe du claim `sub`. Depots recents: forme immuable avec identifiants numeriques (repo:Worxfr@<id>/qcmonster@<id>),
 # a lire avec: gh api repos/Worxfr/qcmonster/actions/oidc/customization/sub -q .sub_claim_prefix
-SUB_PREFIX="${REPO_SUB_PREFIX:-repo:${REPO}}"
+# N9: OBLIGATOIRE. Un prefixe par defaut (repo:Worxfr/qcmonster) ne correspond pas aux jetons des depots a sujet immuable: la trust policy
+# serait remplacee par une valeur que GitHub n'emet plus, et le deploiement s'arreterait.
+: "${REPO_SUB_PREFIX:?REPO_SUB_PREFIX est obligatoire. Le lire avec: gh api repos/${REPO}/actions/oidc/customization/sub -q .sub_claim_prefix}"
+case "$REPO_SUB_PREFIX" in repo:*) ;; *) echo "REPO_SUB_PREFIX doit commencer par « repo: » (valeur lue par gh api, champ sub_claim_prefix)" >&2; exit 2 ;; esac
+SUB_PREFIX="$REPO_SUB_PREFIX"
 UPDATE_TRUST=0
 [ "${2:-}" = "--update-trust" ] && UPDATE_TRUST=1
 

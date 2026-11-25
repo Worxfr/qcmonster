@@ -67,6 +67,9 @@ export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
     const texts = (await ctx.db.query(`JOB#${doc.jobId}`, 'TEXT#')).map((t) => ({ PK: t.PK, SK: t.SK }));
     if (texts.length) await ctx.db.remove(texts);
   }
+  // N6: le commentaire libre d'un signalement ne survit pas a sa fiche (les signalements sont sous la famille, avec le docId).
+  const reports = (await ctx.db.query(`FAMILY#${c.familyId}`, 'REPORT#')).filter((r) => r.docId === pathId(event, 'docId')).map((r) => ({ PK: r.PK, SK: r.SK }));
+  if (reports.length) await ctx.db.remove(reports);
   return noContent();
 }
 

@@ -39,3 +39,22 @@ describe('B1 et B2: clients Cognito', () => {
     expect(web.CallbackURLs).toEqual(['https://front.example.invalid/']);
   });
 });
+
+describe('N1 et N4: pool et declencheur PreSignUp', () => {
+  const auth = () => {
+    const app = buildApp('dev', 'test@example.invalid');
+    return Template.fromStack(app.node.findChild(stackName('dev', 'auth')) as never);
+  };
+  it('auto-inscription active (AllowAdminCreateUserOnly=false), forcee par un modele de message', () => {
+    auth().hasResourceProperties('AWS::Cognito::UserPool', {
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: false, InviteMessageTemplate: { EmailSubject: 'Ton compte QCMonster' } },
+    });
+  });
+  it('le role du declencheur n\'ecrit que les invitations (LeadingKeys INVITE#*)', () => {
+    const policies = Object.values(auth().findResources('AWS::IAM::Policy')) as { Properties: { PolicyDocument: { Statement: Record<string, unknown>[] } } }[];
+    const ddb = policies.flatMap((p) => p.Properties.PolicyDocument.Statement).filter((st) => JSON.stringify(st.Action).includes('dynamodb:'));
+    expect(ddb).toHaveLength(1);
+    expect(ddb[0].Action).toBe('dynamodb:UpdateItem');
+    expect(ddb[0].Condition).toEqual({ 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['INVITE#*'] }, Null: { 'dynamodb:LeadingKeys': 'false' } });
+  });
+});

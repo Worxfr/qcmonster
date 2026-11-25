@@ -49,6 +49,8 @@ export class AuthStack extends Stack {
       new iam.PolicyStatement({
         actions: ['dynamodb:UpdateItem'],
         resources: [this.formatArn({ service: 'dynamodb', resource: 'table', resourceName: table })],
+        // N1: le declencheur est appele par un inconnu (clientMetadata libre): il ne touche que les invitations.
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['INVITE#*'] }, Null: { 'dynamodb:LeadingKeys': 'false' } },
       }),
     );
 
@@ -68,6 +70,10 @@ export class AuthStack extends Stack {
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       deletionProtection: prod,
       removalPolicy: prod ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+      // N4: le pool de dev deploye refuse SignUp (« SignUp is not permitted ») alors que le modele a AllowAdminCreateUserOnly=false. CloudFormation ne
+      // reecrit pas une propriete inchangee: si le reglage a ete coupe hors CDK, seul un changement de AdminCreateUserConfig le remet. Ce modele de
+      // message (utilise seulement pour les comptes crees par le serveur, eleves) force cette reecriture au prochain deploiement.
+      userInvitation: { emailSubject: 'Ton compte QCMonster' },
       lambdaTriggers: { preSignUp },
     });
 

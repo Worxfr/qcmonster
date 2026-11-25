@@ -377,6 +377,15 @@ describe('fiches: lecture, suppression, signalement', () => {
     expect(await deleteDocTree(treeDbFrom(k.db), 's1', docId)).toBe(0);
   });
 
+  it('suppression: les signalements de la fiche partent, ceux d une autre fiche restent', async () => {
+    const { k, docId } = await published();
+    const mine = body(await docsReport(k.ctx, event({ params: { docId }, body: { comment: 'Une erreur.' } }))).reportId;
+    await k.db.put({ ...keys.report('f1', 'r-autre'), docId: 'autre-fiche', studentId: 's1', commentaire: 'x', statut: 'ouvert' });
+    expect((await docsDelete(k.ctx, event({ params: { docId } }))).statusCode).toBe(204);
+    expect(await k.db.get(keys.report('f1', mine))).toBeUndefined();
+    expect(await k.db.get(keys.report('f1', 'r-autre'))).toBeDefined();
+  });
+
   it('le parent peut supprimer une fiche de sa famille, pas d une autre', async () => {
     const { k, docId } = await published();
     const other = parent({ params: { docId } });
