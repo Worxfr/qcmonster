@@ -73,9 +73,7 @@ export class AuthStack extends Stack {
       // N4: le pool de dev deploye refuse SignUp (« SignUp is not permitted ») alors que le modele a AllowAdminCreateUserOnly=false. CloudFormation ne
       // reecrit pas une propriete inchangee: si le reglage a ete coupe hors CDK, seul un changement de AdminCreateUserConfig le remet. Ce modele de
       // message (utilise seulement pour les comptes crees par le serveur, eleves) force cette reecriture au prochain deploiement.
-      // D1: la sonde publique refuse de nouveau SignUp apres le deploiement de F1b (le reglage a derive hors CDK). Changer ce modele (ici le corps) force un nouvel
-      // UpdateUserPool au prochain deploiement, qui reecrit AllowAdminCreateUserOnly=false. Si la derive revient, chercher qui appelle UpdateUserPool (CloudTrail).
-      userInvitation: { emailSubject: 'Ton compte QCMonster', emailBody: 'Ton compte QCMonster est cree. Identifiant : {username}. Mot de passe provisoire : {####}' },
+      userInvitation: { emailSubject: 'Ton compte QCMonster' },
       lambdaTriggers: { preSignUp },
     });
 
