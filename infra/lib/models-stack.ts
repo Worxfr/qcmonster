@@ -22,7 +22,7 @@ export const EU_REGIONS = ['eu-west-1', 'eu-west-3', 'eu-central-1', 'eu-north-1
 
 /**
  * Un profil d'inference d'APPLICATION par modele et par environnement (Haiku, Sonnet; dev ou prod: 4 au total),
- * tague Project/Environment/ManagedBy/Owner pour que le cout suive le tag. Le code appelle l'ARN de ce profil
+ * tague project/Environment/ManagedBy/Owner pour que le cout suive le tag. Le code appelle l'ARN de ce profil
  * (parametre SSM /qcm/<env>/models/<modele>), jamais le profil systeme.
  */
 export class ModelsStack extends Stack {

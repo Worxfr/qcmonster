@@ -2,7 +2,7 @@
 // Point d'entree CDK COMPLET (design-v2 10.1): toutes les stacks sont importees ici, apres le lot 1 ce fichier ne change plus.
 // Chaque fichier de stack appartient a un seul lot. Usage: cdk synth -c env=dev|prod
 import { App, Tags } from 'aws-cdk-lib';
-import { ENVS, OWNER, PROJECT, REGION, stackName, type Env } from '../../shared/names.js';
+import { ENVS, OWNER, REGION, stackName, type Env } from '../../shared/names.js';
 import { AuthStack } from '../lib/auth-stack.js';
 import { DataStack } from '../lib/data-stack.js';
 import { ApiStack } from '../lib/api-stack.js';
@@ -13,6 +13,9 @@ import { VerifyStack } from '../lib/verify-stack.js';
 import { GameStack } from '../lib/game-stack.js';
 import { EvalStack } from '../lib/eval-stack.js';
 import { WebContentStack, WebStack } from '../lib/web-stack.js';
+
+export const COST_TAG_KEY = 'project';
+export const COST_TAG_VALUE = 'qcmonster';
 
 export function buildApp(envName: Env, alertEmail: string, context?: Record<string, string>): App {
   const app = new App({ context });
@@ -42,7 +45,9 @@ export function buildApp(envName: Env, alertEmail: string, context?: Record<stri
   }
 
   // Tags obligatoires sur TOUTES les ressources (test CI: infra/test/tags.test.ts).
-  Tags.of(app).add('Project', PROJECT);
+  // Cle `project` en minuscule: c'est la cle de repartition des couts du compte (docs/ops/bootstrap.md, FEAT-D).
+  // IAM compare les cles sans tenir compte de la casse: `Project` et `project` ensemble feraient echouer le deploiement.
+  Tags.of(app).add(COST_TAG_KEY, COST_TAG_VALUE);
   Tags.of(app).add('Environment', envName);
   Tags.of(app).add('ManagedBy', 'CDK');
   Tags.of(app).add('Owner', OWNER);
