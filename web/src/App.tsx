@@ -5,7 +5,7 @@ import { AppContext } from './app-context';
 import { isSignedIn, mockRole, onSignedOut, signOut } from './auth';
 import { ErrorBox, Loading } from './components/ui';
 import { MOCK_AUTH, SIGNUP_ENABLED } from './env';
-import { errMsg } from './hooks';
+import { errMsg, useLoad } from './hooks';
 import { useRoute } from './router';
 import { Admin, useIsAdmin } from './screens/Admin';
 import { Activate } from './screens/Activate';
@@ -18,7 +18,11 @@ import { Login } from './screens/Login';
 import { Parent } from './screens/Parent';
 import { Policy } from './screens/Policy';
 import { Signup } from './screens/Signup';
-import { JobView, Scan } from './screens/Scan';
+import { JobView } from './screens/Job';
+import { Scan } from './screens/Scan';
+import { Docs } from './screens/Docs';
+import { Folders } from './screens/Folders';
+import { Cours } from './screens/Cours';
 import { Quiz } from './screens/Quiz';
 import type { Me, Progress } from './types';
 
@@ -83,15 +87,19 @@ function Shell() {
   if (!me) return <main className="page">{error ? <ErrorBox message={error} /> : <Loading />}{error && <button className="btn" onClick={signOut}>Se déconnecter</button>}</main>;
 
   const parent = me.role === 'parent';
-  const [, seg, arg] = route.split('/');
+  const [, seg, arg] = route.split('?')[0].split('/');
   const id = arg ? decodeURIComponent(arg) : '';
   let body;
-  if (parent) body = <Parent />;
+  if (parent && seg === 'eleve' && id) body = <ParentCourses sid={id} />;
+  else if (parent) body = <Parent />;
   else if (seg === 'scan') body = <Scan />;
   else if (seg === 'job' && id) body = <JobView id={id} />;
   else if (seg === 'doc' && id) body = <Doc id={id} />;
   else if (seg === 'quiz' && id) body = <Quiz docId={id} />;
   else if (seg === 'jeu') body = <Game />;
+  else if (seg === 'docs') body = <Docs />;
+  else if (seg === 'folders') body = <Folders />;
+  else if (seg === 'cours' && id) body = <Cours id={id} />;
   else body = <Home />;
 
   const tab = (path: string, label: string, icon: string, active: boolean) => (
@@ -112,11 +120,24 @@ function Shell() {
       </main>
       {!parent && (
         <nav className="tabs" aria-label="Navigation principale">
-          {tab('/', 'Accueil', '🏠', !seg || seg === 'doc' || seg === 'quiz')}
+          {tab('/', 'Accueil', '🏠', !seg || seg === 'quiz')}
+          {tab('/docs', 'Cours', '📚', seg === 'docs' || seg === 'doc' || seg === 'folders' || seg === 'cours')}
           {tab('/scan', 'Scanner', '📷', seg === 'scan' || seg === 'job')}
           {tab('/jeu', 'Jeu', '🏆', seg === 'jeu')}
         </nav>
       )}
     </AppContext.Provider>
+  );
+}
+
+/** Vue parent, lecture seule: les cours d'un eleve de la famille (jamais le texte ni les photos). */
+function ParentCourses({ sid }: { sid: string }) {
+  const d = useLoad(() => api.dashboard(), []);
+  const pseudo = d.data?.students.find((s) => s.student.studentId === sid)?.student.pseudo;
+  return (
+    <>
+      <p><a className="link" href="#/">‹ Tableau de bord</a></p>
+      <Docs studentId={sid} pseudo={pseudo} />
+    </>
   );
 }

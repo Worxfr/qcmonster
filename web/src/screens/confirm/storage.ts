@@ -25,4 +25,26 @@ export function saveEdits(jobId: string, edits: Record<string, string>) {
   }
 }
 
-export const clearEdits = (jobId: string) => saveEdits(jobId, {});
+const skey = (jobId: string) => `qcm.confirm.sections.${jobId}`;
+export function loadSections(jobId: string): unknown {
+  try {
+    return JSON.parse(sessionStorage.getItem(skey(jobId)) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+export function saveSections(jobId: string, secs: unknown) {
+  try {
+    sessionStorage.setItem(skey(jobId), JSON.stringify(secs));
+  } catch {
+    /* stockage plein ou interdit */
+  }
+}
+export const clearEdits = (jobId: string) => {
+  saveEdits(jobId, {});
+  try {
+    sessionStorage.removeItem(skey(jobId));
+  } catch {
+    /* rien */
+  }
+};

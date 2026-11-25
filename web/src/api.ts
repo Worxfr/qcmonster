@@ -3,6 +3,7 @@ import { getToken, signOut } from './auth';
 import type {
   AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
+  ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
 } from './types';
 
 export class ApiError extends Error {
@@ -30,10 +31,27 @@ const e = encodeURIComponent;
 export const api = {
   me: () => call<Me>('GET', '/me'),
   progress: () => call<Progress>('GET', '/me/progress'),
-  createScan: (pages: number, contentType: string) => call<ScanCreateResponse>('POST', '/scans', { pages, contentType }),
+  createScan: (contentTypes: string[], folderId?: string) =>
+    call<ScanCreateResponse>('POST', '/scans', { pages: contentTypes.length, contentType: contentTypes[0], contentTypes, ...(folderId ? { folderId } : {}) }),
+  listScans: (q: ScanQuery) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') p.set(k, String(v));
+    const qs = p.toString();
+    return call<ScanList>('GET', `/scans${qs ? `?${qs}` : ''}`);
+  },
+  folders: (studentId?: string) => call<{ items: Folder[] }>('GET', `/folders${studentId ? `?studentId=${e(studentId)}` : ''}`),
+  createFolder: (name: string) => call<Folder>('POST', '/folders', { name }),
+  renameFolder: (id: string, name: string) => call<Folder>('PATCH', `/folders/${e(id)}`, { name }),
+  deleteFolder: (id: string) => call<void>('DELETE', `/folders/${e(id)}`),
+  addToFolder: (id: string, docIds: string[]) => call<void>('POST', `/folders/${e(id)}/scans`, { docIds }),
+  removeFromFolder: (id: string, docId: string) => call<void>('DELETE', `/folders/${e(id)}/scans/${e(docId)}`),
+  cours: (id: string) => call<Cours>('GET', `/cours/${e(id)}`),
+  deleteCours: (id: string, fiches: 'garder' | 'supprimer') => call<void>('DELETE', `/cours/${e(id)}?fiches=${fiches}`),
+  updateDoc: (id: string, b: { subject?: Subject; topic?: string | null }) => call<DocSummary>('PATCH', `/docs/${e(id)}`, b),
   job: (id: string) => call<Job>('GET', `/jobs/${e(id)}`),
   transcription: (id: string) => call<Transcription>('GET', `/jobs/${e(id)}/transcription`),
-  confirm: (id: string, corrections: Sentence[]) => call<Job>('POST', `/jobs/${e(id)}/confirm`, { corrections }),
+  confirm: (id: string, corrections: Sentence[], extra: { sections?: ConfirmSection[]; subject?: Subject; topic?: string; folderId?: string } = {}) =>
+    call<Job>('POST', `/jobs/${e(id)}/confirm`, { corrections, ...extra }),
   cancel: (id: string) => call<Job>('POST', `/jobs/${e(id)}/cancel`),
   docs: () => call<{ items: DocSummary[] }>('GET', '/docs'),
   doc: (id: string) => call<Doc>('GET', `/docs/${e(id)}`),
@@ -58,7 +76,7 @@ export const api = {
 };
 
 /** Envoi direct vers S3 avec l'URL POST pre-signee: les champs d'abord, le fichier en dernier (exigence S3). */
-export async function uploadScan(upload: ScanCreateResponse['upload'], file: Blob): Promise<void> {
+export async function uploadScan(upload: { url: string; fields: Record<string, string> }, file: Blob): Promise<void> {
   const form = new FormData();
   for (const [k, v] of Object.entries(upload.fields)) form.append(k, v);
   form.append('file', file);

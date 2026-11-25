@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -73,7 +73,7 @@ describe('parcours eleve contre l\'API simulee', () => {
   it('connexion mock, accueil avec progression et fiches', async () => {
     const { view } = await enter('eleve');
     expect(await screen.findByText(/Niveau 2/)).toBeInTheDocument();
-    expect(await screen.findByText('La photosynthese')).toBeInTheDocument();
+    expect(await screen.findByText('La Revolution francaise')).toBeInTheDocument();
     // l'exemple du contrat (110 XP au niveau 2) est sous le seuil 150: la barre est a 0, sans sortir de [0, 100]
     expect(screen.getByRole('progressbar', { name: /niveau suivant/i })).toHaveAttribute('aria-valuenow', '0');
     await a11y(view.container);
@@ -82,19 +82,20 @@ describe('parcours eleve contre l\'API simulee', () => {
   it('scan: envoi d\'une photo puis suivi du traitement', async () => {
     const { user, view } = await enter('eleve');
     await goTo('/scan');
-    const input = await screen.findByLabelText(/Choisir une photo/i);
+    const input = await screen.findByLabelText(/Prendre ou choisir des photos/i);
     await user.upload(input, new File(['x'], 'cours.jpg', { type: 'image/jpeg' }));
+    await user.click(screen.getByRole('button', { name: /Envoyer 1 page/ }));
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/job\//));
     expect(uploads).toBe(1);
     expect(await screen.findByRole('list', { name: /Étapes/ })).toBeInTheDocument();
-    expect(screen.getByText(/Lecture du cours/)).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByText('Lecture').closest('li')).toHaveAttribute('aria-current', 'step');
     await a11y(view.container);
   });
 
   it('refuse un fichier d\'un mauvais type sans appeler l\'API', async () => {
     const { view } = await enter('eleve');
     await goTo('/scan');
-    const input = await screen.findByLabelText(/Choisir une photo/i);
+    const input = await screen.findByLabelText(/Prendre ou choisir des photos/i);
     await act(async () => {
       const f = new File(['x'], 'a.gif', { type: 'image/gif' });
       Object.defineProperty(input, 'files', { value: [f], configurable: true });
@@ -111,11 +112,12 @@ describe('parcours eleve contre l\'API simulee', () => {
     await goTo('/job/j1');
     expect(await screen.findByRole('img', { name: /Photo de ta page 1/ })).toBeInTheDocument();
     const box = await screen.findByDisplayValue('La photosynthese produit du dioxygene.');
-    await user.type(box, ' Oui.');
+    fireEvent.change(box, { target: { value: `La photosynthese produit du dioxygene. ${'mot '.repeat(45)}` } });
+    await user.selectOptions(screen.getByLabelText('Matière'), 'svt');
     await a11y(view.container);
     jobState = 'verification';
     await user.click(screen.getByRole('button', { name: /vérifie/i }));
-    expect(await screen.findByText(/Vérification des faits/)).toHaveAttribute('aria-current', 'step');
+    expect((await screen.findByText('Fiche')).closest('li')).toHaveAttribute('aria-current', 'step');
   });
 
   it('fiche: pastilles, sources cliquables, signalement', async () => {
