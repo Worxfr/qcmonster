@@ -41,7 +41,16 @@ paths:
                   fields: { key: scans/01JEXAMPLE0JOB0000000000AA/0, Content-Type: image/jpeg }
                 expiresAt: '2026-12-01T10:15:00Z'
                 pagesRemaining: 18
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400':
+          description: |
+            Requete invalide. **PDF refuse en v1**: `contentType: application/pdf` (valeur encore listee dans l'enum, reservee a une version suivante) repond 400 `requete_invalide`
+            AVANT toute reservation de page ni creation de job; le client doit envoyer des photos (image/jpeg ou image/png, une demande par envoi).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                pdf: { summary: PDF non pris en charge en v1, value: { code: requete_invalide, message: 'Les PDF ne sont pas encore pris en charge: envoie des photos' } }
+                champ: { summary: Champ manquant ou hors limites, value: { code: requete_invalide, message: Demande invalide } }
         '429': { $ref: '#/components/responses/QuotaExceeded' }
   /jobs/{jobId}:
     get:
@@ -286,6 +295,9 @@ paths:
       operationId: getMe
       tags: [game]
       summary: Profil de l'utilisateur connecte (handler me-get, L3)
+      description: |
+        Un parent qui n'a pas encore cree sa famille (aucun `familyId` dans son jeton) recoit **404 `introuvable`**, pas un profil partiel: le client doit alors proposer `POST /family`.
+        Un eleve a toujours une famille (activation prealable).
       responses:
         '200':
           description: Profil
@@ -293,6 +305,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
               example: { userId: 7b0f6c1e-0000-4000-8000-00000000a001, role: eleve, familyId: 01JEXAMPLE0FAM0000000000AA, studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f }
+        '404':
+          description: Parent sans famille (famille pas encore creee par POST /family)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: introuvable, message: Introuvable }
   /me/progress:
     get:
       operationId: getMyProgress
@@ -480,7 +498,7 @@ components:
       description: Etat incompatible
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Le job n'est pas a confirmer } } }
     QuotaExceeded:
-      description: "quota_epuise (pages du mois) ou budget_epuise (compteur de cout, 15 EUR)"
+      description: "quota_epuise (pages du mois) ou budget_epuise (compteur de cout: seuils mensuels 15/18 EUR; en dev, plafond d'essais cumule DEV_TRIAL_CAP_EUR = 50 EUR)"
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: Quota de pages epuise, resetDate: '2027-01-01' } } }
   schemas:
     Error:
@@ -509,8 +527,8 @@ components:
       type: object
       required: [pages, contentType]
       properties:
-        pages: { type: integer, minimum: 1, maximum: 10, description: Une image = 1 page; un PDF = son nombre de pages (10 max) }
-        contentType: { type: string, enum: [image/jpeg, image/png, application/pdf] }
+        pages: { type: integer, minimum: 1, maximum: 10, description: "Nombre de pages de l'envoi (10 max). v1: une image = 1 page (PDF refuse, voir contentType)" }
+        contentType: { type: string, enum: [image/jpeg, image/png, application/pdf], description: "v1: seules les images (image/jpeg, image/png) sont acceptees. application/pdf est refuse (400 requete_invalide) tant que la prise en charge des PDF n'existe pas." }
     ScanCreateResponse:
       type: object
       required: [jobId, upload, expiresAt, pagesRemaining]

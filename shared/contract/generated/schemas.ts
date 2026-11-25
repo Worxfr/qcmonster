@@ -7,7 +7,7 @@ export const JobStateSchema = z.enum(["en_attente_envoi","verification_fichier",
 
 export const JobSchema = z.object({ "jobId": z.string(), "state": z.enum(["en_attente_envoi","verification_fichier","transcription","a_confirmer","verification","generation","termine","rejete","echec","expire"]), "pages": z.number().int().gte(1).lte(10), "createdAt": z.string().datetime({ offset: true }), "durationSeconds": z.number().int().gte(0).optional(), "costCents": z.number().int().gte(0).describe("Cout Bedrock du traitement en centimes d'euro (mesure").optional(), "docId": z.string().describe("Present quand state = termine").optional(), "message": z.string().max(500).optional() });
 
-export const ScanCreateRequestSchema = z.object({ "pages": z.number().int().gte(1).lte(10).describe("Une image = 1 page; un PDF = son nombre de pages (10 max)"), "contentType": z.enum(["image/jpeg","image/png","application/pdf"]) });
+export const ScanCreateRequestSchema = z.object({ "pages": z.number().int().gte(1).lte(10).describe("Nombre de pages de l'envoi (10 max). v1: une image = 1 page (PDF refuse, voir contentType)"), "contentType": z.enum(["image/jpeg","image/png","application/pdf"]).describe("v1: seules les images (image/jpeg, image/png) sont acceptees. application/pdf est refuse (400 requete_invalide) tant que la prise en charge des PDF n'existe pas.") });
 
 export const ScanCreateResponseSchema = z.object({ "jobId": z.string(), "upload": z.object({ "url": z.string().url(), "fields": z.record(z.string(), z.string()) }), "expiresAt": z.string().datetime({ offset: true }), "pagesRemaining": z.number().int().gte(0) });
 

@@ -212,7 +212,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Profil de l'utilisateur connecte (handler me-get, L3) */
+        /**
+         * Profil de l'utilisateur connecte (handler me-get, L3)
+         * @description Un parent qui n'a pas encore cree sa famille (aucun `familyId` dans son jeton) recoit **404 `introuvable`**, pas un profil partiel: le client doit alors proposer `POST /family`.
+         *     Un eleve a toujours une famille (activation prealable).
+         */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -407,9 +411,12 @@ export interface components {
             message?: string;
         };
         ScanCreateRequest: {
-            /** @description Une image = 1 page; un PDF = son nombre de pages (10 max) */
+            /** @description Nombre de pages de l'envoi (10 max). v1: une image = 1 page (PDF refuse, voir contentType) */
             pages: number;
-            /** @enum {string} */
+            /**
+             * @description v1: seules les images (image/jpeg, image/png) sont acceptees. application/pdf est refuse (400 requete_invalide) tant que la prise en charge des PDF n'existe pas.
+             * @enum {string}
+             */
             contentType: "image/jpeg" | "image/png" | "application/pdf";
         };
         ScanCreateResponse: {
@@ -667,7 +674,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description quota_epuise (pages du mois) ou budget_epuise (compteur de cout, 15 EUR) */
+        /** @description quota_epuise (pages du mois) ou budget_epuise (compteur de cout: seuils mensuels 15/18 EUR; en dev, plafond d'essais cumule DEV_TRIAL_CAP_EUR = 50 EUR) */
         QuotaExceeded: {
             headers: {
                 [name: string]: unknown;
@@ -737,7 +744,18 @@ export interface operations {
                     "application/json": components["schemas"]["ScanCreateResponse"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /**
+             * @description Requete invalide. **PDF refuse en v1**: `contentType: application/pdf` (valeur encore listee dans l'enum, reservee a une version suivante) repond 400 `requete_invalide`
+             *     AVANT toute reservation de page ni creation de job; le client doit envoyer des photos (image/jpeg ou image/png, une demande par envoi).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["QuotaExceeded"];
         };
     };
@@ -1229,6 +1247,21 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Parent sans famille (famille pas encore creee par POST /family) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "introuvable",
+                     *       "message": "Introuvable"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

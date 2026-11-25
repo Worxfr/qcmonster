@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { addCost, costGate, readCost, toMicros } from './cost.js';
+import { addCost, costGate, costGateFor, readCost, toMicros } from './cost.js';
 import { costEur } from './pricing.js';
+
+describe('plafond cumule des essais dev: 50 EUR (decision du proprietaire, 2026-11-25)', () => {
+  it('valeur litterale: 49,99 passe, 50 bloque, meme si le mois est a 0; la prod n\'est pas concernee', () => {
+    expect(costGateFor('dev', { monthEur: 0, totalEur: 49.99 })).toBe('ok');
+    expect(costGateFor('dev', { monthEur: 0, totalEur: 50 })).toBe('stop_all');
+    expect(costGateFor('dev', { monthEur: 0, totalEur: 12 })).toBe('ok'); // l'ancien plafond ne bloque plus
+    expect(costGateFor('prod', { monthEur: 0, totalEur: 50 })).toBe('ok');
+    expect(costGateFor('dev', { monthEur: 0, totalEur: Number.NaN })).toBe('stop_all');
+  });
+});
 
 describe('compteur de cout', () => {
   it('seuils 15 EUR (bloque les nouveaux scans) et 18 EUR (arrete tout)', () => {

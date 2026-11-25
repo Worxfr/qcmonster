@@ -17,6 +17,9 @@ export const SYSTEM_PROFILES: Record<ModelKey, string> = {
   sonnet: 'eu.anthropic.claude-sonnet-5-5',
 };
 
+/** Regions UE du profil systeme `eu.` (a confirmer au premier deploiement). Les politiques IAM n'ouvrent le modele de base que dans ces regions (test M2: aucun joker de region). */
+export const EU_REGIONS = ['eu-west-1', 'eu-west-3', 'eu-central-1', 'eu-north-1', 'eu-south-1', 'eu-south-2', 'eu-central-2'];
+
 /**
  * Un profil d'inference d'APPLICATION par modele et par environnement (Haiku, Sonnet; dev ou prod: 4 au total),
  * tague Project/Environment/ManagedBy/Owner pour que le cout suive le tag. Le code appelle l'ARN de ce profil

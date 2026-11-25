@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DocSchema, JobSchema, ScanCreateResponseSchema, TranscriptionSchema } from '../../../shared/contract/generated/schemas.js';
 import { keys } from '../../../shared/ddb/keys.js';
+import { DEV_TRIAL_CAP_EUR } from '../../../shared/names.js';
 import { deleteDocTree } from '../../../shared/delete-tree.js';
 import { parseQuestionId, QcmItemSchema, VerifyInputSchema } from '../../../shared/items.js';
 import * as docs from '../docs/docs.js';
@@ -275,8 +276,8 @@ describe('refus et nettoyage', () => {
 });
 
 describe('cout et garde', () => {
-  it('compteur bloque (dev 12 EUR): scans-create repond budget_epuise, aucune page reservee', async () => {
-    const k = await makeCtx(goodScript(), { cost: { monthEur: 12, totalEur: 12 } });
+  it('compteur bloque (plafond cumule des essais dev): scans-create repond budget_epuise, aucune page reservee', async () => {
+    const k = await makeCtx(goodScript(), { cost: { monthEur: 0, totalEur: DEV_TRIAL_CAP_EUR } });
     const r = await scansCreate(k.ctx, event({ body: { pages: 1, contentType: 'image/jpeg' } }));
     expect(r.statusCode).toBe(429);
     expect(body(r).code).toBe('budget_epuise');
@@ -288,7 +289,7 @@ describe('cout et garde', () => {
     const u = await upload(k);
     await awaitUpload(k.ctx, { ...u.i, token: 't' });
     await scanCheck(k.ctx, u.i);
-    k.costStore.totals.totalEur = 12;
+    k.costStore.totals.totalEur = DEV_TRIAL_CAP_EUR;
     await expect(transcribe(k.ctx, u.i)).rejects.toThrow(/garde de cout/);
     expect(k.calls).toEqual([]);
     await failJob(k.ctx, { ...u.i, error: { Error: 'CostBlockedError' } });

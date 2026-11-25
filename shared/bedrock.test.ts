@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CostBlockedError, JobBudgetExceededError, LIMITS, invokeModel, type CostStore, type ModelPort } from './bedrock.js';
 import type { CostTotals } from './cost.js';
+import { DEV_TRIAL_CAP_EUR } from './names.js';
 
 const ARN = 'arn:aws:bedrock:eu-west-3:123456789012:application-inference-profile/abc';
 // Compteur en memoire en micro-euros (comme le vrai): mois et cumul.
@@ -58,22 +59,22 @@ describe('client Bedrock unique', () => {
     expect(store.totals().monthEur).toBeGreaterThan(1.3);
     expect(store.totals().monthEur).toBeLessThan(1.7);
   });
-  it('GARDE DEV 12 EUR CUMULE: bloque meme si le mois est a 0 (nouveau mois), le port n\'est pas appele', async () => {
+  it('GARDE DEV CUMULE (DEV_TRIAL_CAP_EUR): bloque meme si le mois est a 0 (nouveau mois), le port n\'est pas appele', async () => {
     const port = counting();
-    const store = memStore(0, 12);
+    const store = memStore(0, DEV_TRIAL_CAP_EUR);
     await expect(invokeModel({ ...base, store, port })).rejects.toBeInstanceOf(CostBlockedError);
     expect(port.calls).toBe(0);
-    expect(store.totals().totalEur).toBe(12);
+    expect(store.totals().totalEur).toBe(DEV_TRIAL_CAP_EUR);
   });
-  it('juste sous le plafond cumule (11,99): l\'appel passe', async () => {
+  it('juste sous le plafond cumule: l\'appel passe', async () => {
     const port = counting();
-    await invokeModel({ ...base, store: memStore(0, 11.99), port });
+    await invokeModel({ ...base, store: memStore(0, DEV_TRIAL_CAP_EUR - 0.01), port });
     expect(port.calls).toBe(1);
   });
   it('l\'environnement vient de la configuration, pas de l\'appelant: en prod le plafond de 12 EUR ne s\'applique pas', async () => {
     process.env.QCM_ENV = 'prod';
     const port = counting();
-    await invokeModel({ ...base, store: memStore(0, 12), port });
+    await invokeModel({ ...base, store: memStore(0, DEV_TRIAL_CAP_EUR), port });
     expect(port.calls).toBe(1);
     process.env.QCM_ENV = 'autre';
     await expect(invokeModel({ ...base, store: memStore(), port })).rejects.toThrow(/QCM_ENV/);

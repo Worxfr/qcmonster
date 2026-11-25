@@ -1,12 +1,12 @@
 # Garde de cout des essais Bedrock (dev)
 
-Decision du proprietaire (2026-11-24): **12 EUR au plus d'essais Bedrock en `dev`**. Le garde est dans le code, pas dans la bonne volonte.
+Decision du proprietaire (2026-11-24, relevee le 2026-11-25): **50 EUR au plus d'essais Bedrock en `dev`** (12 EUR avant le 2026-11-25). Le plafond est la constante unique `DEV_TRIAL_CAP_EUR` de `shared/names.ts`; tests et docs la citent. Le plafond par traitement (0,25 EUR) reste obligatoire et inchange. Le garde est dans le code, pas dans la bonne volonte.
 
 ## Ce qui est applique par le code
 
 | Regle | Ou | Effet |
 |---|---|---|
-| Plafond d'essais dev `DEV_TRIAL_CAP_EUR = 12` | `shared/names.ts`, `shared/cost.ts` (`costGateFor`), `shared/bedrock.ts` | En `dev`, des que le **cumul depuis le debut de la phase dev** (`COST#dev / TOTAL`, jamais remis a zero, different du compteur mensuel) atteint 12 EUR, tout nouvel appel Bedrock est refuse avant d'etre emis (`CostBlockedError`). Le test verifie que le modele n'est pas appele, meme quand le mois repart de zero |
+| Plafond d'essais dev `DEV_TRIAL_CAP_EUR = 50` | `shared/names.ts`, `shared/cost.ts` (`costGateFor`), `shared/bedrock.ts` | En `dev`, des que le **cumul depuis le debut de la phase dev** (`COST#dev / TOTAL`, jamais remis a zero, different du compteur mensuel) atteint 50 EUR, tout nouvel appel Bedrock est refuse avant d'etre emis (`CostBlockedError`). Le test verifie que le modele n'est pas appele, meme quand le mois repart de zero |
 | Comptage fin | `shared/cost.ts` | Le compteur est en **micro-euros entiers** (attribut `micros`, ajout atomique du mois et du cumul dans une transaction). Un appel de 0,00055 EUR compte 550, pas 0. Test: 1000 appels de 0,0015 EUR = 1,50 EUR |
 | Environnement et mois non contournables | `shared/bedrock.ts` | L'environnement vient de `QCM_ENV` (pose par CDK dans la configuration de chaque Lambda qui appelle Bedrock; absent ou invalide = erreur) et le mois de l'horloge (`monthParis`), jamais d'un parametre d'appel |
 | Compteur illisible | `shared/cost.ts` | Valeur non numerique ou non finie: erreur, donc appel refuse. Compteur absent = 0 (debut de periode) |
@@ -23,14 +23,28 @@ Decision du proprietaire (2026-11-24): **12 EUR au plus d'essais Bedrock en `dev
 - **2 passages complets au plus par lot** (`TRIAL_MAX_FULL_RUNS_PER_LOT`): 38 pages x 0,12 EUR = 4,6 EUR le passage, soit 9,2 EUR pour deux. Les 12 pages cachees (environ 1,4 EUR par lancement, 3 lancements au plus) se comptent a part.
 - Aucun envoi de photo sur `dev` hors des runs prevus: un envoi lance la machine et appelle Bedrock.
 - Tout travail de prompt qui peut se faire sur le jeu dore avec le faux modele se fait ainsi. Les appels reels sont des commandes explicites (`eval.yml`, mode `real`), jamais un test ordinaire.
-- Si le compteur de dev depasse 12 EUR, les essais s'arretent: la suite se discute avec le proprietaire, on ne releve pas le plafond de soi-meme.
+- Si le compteur de dev atteint 50 EUR, les essais s'arretent: la suite se discute avec le proprietaire, on ne releve pas le plafond de soi-meme.
+
+## Test M2: qui peut appeler Bedrock (`infra/test/m2-bedrock.test.ts`)
+
+Le garde de cout ne protege que le code qui passe par `shared/bedrock.ts`. M2 verifie que **aucune autre identite** ne peut invoquer un modele. Le test synthetise TOUTES les stacks de l'application (dev et prod, y compris celles qu'un lot ajoutera) et echoue si:
+
+- un role (ou utilisateur, groupe, politique sans role) hors de `processingRoleNames` recoit une action qui lance un modele (`InvokeModel*`, `Converse*`, agents, flux, `*`, `bedrock:*`, `NotAction` sur un Allow). Les roles sans nom fixe echouent aussi;
+- un role de traitement a une autre action que `bedrock:InvokeModel`, un joker (action, ressource, region, condition), ou une ressource qui n'est pas: le profil d'application `qcm-<env>-(haiku|sonnet)` (parametre SSM), le profil systeme UE de `SYSTEM_PROFILES`, ou le modele de base dans une region de `EU_REGIONS` **avec** la condition `bedrock:InferenceProfileArn` vers un de ces profils;
+- une politique geree AWS est jointe a un role/utilisateur/groupe hors liste blanche (`service-role/AWSLambdaBasicExecutionRole` seule). Liste blanche et non liste noire: `AmazonBedrock*`, `AdministratorAccess`, `PowerUserAccess` et toute politique inconnue echouent. Les politiques gerees du client (`AWS::IAM::ManagedPolicy`) sont lues comme des politiques en ligne;
+- le role OIDC de deploiement (`infra-bootstrap/setup-oidc.sh`, hors CDK) accorde autre chose que `sts:AssumeRole` (roles de bootstrap CDK) et `ssm:GetParameter`, nomme Bedrock, ou joint une politique autre que la sienne.
+
+Des tests negatifs construisent de vrais templates fautifs (politique geree Bedrock, role hors liste, jokers, region `*`, modele de base sans condition, utilisateur, politique orpheline) et verifient que le detecteur echoue. Un `Deny` Bedrock n'est pas une ouverture (filet du budget securite-40).
+
+**Hors de portee du test** (a verifier dans le compte avant le premier appel reel, sans que ce depot connaisse l'ID du compte): les roles crees hors CDK, les utilisateurs IAM humains, le role d'execution CloudFormation du bootstrap CDK (`cdk-*-cfn-exec-role`, `AdministratorAccess` par defaut: le role OIDC ne peut que l'utiliser pour deployer, pas appeler Bedrock directement, mais un deploiement CDK peut creer une identite), les politiques de controle de service. Pour fermer ce dernier point: bootstrap avec une politique d'execution limitee (`--cloudformation-execution-policies`).
 
 ## Limites connues
 
 - **La garde n'est pas atomique avec l'appel**: lecture du compteur, appel, puis ajout. Des appels en parallele (Map Step Functions, 38 pages) passent tous la garde avec le meme total: le depassement est borne par (concurrence x cout maximal d'un appel). Avec les bornes de `LIMITS` et les prix de `pricing.ts`, cela reste de l'ordre du centime a quelques dizaines de centimes. Une reservation d'estimation (`ADD` conditionnel avant l'appel, puis regularisation) serait plus stricte; non faite, a reprendre si la concurrence monte.
-- **Un appel qui echoue apres facturation partielle** (delai depasse cote client alors que Bedrock a traite) n'est pas compte: aucun `usage` n'est renvoye. Risque accepte, borne par le plafond de 12 EUR et par le controle J+2 de la facture reelle.
-- Le cumul de 12 EUR est commun a tous les lots qui travaillent en dev. Le relever demande une decision du proprietaire.
-- Le compteur ignore ce qui ne passe pas par `shared/bedrock.ts` (appel direct, console AWS): le garde `scripts/guards.test.ts` couvre le depot, pas le compte. **A faire avant le premier appel reel (test M2)**: un test CDK qui echoue si un role autre que ceux de `processingRoleNames` recoit `bedrock:Invoke*`, et la verification du compte lui-meme. C'est le seul moyen de rendre la garde vraie au niveau du compte.
+- **Un appel qui echoue apres facturation partielle** (delai depasse cote client alors que Bedrock a traite) n'est pas compte: aucun `usage` n'est renvoye. Risque accepte, borne par le plafond de 50 EUR et par le controle J+2 de la facture reelle.
+- Le cumul de 50 EUR est commun a tous les lots qui travaillent en dev. Le relever demande une decision du proprietaire.
+- Le compteur ignore ce qui ne passe pas par `shared/bedrock.ts` (appel direct, console AWS): `scripts/guards.test.ts` couvre le depot, le test M2 ci-dessous couvre les roles du compte deployes par CDK. Ce qui reste hors de portee des tests est liste dans « Test M2 ».
+- `eval/` n'a **pas de garde de cout propre dans le code**: l'outil de mesure appelle l'API, donc passe par le meme `invokeModel` et le meme compteur `COST#dev / TOTAL` (plafond `DEV_TRIAL_CAP_EUR`). Il n'y a donc aucun 12 EUR a aligner dans `eval/`. Seul le commentaire d'en-tete de `.github/workflows/eval.yml` cite encore « 12 EUR » (hors du perimetre de L1d: a corriger par le proprietaire de `.github/**`). L'arret a 5 EUR par mois d'evaluation de design-v2 (9) n'est pas implemente.
 - Le changement de nom de l'attribut (`cents` -> `micros`) ne demande aucune migration: le compteur dev etait vide.
 - `eval/` a son propre garde (5 EUR d'apres le design 9); il n'est pas modifie ici. A aligner sur le cumul `COST#dev / TOTAL` par son proprietaire.
 - Le prix `shared/pricing.ts` est celui de l'offre lue le 2026-11-23; un ecart de facturation reelle se verifie au controle J+2 (design 4.6). Le taux `USD_PER_EUR` est une constante.

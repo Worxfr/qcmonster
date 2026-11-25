@@ -11,7 +11,7 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { buildSync } from 'esbuild';
 import type { Construct } from 'constructs';
-import { SYSTEM_PROFILES } from './models-stack.js';
+import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { fn, SCAN_EVENT_PREFIX, ssmParam, stackName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
 
 export interface PipelineStackProps extends StackProps {
@@ -25,8 +25,6 @@ const CONFIRM_TIMEOUT = Duration.minutes(30);
 export const TASK_TIMEOUT_S = { scanCheck: 60, transcribe: 360, extract: 180, verify: 960, consume: 60, generate: 240, fail: 60, expire: 60 } as const;
 /** Chemin le plus long: envoi + controle + transcription + confirmation + extraction + verification + quota + generation (+ marge). */
 export const MACHINE_TIMEOUT = Duration.hours(2);
-/** Regions UE du profil systeme `eu.` (a confirmer au premier deploiement). */
-const EU_REGIONS = ['eu-west-1', 'eu-west-3', 'eu-central-1', 'eu-north-1', 'eu-south-1', 'eu-south-2', 'eu-central-2'];
 
 /** Un seul paquet pour toutes les fonctions (une fonction par export de entry.ts). Sortie deterministe: meme empreinte d'asset a chaque synthese. */
 let bundleDir: string | undefined;
