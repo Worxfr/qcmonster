@@ -9,13 +9,17 @@ export const normalize = (s: string): string =>
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 
-/** Une citation de moins de 15 caracteres normalises ne prouve rien. */
-export const MIN_CITATION_CHARS = 15;
+/**
+ * Une citation de moins de 10 caracteres normalises ne prouve rien (V4: 15 avant; une citation courte mais exacte, comme un groupe de mots
+ * decisif, est acceptee). Une citation avec des points de suspension est acceptee si chaque morceau est exact, et un morceau au moins atteint le minimum.
+ */
+export const MIN_CITATION_CHARS = 10;
 export const MAX_PASSAGE_CHARS = 1200;
 
 export const isCitationOf = (citation: string, passageText: string): boolean => {
-  const c = normalize(citation);
-  return c.length >= MIN_CITATION_CHARS && normalize(passageText).includes(c);
+  const hay = normalize(passageText);
+  const parts = citation.split(/\s*(?:\.{3}|…|\[\.\.\.\])\s*/u).map(normalize).filter(Boolean);
+  return parts.length > 0 && parts.some((c) => c.length >= MIN_CITATION_CHARS) && parts.every((c) => hay.includes(c));
 };
 
 export const splitSentences = (s: string): string[] =>

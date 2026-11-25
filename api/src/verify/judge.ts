@@ -19,13 +19,14 @@ Pour chaque affirmation, choisis:
 - "verifiee": un passage la soutient clairement;
 - "erreur": un passage la contredit explicitement;
 - "non_verifiable": sinon (passage absent, hors sujet, ambigu).
+Tranche: quand un passage donne explicitement la valeur de ce fait, reponds "verifiee" si elle est identique et "erreur" si elle differe; "non_verifiable" seulement si AUCUN passage ne traite ce fait precis. Ne reponds pas "non_verifiable" par prudence.
 Si un passage traite du MEME fait precis (meme sujet, meme evenement) et donne une autre valeur (date, nombre, lieu, nom, nature), l'affirmation est une "erreur" meme si le passage ne la nie pas en toutes lettres. Un passage sur un autre sujet ou un autre evenement ne prouve rien.
-Pour verifiee et erreur, donne dans "citations" l'identifiant du passage et la citation EXACTE copiee du passage (une phrase, sans la modifier). N'invente aucun identifiant. Pas d'URL.
+Pour verifiee et erreur, donne dans "citations" l'identifiant du passage et la citation EXACTE copiee du passage, mot pour mot: la phrase entiere, ou au moins le groupe de mots decisif (10 caracteres au moins), sans reformuler, sans corriger l'orthographe, sans points de suspension. N'invente aucun identifiant. Pas d'URL.
 Reponds par le SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code, sans commentaire. Un verdict par affirmation, dans l'ordre: {"verdicts":[{"id":"C1","verdict":"verifiee","citations":[{"passage":"P1","citation":"..."}]}]}`;
 
 const SECOND_SYSTEM = `Seconde lecture independante. ${DATA_NOTICE}
 Pour chaque affirmation, dis seulement si les passages la CONTREDISENT explicitement ("erreur"), la SOUTIENNENT clairement ("verifiee"), ou ni l'un ni l'autre ("non_verifiable"). Sois strict: un doute vaut "non_verifiable". Une autre valeur (date, nombre, lieu, nom) donnee par un passage pour le MEME fait precis est une contradiction explicite.
-Recopie la phrase exacte du passage qui justifie ta reponse dans "citations". Pas d'URL.
+Recopie mot pour mot la phrase du passage (ou au moins le groupe de mots decisif, 10 caracteres au moins) qui justifie ta reponse dans "citations", sans reformuler ni points de suspension. Pas d'URL.
 Reponds par le SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code, sans commentaire. Un verdict par affirmation, dans l'ordre: {"verdicts":[{"id":"C1","verdict":"erreur","citations":[{"passage":"P2","citation":"..."}]}]}`;
 
 function render(claims: JudgeClaim[]): string {
@@ -123,7 +124,7 @@ export interface Checked {
 
 /** Phrase du passage qui contient la citation (sinon le debut du passage): l'extrait vient TOUJOURS du passage stocke. */
 export function extraitOf(passage: Passage, citation: string): string {
-  const c = normalize(citation);
+  const c = citation.split(/\s*(?:\.{3}|…)\s*/u).map(normalize).sort((a, b) => b.length - a.length)[0] ?? '';
   const s = splitSentences(passage.texte).find((x) => normalize(x).includes(c));
   return (s ?? passage.texte).slice(0, 300);
 }

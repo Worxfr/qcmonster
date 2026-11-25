@@ -5,11 +5,14 @@ describe('texte', () => {
   it('normalize: casse, accents, ponctuation', () => {
     expect(normalize("  L'Avare, c'est une COMÉDIE !  ")).toBe('l avare c est une comedie');
   });
-  it('citation: sous-chaine normalisee, au moins 15 caracteres', () => {
+  it('citation: sous-chaine normalisee, au moins 10 caracteres (V4)', () => {
     const p = 'Molière est mort en 1673. Tartuffe est une comédie de Molière jouée en 1664.';
     expect(isCitationOf('TARTUFFE est une comedie de moliere', p)).toBe(true);
     expect(isCitationOf('Molière est mort', p)).toBe(true);
-    expect(isCitationOf('mort en 1673', p)).toBe(false);
+    expect(isCitationOf('mort en 1673', p)).toBe(true);
+    expect(isCitationOf('en 1673', p)).toBe(false);
+    expect(isCitationOf('Molière est mort ... Tartuffe est une comédie', p)).toBe(true);
+    expect(isCitationOf('Molière est mort ... Tartuffe est un drame', p)).toBe(false);
     expect(isCitationOf('Molière est né en 1622, dit-on.', p)).toBe(false);
   });
   it("passage: retire HTML, controles, chevrons et phrases d'injection", () => {
