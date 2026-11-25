@@ -8,7 +8,7 @@ import { CONFIRM_TIMEOUT_S, cleanLabel, cleanTopic, MAX_SECTIONS, MAX_TOPIC, pla
 import { BEDROCK_MAX_IMAGE_BYTES } from '../../../shared/bedrock.js';
 import { callModel, DAY_S, dayParis, iso, jobKey, mapLimit, ttlIn, type Ctx } from './ctx.js';
 import { ALL_OPEN, endWithoutDoc, isTerminal, scansPrefix, transition } from './job.js';
-import { releaseQuotaOnce } from './quota-ops.js';
+import { returnQuotaOnce } from './quota-ops.js';
 import { classifyPrompt, readPrompt, SYSTEM_JSON } from './prompts.js';
 import { treeDbFrom, type Item } from './ports.js';
 import { assemblePages, ModelOutputError, parseModelJson, type ReadPage, words } from './text.js';
@@ -262,7 +262,7 @@ export async function failJob(ctx: Ctx, i: WfInput & { error?: { Error?: string 
   if (isTerminal(job.state)) {
     // Fin deja decidee: on repare seulement un nettoyage interrompu (quota encore reserve, photos et cours restants).
     if (job.state !== 'termine') {
-      await releaseQuotaOnce(ctx, i.sid, i.jobId);
+      await returnQuotaOnce(ctx, i.sid, i.jobId);
       await ctx.s3.deleteAll(scansPrefix(i.sid, i.jobId));
       await purgeScan(ctx, i.sid, i.jobId, job);
     }

@@ -16,7 +16,7 @@ Etat: `jobId`, `sid` et des booleens/compteurs seulement. Journal niveau ERROR s
 | Verification | `verify-run` (L2b) | entree `{jobId, docId, budgetRestantCentimes}`, sortie `{coutCentimes, ...}` |
 | ConsommationQuota | `quota-consume` | consomme les pages (une seule fois), ajoute le cout de L2b au job |
 | Generation | `generate` | fiche, QCM controles (resolution a l'aveugle), trous, empreinte, doublon, etat `termine` |
-| MarquerEchec | `pipeline-fail` | toute erreur: `echec`, quota rendu s'il est encore reserve, photos et affirmations orphelines supprimees |
+| MarquerEchec | `pipeline-fail` | toute erreur: `echec`, pages rendues, qu elles soient encore reservees ou deja consommees (rendu unique, `QUOTAOP#<job>#refund`), photos et affirmations orphelines supprimees |
 
 ## Delais et reprises
 

@@ -15,17 +15,21 @@ export async function quotaScope(ctx: Ctx, familyId: string, sid: string, month:
   return { familyId, studentId: sid, month, studentLimit: num(student?.quotaPages, d.studentPages), familyLimit: num(family?.quotaPages, d.familyPages) };
 }
 
-type Kind = 'release' | 'consume';
+type Kind = 'release' | 'consume' | 'refund';
 const marker = (job: Item, kind: Kind) => ({ PK: `FAMILY#${job.familyId as string}`, SK: `QUOTAOP#${job.SK.slice('JOB#'.length)}#${kind}` });
 
-/** Applique `release` ou `consume` une seule fois pour ce job. Renvoie false si l'autre operation ou celle-ci a deja eu lieu. */
+/**
+ * Applique `release` (reserve -> restant), `consume` (reserve -> utilise) ou `refund` (utilise -> restant, apres une consommation) une seule fois
+ * pour ce job. Renvoie false si l'operation est refusee (`release`/`consume` sont exclusives; `refund` exige `consume`) ou deja faite.
+ */
 export async function applyQuotaOnce(ctx: Ctx, job: Item, kind: Kind): Promise<boolean> {
-  const other: Kind = kind === 'release' ? 'consume' : 'release';
-  if (await ctx.db.get(marker(job, other))) return false; // un job ne rend pas ce qu'il a consomme, ni l'inverse
+  if (kind === 'refund') {
+    if (!(await ctx.db.get(marker(job, 'consume'))) || (await ctx.db.get(marker(job, 'release')))) return false;
+  } else if (await ctx.db.get(marker(job, kind === 'release' ? 'consume' : 'release'))) return false; // un job ne rend pas ce qu'il a consomme, ni l'inverse
   const sid = job.studentId as string;
   const pages = job.pages as number;
   const scope = await quotaScope(ctx, job.familyId as string, sid, job.quotaMonth as string);
-  const add: Record<string, number> = kind === 'release' ? { reserve: -pages, restant: pages } : { reserve: -pages, utilise: pages };
+  const add: Record<string, number> = kind === 'release' ? { reserve: -pages, restant: pages } : kind === 'refund' ? { utilise: -pages, restant: pages } : { reserve: -pages, utilise: pages };
   const ops: TxOp[] = [
     { put: { ...marker(job, kind), ttl: ttlIn(ctx, 30 * DAY_S) }, ifNotExists: true },
     { key: keys.quota(scope.familyId, scope.month, sid), spec: { add, cond: { exists: true } } },
@@ -36,12 +40,27 @@ export async function applyQuotaOnce(ctx: Ctx, job: Item, kind: Kind): Promise<b
   throw new Error('quota: compteur introuvable');
 }
 
-/** Rend les pages reservees d'un job (rejet, annulation, expiration, echec avant consommation). */
+/** Rend les pages reservees d'un job (rejet, annulation, expiration, echec avant consommation). Sans effet si elles sont consommees: voir `returnQuotaOnce`. */
 export async function releaseQuotaOnce(ctx: Ctx, sid: string, jobId: string): Promise<void> {
   const job = await ctx.db.get(jobKey(sid, jobId));
   if (!job || job.quotaState !== 'reserved') return;
   await applyQuotaOnce(ctx, job, 'release');
   await ctx.db.update(jobKey(sid, jobId), { set: { quotaState: 'released' } });
+}
+
+/**
+ * Fin d'un job sans fiche: rend les pages quel que soit leur etat, une seule fois. Reservees: rendues. Consommees (echec apres `quotaConsume`):
+ * rendues aussi (decision d'Alexis), meme si l'arret est survenu entre l'ecriture du quota et le drapeau `quotaState`. Rejouable sans risque.
+ */
+export async function returnQuotaOnce(ctx: Ctx, sid: string, jobId: string): Promise<void> {
+  const job = await ctx.db.get(jobKey(sid, jobId));
+  if (!job || (job.quotaState !== 'reserved' && job.quotaState !== 'consumed')) return;
+  if (await ctx.db.get(marker(job, 'consume'))) {
+    await applyQuotaOnce(ctx, job, 'refund');
+    await ctx.db.update(jobKey(sid, jobId), { set: { quotaState: 'refunded' } });
+  } else if (job.quotaState === 'reserved') {
+    await releaseQuotaOnce(ctx, sid, jobId);
+  }
 }
 
 /** Consomme les pages reservees (apres `verify-run`). */

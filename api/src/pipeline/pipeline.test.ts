@@ -264,14 +264,14 @@ describe('refus et nettoyage', () => {
     await failJob(k.ctx, u.i); // deja termine: sans effet
   });
 
-  it('apres consommation du quota, un echec ne rend pas les pages', async () => {
+  it('apres consommation du quota, un echec rend les pages (decision d Alexis)', async () => {
     const k = await makeCtx(goodScript());
     const u = await toConfirm(k);
     await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
     const ex = await extract(k.ctx, u.i);
     await quotaConsume(k.ctx, { ...u.i, verify: await fakeVerify(k, ex.docId!) });
     await failJob(k.ctx, u.i);
-    expect(await qState(k)).toMatchObject({ utilise: 1, restant: 199 });
+    expect(await qState(k)).toMatchObject({ utilise: 0, restant: 200 });
   });
 });
 
