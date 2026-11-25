@@ -1,5 +1,5 @@
 // Verification des tags obligatoires sur un template CloudFormation synthetise.
-export const REQUIRED_TAGS = ['Project', 'Environment', 'ManagedBy', 'Owner'] as const;
+export const REQUIRED_TAGS = ['project', 'Environment', 'ManagedBy', 'Owner'] as const;
 
 // Types de ressources sans propriete de tags dans CloudFormation (ou dependantes d'une ressource deja taguee).
 // Tout autre type DOIT porter les 4 tags: un nouveau type non liste echoue tant qu'il n'est pas tague.

@@ -20,7 +20,7 @@ const usd = (eur: number) => Math.round(eur * USD_PER_EUR * 100) / 100;
 /**
  * Budget (design-v2 4.6): trois budgets AWS + alarme sur le compteur applicatif.
  * Les montants sont en EUR dans le design; AWS Budgets les compte dans la devise de facturation du compte (USD
- * suppose), donc convertis avec USD_PER_EUR. Les cles de tag `Project` doivent etre ACTIVEES comme tags de repartition
+ * suppose), donc convertis avec USD_PER_EUR. Les cles de tag `project` doivent etre ACTIVEES comme tags de repartition
  * des couts (docs/ops/bootstrap.md) AVANT le deploiement, sinon le budget filtre par tag ne voit rien.
  */
 export class BudgetStack extends Stack {
@@ -45,11 +45,11 @@ export class BudgetStack extends Stack {
         notificationsWithSubscribers: notifs(list),
       });
 
-    // Les budgets sont propres au COMPTE (filtre par tag Project, tous environnements): crees par la stack prod seulement,
+    // Les budgets sont propres au COMPTE (filtre par tag project, tous environnements): crees par la stack prod seulement,
     // sinon dev et prod creeraient des doublons.
     if (envName === 'prod') {
-      const tagFilter = { TagKeyValue: ['user:Project$QCMonster'] };
-      // 1. Alerte 20 EUR, filtre par tag Project=QCMonster. Seuils 50/80/100 % reels, 100 % prevision.
+      const tagFilter = { TagKeyValue: ['user:project$qcmonster'] };
+      // 1. Alerte 20 EUR, filtre par tag project=qcmonster. Seuils 50/80/100 % reels, 100 % prevision.
       monthly('alerte-20', 20, tagFilter, [
         { type: 'ACTUAL', threshold: 50 },
         { type: 'ACTUAL', threshold: 80 },

@@ -14,7 +14,7 @@ POLICY_NAME="QCMonster-GitHubActions-Deploy-Policy"
 OIDC_HOST="token.actions.githubusercontent.com"
 PROVIDER_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:oidc-provider/${OIDC_HOST}"
 POLICY_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:policy/${POLICY_NAME}"
-TAGS_CLI=(Key=Project,Value=QCMonster Key=Environment,Value=prod Key=ManagedBy,Value=script Key=Owner,Value=Worxfr)
+TAGS_CLI=(Key=project,Value=qcmonster Key=Environment,Value=prod Key=ManagedBy,Value=script Key=Owner,Value=Worxfr)
 
 # Prefixe du claim `sub`. Depots recents: forme immuable avec identifiants numeriques (repo:Worxfr@<id>/qcmonster@<id>),
 # a lire avec: gh api repos/Worxfr/qcmonster/actions/oidc/customization/sub -q .sub_claim_prefix
