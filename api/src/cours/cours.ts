@@ -41,6 +41,13 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const sectionDocs = new Set((Array.isArray(head.sections) ? (head.sections as { docId?: unknown }[]) : []).map((s) => s.docId).filter((d): d is string => typeof d === 'string'));
   const docs: Item[] = (await ctx.db.query(`STUDENT#${sid}`, 'DOC#')).filter((d) => d.coursId === coursId || sectionDocs.has(d.SK.slice('DOC#'.length)));
   const tree = treeDbFrom(ctx.db);
+  // Signalements AVANT les fiches (comme `DELETE /docs`: le commentaire libre ne survit pas a sa fiche). Interrompue apres les fiches,
+  // la reprise ne retrouverait plus rien a rattacher; ici, interrompue entre les deux, les fiches existent encore pour le second DELETE.
+  if (fiches === 'supprimer' && docs.length) {
+    const gone = new Set(docs.map((d) => d.SK.slice('DOC#'.length)));
+    const reports = (await ctx.db.query(`FAMILY#${caller.familyId}`, 'REPORT#')).filter((r) => typeof r.docId === 'string' && gone.has(r.docId)).map((r) => ({ PK: r.PK, SK: r.SK }));
+    if (reports.length) await ctx.db.remove(reports);
+  }
   for (let i = 0; i < docs.length; i += BATCH) {
     await mapLimit(docs.slice(i, i + BATCH), BATCH, async (d) => {
       const docId = d.SK.slice('DOC#'.length);
@@ -48,14 +55,13 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
       else await ctx.db.update({ PK: d.PK, SK: d.SK }, { remove: ['coursId', 'sectionIndex', 'sectionCount'], cond: { exists: true } });
     });
   }
-  // Comme `DELETE /docs`: le commentaire libre d'un signalement ne survit pas a sa fiche (signalements sous la famille).
-  if (fiches === 'supprimer' && docs.length) {
-    const gone = new Set(docs.map((d) => d.SK.slice('DOC#'.length)));
-    const reports = (await ctx.db.query(`FAMILY#${caller.familyId}`, 'REPORT#')).filter((r) => typeof r.docId === 'string' && gone.has(r.docId)).map((r) => ({ PK: r.PK, SK: r.SK }));
-    if (reports.length) await ctx.db.remove(reports);
-  }
   const jobId = typeof head.jobId === 'string' && ID_RE.test(head.jobId) ? head.jobId : undefined;
-  if (jobId) await ctx.db.update(keys.job(sid, jobId), { remove: ['coursId'], cond: { exists: true } }); // le job a pu expirer: sans effet
+  if (jobId) {
+    await ctx.db.update(keys.job(sid, jobId), { remove: ['coursId'], cond: { exists: true } }); // le job a pu expirer: sans effet
+    // Copie de travail du texte AVANT l'en-tete du cours: interrompue, l'en-tete reste et un second DELETE finit le travail.
+    const texts = (await ctx.db.query(`JOB#${jobId}`, 'TEXT#')).map((t) => ({ PK: t.PK, SK: t.SK }));
+    if (texts.length) await ctx.db.remove(texts);
+  }
   await deleteCoursTree(tree, sid, coursId, { ...(jobId ? { jobId } : {}) });
   return noContent();
 }

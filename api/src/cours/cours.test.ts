@@ -129,4 +129,35 @@ describe('DELETE /cours/{coursId} (B2)', () => {
     expect(await has(t, 'STUDENT#s1', 'COURS#C1')).toBe(false);
     expect(await has(t, 'JOB#J1', 'TEXT#1')).toBe(false);
   });
+  it('supprimer, coupure entre signalements et fiches: les signalements sont deja partis, le second DELETE finit', async () => {
+    const t = await seeded();
+    await t.db.put({ PK: 'FAMILY#f1', SK: 'REPORT#R1', docId: 'D1', commentaire: 'libre' });
+    const real = t.db.remove;
+    let n = 0;
+    t.db.remove = async (k) => { if (++n === 2) throw new Error('coupure'); return real(k); }; // 1er appel: signalements; 2e: premiere fiche
+    await expect(del(t, 's1', 'C1', 'supprimer')).rejects.toThrow('coupure');
+    t.db.remove = real;
+    expect(await has(t, 'FAMILY#f1', 'REPORT#R1')).toBe(false);
+    expect(await has(t, 'STUDENT#s1', 'DOC#D1')).toBe(true);
+    expect((await del(t, 's1', 'C1', 'supprimer')).statusCode).toBe(204);
+    expect(await has(t, 'STUDENT#s1', 'DOC#D1')).toBe(false);
+    expect(await has(t, 'STUDENT#s1', 'COURS#C1')).toBe(false);
+  });
+  it("coupure a la suppression de l'en-tete: la copie de travail est deja partie, le second DELETE repond 204", async () => {
+    const t = await seeded();
+    const real = t.db.remove;
+    t.db.remove = async (k) => { if (k.some((x) => x.SK === 'COURS#C1')) throw new Error('coupure'); return real(k); };
+    await expect(del(t, 's1', 'C1', 'garder')).rejects.toThrow('coupure');
+    t.db.remove = real;
+    expect(await has(t, 'JOB#J1', 'TEXT#1')).toBe(false);
+    expect(await has(t, 'STUDENT#s1', 'COURS#C1')).toBe(true);
+    expect((await del(t, 's1', 'C1', 'garder')).statusCode).toBe(204);
+  });
+  it('coursMeta borne sections a 6 et topic a 80', async () => {
+    const { coursMeta } = await import('./meta.js');
+    const sections = Array.from({ length: 9 }, (_, k) => ({ fromSentenceId: `p1-s${k + 1}`, subject: 'svt', topic: 'x'.repeat(200), ignore: false, statut: 'sans_fiche' }));
+    const m = coursMeta({ SK: 'COURS#C', pages: 1, createdAt: 'x', sections }, new Set());
+    expect(m.sections).toHaveLength(6);
+    expect(m.sections[0].topic).toHaveLength(80);
+  });
 });

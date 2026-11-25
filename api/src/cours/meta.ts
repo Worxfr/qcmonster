@@ -14,7 +14,7 @@ const str = (x: unknown): string | undefined => (typeof x === 'string' && x ? x 
  */
 export function coursMeta(head: Rec, existingDocIds: ReadonlySet<string>): CoursMeta {
   const raw = Array.isArray(head.sections) ? (head.sections as Rec[]) : [];
-  const sections = raw.map((s): Section => {
+  const sections = raw.slice(0, 6).map((s): Section => {
     const docId = str(s.docId);
     let status: Section['status'];
     if (s.ignore === true || s.statut === 'ignoree') status = 'ignoree';
@@ -24,7 +24,7 @@ export function coursMeta(head: Rec, existingDocIds: ReadonlySet<string>): Cours
     return {
       fromSentenceId: String(s.fromSentenceId),
       subject,
-      ...(str(s.topic) ? { topic: str(s.topic) } : {}),
+      ...(str(s.topic) ? { topic: str(s.topic)!.slice(0, 80) } : {}),
       ...(str(s.title) ? { title: str(s.title)!.slice(0, 200) } : {}),
       ...(str(s.folderId) ? { folderId: str(s.folderId) } : {}),
       status,

@@ -106,7 +106,7 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
       subject: String(d.matiere ?? 'autre'),
       createdAt: String(d.createdAt ?? ''),
       studentId: d.PK.slice('STUDENT#'.length),
-      ...(typeof d.sujet === 'string' && d.sujet ? { topic: d.sujet } : {}),
+      ...(typeof d.sujet === 'string' && d.sujet ? { topic: d.sujet.slice(0, 80) } : {}),
       ...(typeof d.dossierId === 'string' && d.dossierId ? { folderId: d.dossierId } : {}),
       ...(typeof d.coursId === 'string' && d.coursId ? { coursId: d.coursId } : {}),
       ...(typeof d.sectionIndex === 'number' ? { sectionIndex: d.sectionIndex } : {}),
