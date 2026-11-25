@@ -47,3 +47,34 @@ jobs:
           npm run mock > /tmp/prism.log 2>&1 &
           for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:4010/me -H 'authorization: Bearer x' && break; sleep 1; done
           npm run mock:check
+  # Tests de bout en bout en mode mock (site local + API factice, sans AWS). Job separe: il ne rallonge pas le job `checks`.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: e2e
+      - run: npx tsc --noEmit
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - name: Tests de bout en bout (mock)
+        run: npx playwright test
+        working-directory: e2e
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: e2e-echecs
+          path: e2e/.artifacts/
+          retention-days: 7
