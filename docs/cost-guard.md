@@ -62,3 +62,7 @@ Decision du 2026-11-25. Avant, un scan coutait au plus 0,25 EUR quel que soit so
 ### Lecture du scan comme un seul document (FEAT-A)
 
 La transcription passe de N appels d'une image a un appel de 4 images au plus (ou des fenetres de 3 pages plus une page de contexte), suivi d'un appel de texte seul qui decide type, matiere et sujet. Estimation (a mesurer, voir `docs/feat-a-lots.md`): environ 0,002 EUR pour 3 pages, moins de 3 % du plafond `max(0,25 ; 0,15 x pages)`, qui ne change pas. Les bornes de requete (`LIMITS`: 8 192 jetons de sortie, 10 images) restent, avec 4 images au plus par appel; la limite de taille d'image de Bedrock (a verifier, peut-etre 3,75 Mo) est a controler par un appel reel avant la fusion de B1. Une fenetre dont la sortie est tronquee est rejouee page par page (cout d'avant).
+
+### Un scan, plusieurs fiches (sections)
+
+Le plafond `jobCapEur(pages)` vaut pour **tout le job**, somme des sections (le cout s'accumule dans `Job.coutMicros`). Pour qu'une premiere section n'epuise pas le plafond, le budget restant de chaque section (`budgetRestantCentimes` de `extract`, repris par `verify-run`) est la part du reste proportionnelle aux mots des sections encore a traiter. Chaque section ajoute une extraction, une verification et une generation: un surcout fixe estime a quelques pourcents (invites systeme repetees), non mesure; a mesurer avec la lecture en un seul document, sur un cours de 3 pages coupe en 2 sections. Le plafond d'essais de 50 EUR et les seuils mensuels sont inchanges.

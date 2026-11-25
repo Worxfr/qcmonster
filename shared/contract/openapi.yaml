@@ -18,6 +18,7 @@ tags:
   - { name: family }
   - { name: admin }
   - { name: folders }
+  - { name: cours }
 paths:
   /scans:
     post:
@@ -181,17 +182,28 @@ paths:
     post:
       operationId: confirmJob
       tags: [scans]
-      summary: Texte corrige, phrases retirees, reprend le workflow (handler jobs-confirm, L2a)
+      summary: Texte corrige, decoupage en sections, reprend le workflow (handler jobs-confirm, L2a)
       description: |
-        `corrections` remplace le texte de phrases existantes; `removed` (v1.3) **retire** des phrases: elles sont exclues de l'extraction, de la fiche, des QCM et du resume, et leur texte est supprime du job a la confirmation (comme la photo). Le client ne voit pas de plage: « retirer jusqu'ici » ou « a partir d'ici » sont deux ecrans qui envoient la liste des identifiants.
-        Regles (400 `requete_invalide`, aucune modification): un identifiant inconnu (dans `corrections` ou `removed`); un identifiant dans `corrections` ET `removed`; plus aucune phrase apres retrait (au moins une doit rester). Un retrait ne change pas le quota: les pages reservees restent consommees comme avant. Retirer une phrase a cheval sur deux pages retire la phrase entiere.
+        `corrections` remplace le texte de phrases existantes. **`sections` (v1.3)** decoupe le texte en sections par sujet: chaque section non ignoree devient UNE fiche (matiere, sujet, titre, dossier propres; extraction, verification et QCM sur son seul texte). Le cours complet corrige est conserve (voir `Cours`); la photo est supprimee a la confirmation comme avant.
+        Une section commence a la phrase `fromSentenceId` et va jusqu'a la phrase qui precede la section suivante (ou la fin). Les coupes tombent entre deux phrases, sur une page ou a cheval sur deux (une phrase recollee sur deux pages ne se coupe pas). `ignore: true` garde le texte dans le cours mais ne cree pas de fiche (par exemple la fin d'un autre chapitre).
+        Sans `sections`: une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). `sections` et `subject`/`topic`/`folderId` ensemble: 400.
+        Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections; la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ConfirmRequest' }
-            example: { corrections: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }], removed: [p2-s1, p2-s2], subject: svt, topic: La photosynthese, folderId: 01JEXAMPLE0FLD0000000000AA }
+            examples:
+              unique: { summary: Une seule fiche, value: { corrections: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }], subject: svt, topic: La photosynthese, folderId: 01JEXAMPLE0FLD0000000000AA } }
+              sections:
+                summary: "Deux fiches et une fin ignoree"
+                value:
+                  corrections: []
+                  sections:
+                    - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese }
+                    - { fromSentenceId: p2-s3, subject: histoire_geo, topic: La Revolution francaise, folderId: 01JEXAMPLE0FLD0000000000AA }
+                    - { fromSentenceId: p3-s2, subject: autre, ignore: true }
       responses:
         '200':
           description: Job repris
@@ -204,14 +216,15 @@ paths:
                 pages: 2
                 createdAt: '2026-12-01T10:00:00Z'
         '400':
-          description: "Demande invalide. Cas propres aux retraits: identifiant de phrase inconnu, identifiant present dans `corrections` et `removed`, aucune phrase restante, `topic` vide apres nettoyage."
+          description: "Demande invalide. Cas propres aux sections: phrase inconnue, coupes pas dans l'ordre ou en double, premiere section pas au debut, plus de 6 sections, aucune section non ignoree, `sections` avec `subject`/`topic`/`folderId`, `topic` ou `title` vide apres nettoyage."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               examples:
                 inconnu: { summary: Identifiant inconnu, value: { code: requete_invalide, message: Phrase inconnue } }
-                double: { summary: Corrigee et retiree, value: { code: requete_invalide, message: Une phrase ne peut pas etre corrigee et retiree } }
-                rien: { summary: Tout retire, value: { code: requete_invalide, message: Il doit rester au moins une phrase } }
+                ordre: { summary: Coupes dans le desordre ou en double, value: { code: requete_invalide, message: Les coupes doivent suivre l'ordre du texte } }
+                debut: { summary: Premiere section pas au debut, value: { code: requete_invalide, message: La premiere section doit commencer au debut du texte } }
+                rien: { summary: Tout ignore, value: { code: requete_invalide, message: Il faut au moins une fiche } }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /jobs/{jobId}/cancel:
@@ -487,6 +500,45 @@ paths:
         '204': { description: Retiree }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /cours/{coursId}:
+    get:
+      operationId: getCours
+      tags: [cours]
+      summary: "Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent n'y accede que par l'export (403)."
+      description: "`coursId` vient de `DocSummary.coursId` ou de `ScanSummary.coursId`. Un lien de section vers une fiche supprimee n'a plus de `docId` (statut `supprimee`)."
+      parameters: [{ $ref: '#/components/parameters/CoursId' }]
+      responses:
+        '200':
+          description: Cours
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cours' }
+              example:
+                coursId: 01JEXAMPLE0CRS0000000000AA
+                createdAt: '2026-12-01T10:05:00Z'
+                pages: 2
+                texts:
+                  - page: 1
+                    sentences: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }]
+                  - page: 2
+                    sentences: [{ id: p2-s1, text: La Revolution commence en 1789. }]
+                sections:
+                  - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese, status: fiche, docId: 01JEXAMPLE0DOC0000000000AA }
+                  - { fromSentenceId: p2-s1, subject: histoire_geo, status: ignoree }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteCours
+      tags: [cours]
+      summary: "Supprime le texte du cours. Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours) ou `supprimer` (les fiches du cours sont supprimees aussi). Supprimer une fiche ne supprime jamais le cours (handler cours-api)"
+      parameters:
+        - { $ref: '#/components/parameters/CoursId' }
+        - { name: fiches, in: query, required: true, description: "Obligatoire, pas de valeur par defaut: l'eleve choisit", schema: { type: string, enum: [garder, supprimer] } }
+      responses:
+        '204': { description: Supprime }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /answers:
     post:
       operationId: postAnswer
@@ -746,6 +798,7 @@ components:
   parameters:
     JobId: { name: jobId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    CoursId: { name: coursId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     FolderId: { name: folderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     StudentId: { name: sid, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
   responses:
@@ -791,6 +844,7 @@ components:
         docId: { type: string, description: Present quand state = termine }
         message: { type: string, maxLength: 500 }
         status: { $ref: '#/components/schemas/ScanStatus' }
+        docIds: { type: array, maxItems: 6, items: { type: string }, description: "Fiches du scan, dans l'ordre des sections (v1.3). `docId` = la premiere. Present quand state = termine." }
     Subject:
       type: string
       enum: [maths, physique, svt, histoire_geo, francais, autre]
@@ -833,6 +887,10 @@ components:
         pages: { type: integer, minimum: 1, maximum: 10 }
         createdAt: { type: string, format: date-time }
         status: { $ref: '#/components/schemas/ScanStatus' }
+        coursId: { type: string, description: "Cours complet conserve (v1.3), present des la confirmation" }
+        sectionIndex: { type: integer, minimum: 0, maximum: 5, description: "Rang de la fiche dans son scan (0 = premiere). Un scan decoupe en plusieurs fiches donne UNE entree par fiche, avec le meme `scanId`, `sectionCount` et `docIds`; le client regroupe par `scanId`. Absent pour un scan en cours ou a une seule fiche ancienne." }
+        sectionCount: { type: integer, minimum: 1, maximum: 6, description: "Nombre de fiches du scan" }
+        docIds: { type: array, maxItems: 6, items: { type: string }, description: "Toutes les fiches du scan (v1.3), dans l'ordre; `docId` est celle de cette entree" }
     ScanList:
       type: object
       required: [items, inProgress, toReview, facets]
@@ -853,6 +911,37 @@ components:
               description: Sujets distincts (un seul libelle par sujet normalise), du plus frequent au moins frequent, 100 au plus
               maxItems: 100
               items: { type: object, required: [topic, count], properties: { topic: { $ref: '#/components/schemas/Topic' }, count: { type: integer, minimum: 1 } } }
+    Cours:
+      type: object
+      required: [coursId, createdAt, pages, texts, sections]
+      description: "Cours complet corrige, conserve jusqu'a suppression par l'eleve ou le parent (comme les fiches). Contient le texte lu et corrige, jamais la photo."
+      properties:
+        coursId: { type: string }
+        createdAt: { type: string, format: date-time }
+        pages: { type: integer, minimum: 1, maximum: 10 }
+        texts:
+          type: array
+          description: "Une entree par page, triee numeriquement; meme forme que `Transcription.pages`"
+          items:
+            type: object
+            required: [page, sentences]
+            properties:
+              page: { type: integer, minimum: 1 }
+              sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
+        sections:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            required: [fromSentenceId, subject, status]
+            properties:
+              fromSentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+              subject: { $ref: '#/components/schemas/Subject' }
+              topic: { $ref: '#/components/schemas/Topic' }
+              title: { type: string, maxLength: 200 }
+              folderId: { type: string }
+              status: { type: string, enum: [fiche, ignoree, sans_fiche, supprimee], description: "fiche = une fiche existe (`docId`); ignoree = `ignore: true`; sans_fiche = aucune affirmation exploitable dans cette section; supprimee = la fiche a ete supprimee" }
+              docId: { type: string, description: "Present si status = fiche" }
     Folder:
       type: object
       required: [folderId, name, createdAt, scanCount]
@@ -882,6 +971,25 @@ components:
       properties:
         subject: { $ref: '#/components/schemas/Subject' }
         topic: { type: [string, 'null'], minLength: 1, maxLength: 80, description: "Sujet (voir Topic); null efface le sujet" }
+    ConfirmSection:
+      type: object
+      required: [fromSentenceId, subject]
+      properties:
+        fromSentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "Premiere phrase de la section (identifiant de `Transcription`, ex. p2-s3). La section va jusqu'a la phrase qui precede la section suivante." }
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string, minLength: 1, maxLength: 200, description: "Titre de la fiche; a defaut, propose par l'extraction" }
+        folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de la fiche (404 s'il n'existe pas)" }
+        ignore: { type: boolean, description: "true: le texte est garde dans le cours, aucune fiche n'est creee (`subject` reste obligatoire pour l'uniformite, sans effet)." }
+    SuggestedSection:
+      type: object
+      required: [fromSentenceId, subject]
+      description: "Decoupage propose par la lecture du cours (une proposition par section possible), modifiable par l'eleve. Meme sens que ConfirmSection."
+      properties:
+        fromSentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+        subject: { $ref: '#/components/schemas/Subject' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string, minLength: 1, maxLength: 200 }
     ScanCreateRequest:
       type: object
       required: [pages, contentType]
@@ -953,6 +1061,11 @@ components:
               sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
         suggestedSubject: { $ref: '#/components/schemas/Subject' }
         suggestedTopic: { $ref: '#/components/schemas/Topic' }
+        suggestedSections:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/SuggestedSection' }
+          description: "Decoupage suggere (v1.3), au plus 6 sections; la premiere commence a la premiere phrase. Absent: pas de decoupage suggere (une seule section)."
         photoUrls: { type: array, items: { type: string, format: uri }, description: "Dans l'ordre des pages (1 par page)" }
         photoUrlsExpireAt: { type: string, format: date-time }
     ConfirmRequest:
@@ -960,12 +1073,12 @@ components:
       required: [corrections]
       properties:
         corrections: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/Sentence' } }
-        removed:
+        sections:
           type: array
-          maxItems: 500
-          uniqueItems: true
-          items: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
-          description: "Facultatif (v1.3): identifiants des phrases retirees (ex. p2-s1). Voir la description de la route pour les regles: inconnu, en double avec `corrections` ou plus aucune phrase = 400. Absent ou vide: rien n'est retire (client 1.2 inchange)."
+          minItems: 1
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ConfirmSection' }
+          description: "Facultatif (v1.3): decoupage du texte en sections par sujet, dans l'ordre du texte (voir la route). Absent: une seule section."
         subject: { $ref: '#/components/schemas/Subject' }
         topic: { $ref: '#/components/schemas/Topic', description: "Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle." }
         folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation" }
@@ -979,6 +1092,8 @@ components:
         createdAt: { type: string, format: date-time }
         topic: { $ref: '#/components/schemas/Topic' }
         folderId: { type: string }
+        coursId: { type: string, description: "Cours complet d'ou vient la fiche (v1.3); absent pour une fiche ancienne ou si le cours a ete supprime" }
+        sectionIndex: { type: integer, minimum: 0, maximum: 5 }
     DocList:
       type: object
       required: [items]
@@ -1205,6 +1320,7 @@ components:
             consentement: { $ref: '#/components/schemas/Consent' }
             createdAt: { type: string }
             folders: { type: array, items: { $ref: '#/components/schemas/Folder' }, description: "Dossiers de l'eleve (v1.3)" }
+            cours: { type: array, items: { $ref: '#/components/schemas/Cours' }, description: "Cours complets conserves (v1.3), texte compris: donnee personnelle exportee comme les fiches" }
             profile:
               type: object
               description: Profil de jeu (XP, serie, badges, signalements valides)

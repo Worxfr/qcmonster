@@ -29,6 +29,7 @@ const EXPECTED = [
   // contract-v1.3 (FEAT-A)
   'GET /scans', 'PATCH /docs/{docId}', 'GET /folders', 'POST /folders', 'PATCH /folders/{folderId}', 'DELETE /folders/{folderId}',
   'POST /folders/{folderId}/scans', 'DELETE /folders/{folderId}/scans/{docId}',
+  'GET /cours/{coursId}', 'DELETE /cours/{coursId}',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -156,20 +157,37 @@ describe('contrat OpenAPI', () => {
     expect(ex.pages.map((p: { page: number }) => p.page)).toEqual([1, 2]);
     expect(zodSchemas.TranscriptionSchema.safeParse(ex).success).toBe(true);
   });
-  it('contrat 1.3: retrait de phrases a la confirmation (ConfirmRequest.removed)', () => {
+  it('contrat 1.3: sections a la confirmation (une fiche par sujet), cours conserve', () => {
     const z = zodSchemas.ConfirmRequestSchema;
     expect(z.safeParse({ corrections: [] }).success).toBe(true); // client 1.2 inchange
     expect(spec.components.schemas.ConfirmRequest.required).toEqual(['corrections']);
-    expect(z.safeParse({ corrections: [], removed: ['p2-s1', 'p2-s2'] }).success).toBe(true);
-    expect(z.safeParse({ corrections: [], removed: [] }).success).toBe(true);
-    expect(z.safeParse({ corrections: [], removed: ['p2-1'] }).success).toBe(false); // format reel: p<page>-s<n>
-    expect(z.safeParse({ corrections: [], removed: ['p2-s1', 'p2-s1'] }).success).toBe(false); // doublon
-    expect(z.safeParse({ corrections: [], removed: Array.from({ length: 501 }, (_, i) => `p1-s${i}`) }).success).toBe(false);
+    expect(spec.components.schemas.ConfirmSection.required).toEqual(['fromSentenceId', 'subject']);
+    const ok = { corrections: [], sections: [{ fromSentenceId: 'p1-s1', subject: 'svt' }, { fromSentenceId: 'p2-s3', subject: 'autre', ignore: true, topic: 'Fin', title: 'T', folderId: 'f' }] };
+    expect(z.safeParse(ok).success).toBe(true);
+    expect(z.safeParse({ corrections: [], sections: [] }).success).toBe(false);
+    expect(z.safeParse({ corrections: [], sections: [{ fromSentenceId: 'p2-1', subject: 'svt' }] }).success).toBe(false); // format reel p<page>-s<n>
+    expect(z.safeParse({ corrections: [], sections: [{ fromSentenceId: 'p1-s1', subject: 'latin' }] }).success).toBe(false);
+    expect(z.safeParse({ corrections: [], sections: Array.from({ length: 7 }, (_, i) => ({ fromSentenceId: `p${i + 1}-s1`, subject: 'svt' })) }).success).toBe(false);
     const op = spec.paths['/jobs/{jobId}/confirm'].post;
-    expect(op.description).toMatch(/au moins une doit rester/);
-    expect(op.description).toMatch(/ne change pas le quota/);
-    expect(Object.keys(op.responses)).toContain('400');
-    expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'double', 'rien']);
-    expect(zodSchemas.ConfirmRequestSchema.safeParse(op.requestBody.content['application/json'].example).success).toBe(true);
+    expect(op.description).toMatch(/au plus 6 sections/);
+    expect(op.description).toMatch(/consomme UNE fois/);
+    expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'ordre', 'debut', 'rien']);
+    for (const ex of Object.values(op.requestBody.content['application/json'].examples) as { value: unknown }[]) expect(z.safeParse(ex.value).success).toBe(true);
+  });
+  it('contrat 1.3: GET/DELETE /cours, regroupement des fiches, export', () => {
+    const del = spec.paths['/cours/{coursId}'].delete;
+    const fiches = del.parameters.find((p: { name?: string }) => p.name === 'fiches');
+    expect(fiches.required).toBe(true);
+    expect(fiches.schema.enum).toEqual(['garder', 'supprimer']);
+    expect(fiches.schema.default).toBeUndefined(); // option explicite, pas de defaut
+    expect(spec.components.schemas.Cours.properties.sections.items.properties.status.enum).toEqual(['fiche', 'ignoree', 'sans_fiche', 'supprimee']);
+    for (const k of ['coursId', 'sectionIndex', 'sectionCount', 'docIds']) expect(spec.components.schemas.ScanSummary.properties[k]).toBeDefined();
+    expect(spec.components.schemas.ScanSummary.required).not.toContain('docIds');
+    expect(spec.components.schemas.DocSummary.properties.coursId).toBeDefined();
+    expect(spec.components.schemas.DocSummary.required).toEqual(['docId', 'title', 'subject', 'createdAt']);
+    expect(spec.components.schemas.Job.properties.docIds).toBeDefined();
+    expect(spec.components.schemas.Transcription.properties.suggestedSections.maxItems).toBe(6);
+    expect(Object.keys(spec.components.schemas.StudentExport.allOf[1].properties)).toContain('cours');
+    expect(zodSchemas.CoursSchema.safeParse(spec.paths['/cours/{coursId}'].get.responses['200'].content['application/json'].example).success).toBe(true);
   });
 });

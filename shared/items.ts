@@ -34,6 +34,10 @@ export const JobItemSchema = z.object({
   suggestedTopic: z.string().max(80).optional(),
   subjectChoice: z.enum(SUBJECTS).optional(),
   topicChoice: z.string().max(80).optional(),
+  // Sections (decoupage en fiches): plan fixe a la confirmation, avec les identifiants de fiches deja attribues (reprise sans doublon).
+  coursId: z.string().optional(),
+  docIds: z.array(z.string()).max(6).optional(),
+  sections: z.array(z.object({ fromSentenceId: z.string(), subject: z.enum(SUBJECTS), topic: z.string().max(80).optional(), title: z.string().max(200).optional(), folderId: z.string().optional(), ignore: z.boolean().default(false), docId: z.string().optional() })).max(6).optional(),
 });
 
 /** Fiche (ecrit par L2a). `empreinteMinHash` = 64 entiers (Jaccard sur groupes de 5 mots, seuil 0,85, meme famille). */
@@ -50,6 +54,9 @@ export const FicheItemSchema = z.object({
   sujet: z.string().max(80).optional(),
   dossierId: z.string().optional(),
   pages: z.number().int().min(1).max(10).optional(),
+  coursId: z.string().optional(),
+  sectionIndex: z.number().int().min(0).max(5).optional(),
+  sectionCount: z.number().int().min(1).max(6).optional(),
 });
 
 /** Dossier de l'eleve (contrat 1.3). `nomCle` = `labelKey(nom)`: unicite sans casse ni accents. Pas de liste de fiches: l'appartenance est portee par la fiche (`dossierId`). */
@@ -119,3 +126,21 @@ export const VerifyInputSchema = z.object({ jobId: z.string(), docId: z.string()
 export const VerifyOutputSchema = z.object({ coutCentimes: z.number().int().min(0), nbVerifiees: z.number().int().min(0), nbErreurs: z.number().int().min(0), nbNonVerifiables: z.number().int().min(0) });
 export type VerifyInput = z.infer<typeof VerifyInputSchema>;
 export type VerifyOutput = z.infer<typeof VerifyOutputSchema>;
+
+/** Cours complet corrige (contrat 1.3), en-tete: `STUDENT#<sid> / COURS#<coursId>`. Conserve jusqu'a suppression (eleve ou parent), sans TTL. */
+export const CoursItemSchema = z.object({
+  PK: z.string(),
+  SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}$/),
+  jobId: z.string(),
+  pages: z.number().int().min(1).max(10),
+  createdAt: z.string(),
+  nbPhrases: z.number().int().min(1),
+  sections: z.array(z.object({ fromSentenceId: z.string(), subject: z.enum(SUBJECTS), topic: z.string().max(80).optional(), title: z.string().max(200).optional(), folderId: z.string().optional(), ignore: z.boolean(), docId: z.string().optional(), statut: z.enum(['fiche', 'ignoree', 'sans_fiche']) })).min(1).max(6),
+});
+/** Texte d'une page du cours: `STUDENT#<sid> / COURS#<coursId>#T<nn>`. Memes phrases que `JOB#.../TEXT#`, mais durables et corrigees. */
+export const CoursTextItemSchema = z.object({
+  PK: z.string(),
+  SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}#T[0-9]{2}$/),
+  page: z.number().int().min(1).max(10),
+  sentences: z.array(z.object({ id: z.string().regex(/^p[0-9]+-s[0-9]+$/), text: z.string().max(2000), pages: z.array(z.number().int().min(1).max(10)).min(1).max(4).optional() })),
+});

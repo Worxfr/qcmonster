@@ -17,6 +17,9 @@ export const keys = {
   job: (sid: string, jobId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `JOB#${jobId}` }),
   text: (jobId: string, page: number): Key => ({ PK: `JOB#${jobId}`, SK: `TEXT#${page}` }),
   doc: (sid: string, docId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `DOC#${docId}` }),
+  /** Cours complet conserve (contrat 1.3): en-tete et texte par page, dans la partition de l'eleve (supprimes avec lui par deleteStudentTree). */
+  cours: (sid: string, coursId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `COURS#${coursId}` }),
+  coursText: (sid: string, coursId: string, page: number): Key => ({ PK: `STUDENT#${sid}`, SK: `COURS#${coursId}#T${String(page).padStart(2, '0')}` }),
   /** Dossier de l'eleve (contrat 1.3). Ecrit par le lot back FEAT-A (folders-api) seul. */
   folder: (sid: string, folderId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `FOLDER#${folderId}` }),
   claim: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `CLAIM#${String(nn).padStart(2, '0')}` }),

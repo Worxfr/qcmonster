@@ -3,6 +3,8 @@ import { CONFIRM_TIMEOUT_S, EXPIRES_SOON_S, BadCursorError, cleanFolderName, cle
 import { FicheItemSchema, FolderItemSchema, JobItemSchema } from './items.js';
 import { keys } from './ddb/keys.js';
 import { jobCapEur } from './names.js';
+import { planSections } from './scans.js';
+import { CoursItemSchema, CoursTextItemSchema } from './items.js';
 import { deleteStudentTree, type TreeDb, type TreeKey } from './delete-tree.js';
 
 const S1 = 's1';
@@ -240,5 +242,85 @@ describe('plafond de cout par traitement', () => {
     expect(jobCapEur(99)).toBe(1.5);
     expect(jobCapEur(Number.NaN)).toBe(0.25);
     expect(jobCapEur(2.9)).toBe(0.3);
+  });
+});
+
+describe('sections: une fiche par sujet', () => {
+  const ids = ['p1-s1', 'p1-s2', 'p1-s3', 'p2-s1', 'p2-s2', 'p3-s1'];
+  const sec = (id: string, ignore?: boolean) => ({ fromSentenceId: id, ...(ignore ? { ignore } : {}) });
+  it('une seule section couvre tout (defaut)', () => {
+    expect(planSections(ids, [sec('p1-s1')])).toEqual({ ok: true, ranges: [{ start: 0, end: 6, ignore: false }] });
+  });
+  it('coupe a cheval sur deux pages: sections [0,3[ [3,5[ [5,6[', () => {
+    const r = planSections(ids, [sec('p1-s1'), sec('p2-s1'), sec('p3-s1', true)]);
+    expect(r).toEqual({ ok: true, ranges: [{ start: 0, end: 3, ignore: false }, { start: 3, end: 5, ignore: false }, { start: 5, end: 6, ignore: true }] });
+  });
+  it('coupe au milieu d\'une page', () => {
+    expect(planSections(ids, [sec('p1-s1'), sec('p1-s3')])).toMatchObject({ ok: true, ranges: [{ start: 0, end: 2 }, { start: 2, end: 6 }] });
+  });
+  it('refus: inconnu, ordre, doublon, debut, trop, rien a fiche, vide', () => {
+    expect(planSections(ids, [sec('p1-s1'), sec('p9-s9')])).toEqual({ ok: false, error: 'inconnu' });
+    expect(planSections(ids, [sec('p1-s1'), sec('p2-s1'), sec('p1-s3')])).toEqual({ ok: false, error: 'ordre' });
+    expect(planSections(ids, [sec('p1-s1'), sec('p2-s1'), sec('p2-s1')])).toEqual({ ok: false, error: 'ordre' });
+    expect(planSections(ids, [sec('p1-s2')])).toEqual({ ok: false, error: 'debut' });
+    expect(planSections(ids, [sec('p1-s1'), sec('p1-s2'), sec('p1-s3'), sec('p2-s1'), sec('p2-s2'), sec('p3-s1'), sec('p3-s1')])).toEqual({ ok: false, error: 'trop' });
+    expect(planSections(ids, [sec('p1-s1', true), sec('p2-s1', true)])).toEqual({ ok: false, error: 'aucune_fiche' });
+    expect(planSections(ids, [])).toEqual({ ok: false, error: 'aucune_fiche' });
+    expect(planSections([], [sec('p1-s1')])).toEqual({ ok: false, error: 'inconnu' });
+  });
+  it('6 sections au plus: 6 acceptees', () => {
+    expect(planSections(ids, ids.map((id) => sec(id))).ok).toBe(true);
+  });
+});
+
+describe('un scan, plusieurs fiches (liste et cours)', () => {
+  const d = (id: string, o: Record<string, unknown>) => doc(id, { jobId: 'j1', coursId: 'c1', sectionCount: 3, ...o });
+  const docs = [d('dB', { sectionIndex: 1, matiere: 'histoire_geo', titre: 'B' }), d('dA', { sectionIndex: 0, titre: 'A' }), d('dC', { sectionIndex: 2, titre: 'C', dossierId: 'f1' })];
+  it('job termine: une entree par fiche, dans l\'ordre des sections, avec docIds et coursId', () => {
+    const r = run([job('j1', { state: 'termine', docIds: ['dA', 'dB', 'dC'], docId: 'dA', coursId: 'c1', pages: 3 })], docs, { order: 'asc' }, [{ studentId: S1, folderId: 'f1' }]);
+    expect(r.items.map((i) => i.docId)).toEqual(['dA', 'dB', 'dC']);
+    expect(r.items.every((i) => i.scanId === 'j1' && i.sectionCount === 3 && i.coursId === 'c1' && i.state === 'termine')).toBe(true);
+    expect(r.items[1].docIds).toEqual(['dA', 'dB', 'dC']);
+    expect(r.items.map((i) => i.sectionIndex)).toEqual([0, 1, 2]);
+    expect(r.inProgress).toBe(0);
+  });
+  it('filtres par fiche: chaque fiche a sa matiere, son sujet et son dossier', () => {
+    const jobs = [job('j1', { state: 'termine', docIds: ['dA', 'dB', 'dC'] })];
+    expect(run(jobs, docs, { subject: 'histoire_geo' }).items.map((i) => i.docId)).toEqual(['dB']);
+    expect(run(jobs, docs, { folderId: 'f1' }, [{ studentId: S1, folderId: 'f1' }]).items.map((i) => i.docId)).toEqual(['dC']);
+  });
+  it('fiches seules (job expire): regroupees par jobId', () => {
+    const r = run([], docs);
+    expect(r.items).toHaveLength(3);
+    expect(new Set(r.items.map((i) => i.scanId))).toEqual(new Set(['j1']));
+    expect(r.items[0].docIds).toEqual(['dA', 'dB', 'dC']);
+  });
+  it('une fiche supprimee: les autres restent, sans fantome', () => {
+    const r = run([job('j1', { state: 'termine', docIds: ['dA', 'dB', 'dC'] })], [docs[1], docs[2]]);
+    expect(r.items.map((i) => i.docId).sort()).toEqual(['dA', 'dC']);
+    expect(run([job('j1', { state: 'termine', docIds: ['dA'] })], []).items).toEqual([]);
+  });
+  it('job en cours: une seule entree meme avec un plan de sections; fiche ancienne a 1 section sans champs 1.3', () => {
+    expect(run([job('j2', { state: 'verification', docIds: ['x', 'y'], coursId: 'c9' })], []).items).toHaveLength(1);
+    const old = run([job('j0', { state: 'termine', docId: 'd0' })], [doc('d0', { jobId: 'j0' })]).items[0];
+    expect(old.sectionCount).toBeUndefined();
+    expect(old.docIds).toBeUndefined();
+  });
+});
+
+describe('cours conserve', () => {
+  it('cles dans la partition de l\'eleve, schemas', () => {
+    expect(keys.cours('s1', 'c1')).toEqual({ PK: 'STUDENT#s1', SK: 'COURS#c1' });
+    expect(keys.coursText('s1', 'c1', 2)).toEqual({ PK: 'STUDENT#s1', SK: 'COURS#c1#T02' });
+    expect(CoursTextItemSchema.safeParse({ ...keys.coursText('s1', 'c1', 1), page: 1, sentences: [{ id: 'p1-s1', text: 'x', pages: [1, 2] }] }).success).toBe(true);
+    const head = { ...keys.cours('s1', 'c1'), jobId: 'j', pages: 2, createdAt: 'x', nbPhrases: 3, sections: [{ fromSentenceId: 'p1-s1', subject: 'svt', ignore: false, statut: 'fiche', docId: 'd' }] };
+    expect(CoursItemSchema.safeParse(head).success).toBe(true);
+    expect(CoursItemSchema.safeParse({ ...head, sections: [] }).success).toBe(false);
+  });
+  it('suppression d\'un eleve: en-tete et texte du cours supprimes, ceux d\'un autre eleve conserves', async () => {
+    const store: TreeKey[] = [{ PK: 'FAMILY#fam', SK: 'STUDENT#s1' }, { PK: 'STUDENT#s1', SK: 'COURS#c1' }, { PK: 'STUDENT#s1', SK: 'COURS#c1#T01' }, { PK: 'STUDENT#s1', SK: 'DOC#d1' }, { PK: 'STUDENT#s2', SK: 'COURS#c9' }];
+    const db: TreeDb = { list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))), remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)) };
+    await deleteStudentTree(db, 'fam', 's1');
+    expect(store).toEqual([{ PK: 'STUDENT#s2', SK: 'COURS#c9' }]);
   });
 });

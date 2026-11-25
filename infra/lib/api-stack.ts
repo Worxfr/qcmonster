@@ -78,6 +78,8 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'DELETE /folders/{folderId}', handler: 'folders-api', throttle: { rate: 2, burst: 5 } },
   { route: 'POST /folders/{folderId}/scans', handler: 'folders-api', throttle: { rate: 2, burst: 5 } },
   { route: 'DELETE /folders/{folderId}/scans/{docId}', handler: 'folders-api', throttle: { rate: 2, burst: 5 } },
+  { route: 'GET /cours/{coursId}', handler: 'cours-api', throttle: { rate: 5, burst: 10 } },
+  { route: 'DELETE /cours/{coursId}', handler: 'cours-api', throttle: { rate: 1, burst: 3 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
@@ -86,7 +88,7 @@ export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A'> = {
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3',
   'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-mark-read': 'L3', 'family-create': 'L3', 'admin-invitations': 'L3',
-  'scans-list': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A',
+  'scans-list': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */

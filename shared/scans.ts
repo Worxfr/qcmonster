@@ -10,6 +10,8 @@ export const MAX_FOLDERS_PER_STUDENT = 50;
 export const MAX_FOLDER_NAME = 60;
 export const MAX_TOPIC = 80;
 export const MAX_FOLDER_SCANS_PER_CALL = 50;
+/** Sections (donc fiches) par scan: plafond propose, une section = un appel d'extraction, de verification et de generation. */
+export const MAX_SECTIONS = 6;
 export const LIST_DEFAULT_LIMIT = 50;
 export const LIST_MAX_LIMIT = 100;
 export const TOPIC_FACETS_MAX = 100;
@@ -139,7 +141,7 @@ export interface ListInput {
 
 const sidOf = (it: ScanItem): string => it.PK.replace(/^STUDENT#/, '');
 
-type Entry = ScanSummary & { _topicKey?: string };
+type Entry = ScanSummary & { _topicKey?: string; _count?: number };
 
 /** Fusionne jobs et fiches en scans, filtre, trie, pagine. Voir le contrat (GET /scans) pour les regles. */
 export function listScans(input: ListInput): ScanList {
@@ -153,24 +155,58 @@ export function listScans(input: ListInput): ScanList {
   const entries: Entry[] = [];
   const folderOf = (sid: string, id: unknown): string | undefined => (typeof id === 'string' && knownFolders.has(`${sid}/${id}`) ? id : undefined); // dossier supprime ou inconnu => hors dossier
 
+  const docEntry = (sid: string, scanId: string, doc: ScanItem, status: components['schemas']['ScanStatus'], state: ScanSummary['state'], idx: number): Entry => {
+    const docId = doc.SK.slice('DOC#'.length);
+    const topic = cleanTopic(doc.sujet);
+    const title = str(doc.titre);
+    const folderId = folderOf(sid, doc.dossierId);
+    const pages = status.pagesTotal;
+    const coursId = str(doc.coursId);
+    return {
+      scanId,
+      studentId: sid,
+      state,
+      docId,
+      ...(title ? { title: title.slice(0, 200) } : {}),
+      ...(isSubject(doc.matiere) ? { subject: doc.matiere } : {}),
+      ...(topic ? { topic } : {}),
+      ...(folderId ? { folderId } : {}),
+      pages,
+      createdAt: status.startedAt,
+      status,
+      ...(coursId ? { coursId } : {}),
+      ...(num(doc.sectionIndex) !== undefined || num(doc.sectionCount) !== undefined ? { sectionIndex: Math.trunc(num(doc.sectionIndex) ?? idx) } : {}),
+      _topicKey: topic ? labelKey(topic) : undefined,
+      _count: num(doc.sectionCount),
+    };
+  };
+
   for (const job of input.jobs) {
     const sid = sidOf(job);
     const jobId = job.SK.slice('JOB#'.length);
-    const docId = str(job.docId);
-    const doc = docId ? docsById.get(`${sid}/${docId}`) : undefined;
+    // Un scan peut donner plusieurs fiches (`docIds`); un job d'avant 1.3 n'a que `docId`.
+    const ids = Array.isArray(job.docIds) ? (job.docIds as unknown[]).filter((x): x is string => typeof x === 'string') : str(job.docId) ? [str(job.docId)!] : [];
+    const docs = ids.map((id) => docsById.get(`${sid}/${id}`)).filter((d): d is ScanItem => d !== undefined);
+    for (const d of docs) usedDocs.add(`${sid}/${d.SK.slice('DOC#'.length)}`);
     const status = statusOfJob(job, input.now);
-    // Job termine dont la fiche a ete supprimee: on ne montre pas un fantome.
-    if (status.stage === 'termine' && !doc) continue;
-    if (doc) usedDocs.add(`${sid}/${docId}`);
+    const state = isJobState(job.state) ? job.state : 'echec';
+    if (status.stage === 'termine') {
+      // Job termine dont toutes les fiches ont ete supprimees: on ne montre pas un fantome.
+      docs.sort((a, b) => (num(a.sectionIndex) ?? 0) - (num(b.sectionIndex) ?? 0));
+      docs.forEach((d, k) => entries.push(docEntry(sid, jobId, d, status, state, k)));
+      continue;
+    }
+    const doc = docs[0];
     const subjectRaw = doc ? doc.matiere : (job.subjectChoice ?? job.suggestedSubject ?? job.draftSubject);
     const topic = cleanTopic(doc ? doc.sujet : (job.topicChoice ?? job.suggestedTopic));
     const title = str(doc ? doc.titre : job.draftTitle);
     const folderId = folderOf(sid, doc ? doc.dossierId : job.folderId);
+    const coursId = str(job.coursId);
     entries.push({
       scanId: jobId,
       studentId: sid,
-      state: isJobState(job.state) ? job.state : 'echec',
-      ...(doc ? { docId } : {}),
+      state,
+      ...(doc ? { docId: doc.SK.slice('DOC#'.length) } : {}),
       ...(title ? { title: title.slice(0, 200) } : {}),
       ...(isSubject(subjectRaw) ? { subject: subjectRaw } : {}),
       ...(topic ? { topic } : {}),
@@ -178,6 +214,7 @@ export function listScans(input: ListInput): ScanList {
       pages: status.pagesTotal,
       createdAt: status.startedAt,
       status,
+      ...(coursId ? { coursId } : {}),
       _topicKey: topic ? labelKey(topic) : undefined,
     });
   }
@@ -185,25 +222,25 @@ export function listScans(input: ListInput): ScanList {
   for (const [dkey, doc] of docsById) {
     if (usedDocs.has(dkey)) continue;
     const sid = sidOf(doc);
-    const docId = doc.SK.slice('DOC#'.length);
     const createdAt = str(doc.createdAt) ?? new Date(0).toISOString();
     const pages = Math.min(MAX_PAGES_PER_SCAN, Math.max(1, num(doc.pages) ?? num(doc.pagesConsommees) ?? 1));
-    const topic = cleanTopic(doc.sujet);
-    const folderId = folderOf(sid, doc.dossierId);
-    entries.push({
-      scanId: str(doc.jobId) ?? docId,
-      studentId: sid,
-      state: 'termine',
-      docId,
-      ...(str(doc.titre) ? { title: str(doc.titre)!.slice(0, 200) } : {}),
-      ...(isSubject(doc.matiere) ? { subject: doc.matiere } : {}),
-      ...(topic ? { topic } : {}),
-      ...(folderId ? { folderId } : {}),
-      pages,
-      createdAt,
-      status: { stage: 'termine', pagesDone: pages, pagesTotal: pages, startedAt: createdAt, finishedAt: createdAt },
-      _topicKey: topic ? labelKey(topic) : undefined,
-    });
+    const status = { stage: 'termine' as const, pagesDone: pages, pagesTotal: pages, startedAt: createdAt, finishedAt: createdAt };
+    entries.push(docEntry(sid, str(doc.jobId) ?? doc.SK.slice('DOC#'.length), doc, status, 'termine', 0));
+  }
+
+  // Regroupement: toutes les fiches d'un meme scan se connaissent (`docIds`, `sectionCount`), dans l'ordre des sections.
+  const siblings = new Map<string, Entry[]>();
+  for (const e of entries) if (e.docId) siblings.set(`${e.studentId}/${e.scanId}`, [...(siblings.get(`${e.studentId}/${e.scanId}`) ?? []), e]);
+  for (const group of siblings.values()) {
+    group.sort((a, b) => (a.sectionIndex ?? 0) - (b.sectionIndex ?? 0));
+    for (const [k, e] of group.entries()) {
+      const count = Math.max(group.length, e._count ?? 0);
+      if (count > 1 || e.sectionIndex !== undefined) {
+        e.sectionIndex = e.sectionIndex ?? k;
+        e.sectionCount = Math.min(6, count);
+        e.docIds = group.map((g) => g.docId!).slice(0, 6);
+      }
+    }
   }
 
   // Menus: sur tout ce qui est visible, sans les filtres.
@@ -239,7 +276,7 @@ export function listScans(input: ListInput): ScanList {
 
   // Sens par defaut: croissant pour matiere et sujet (ordre alphabetique), decroissant pour date et statut.
   const dir = (q.order ?? (q.sort === 'subject' || q.sort === 'topic' ? 'asc' : 'desc')) === 'asc' ? 1 : -1;
-  const dateDesc = (a: Entry, b: Entry) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.scanId < b.scanId ? -1 : 1);
+  const dateDesc = (a: Entry, b: Entry) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.scanId !== b.scanId ? (a.scanId < b.scanId ? -1 : 1) : (a.sectionIndex ?? 0) - (b.sectionIndex ?? 0)); // fiches d'un meme scan cote a cote, dans l'ordre des sections
   const absentLast = (a: number | string | undefined, b: number | string | undefined, cmp: (x: never, y: never) => number): number =>
     a === undefined && b === undefined ? 0 : a === undefined ? 1 : b === undefined ? -1 : dir * cmp(a as never, b as never);
   const subjIdx = (e: Entry) => (e.subject ? SUBJECTS.indexOf(e.subject) : undefined);
@@ -266,10 +303,39 @@ export function listScans(input: ListInput): ScanList {
   const page = kept.slice(offset, offset + limit);
   const next = offset + limit < kept.length ? Buffer.from(`o${offset + limit}`).toString('base64url') : undefined;
   return {
-    items: page.map(({ _topicKey, ...e }) => (void _topicKey, e)),
+    items: page.map(({ _topicKey, _count, ...e }) => (void _topicKey, void _count, e)),
     ...(next ? { nextCursor: next } : {}),
     inProgress,
     toReview,
     facets,
   };
+}
+
+export type SectionError = 'inconnu' | 'ordre' | 'debut' | 'trop' | 'aucune_fiche' | 'vide';
+export interface SectionInput {
+  fromSentenceId: string;
+  ignore?: boolean;
+}
+/**
+ * Decoupage de la relecture: `ids` = identifiants de TOUTES les phrases du cours, dans l'ordre du texte (pages triees numeriquement,
+ * phrases dans l'ordre; une phrase recollee compte une fois). Renvoie, pour chaque section, l'intervalle [start, end[ d'indices.
+ * Regles (voir `POST /jobs/{jobId}/confirm`): au plus MAX_SECTIONS; la premiere commence a la premiere phrase; coupes connues,
+ * strictement croissantes; au moins une section non ignoree; aucune section vide.
+ */
+export function planSections(ids: string[], sections: SectionInput[]): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
+  if (sections.length === 0) return { ok: false, error: 'aucune_fiche' };
+  if (sections.length > MAX_SECTIONS) return { ok: false, error: 'trop' };
+  const pos = new Map(ids.map((id, k) => [id, k]));
+  const starts: number[] = [];
+  for (const sec of sections) {
+    const k = pos.get(sec.fromSentenceId);
+    if (k === undefined) return { ok: false, error: 'inconnu' };
+    starts.push(k);
+  }
+  if (starts[0] !== 0) return { ok: false, error: 'debut' };
+  for (let n = 1; n < starts.length; n++) if (starts[n] <= starts[n - 1]) return { ok: false, error: 'ordre' };
+  const ranges = starts.map((start, n) => ({ start, end: n + 1 < starts.length ? starts[n + 1] : ids.length, ignore: sections[n].ignore === true }));
+  if (ranges.some((r) => r.end <= r.start)) return { ok: false, error: 'vide' };
+  if (ranges.every((r) => r.ignore)) return { ok: false, error: 'aucune_fiche' };
+  return { ok: true, ranges };
 }

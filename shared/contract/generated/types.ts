@@ -73,9 +73,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Texte corrige, phrases retirees, reprend le workflow (handler jobs-confirm, L2a)
-         * @description `corrections` remplace le texte de phrases existantes; `removed` (v1.3) **retire** des phrases: elles sont exclues de l'extraction, de la fiche, des QCM et du resume, et leur texte est supprime du job a la confirmation (comme la photo). Le client ne voit pas de plage: « retirer jusqu'ici » ou « a partir d'ici » sont deux ecrans qui envoient la liste des identifiants.
-         *     Regles (400 `requete_invalide`, aucune modification): un identifiant inconnu (dans `corrections` ou `removed`); un identifiant dans `corrections` ET `removed`; plus aucune phrase apres retrait (au moins une doit rester). Un retrait ne change pas le quota: les pages reservees restent consommees comme avant. Retirer une phrase a cheval sur deux pages retire la phrase entiere.
+         * Texte corrige, decoupage en sections, reprend le workflow (handler jobs-confirm, L2a)
+         * @description `corrections` remplace le texte de phrases existantes. **`sections` (v1.3)** decoupe le texte en sections par sujet: chaque section non ignoree devient UNE fiche (matiere, sujet, titre, dossier propres; extraction, verification et QCM sur son seul texte). Le cours complet corrige est conserve (voir `Cours`); la photo est supprimee a la confirmation comme avant.
+         *     Une section commence a la phrase `fromSentenceId` et va jusqu'a la phrase qui precede la section suivante (ou la fin). Les coupes tombent entre deux phrases, sur une page ou a cheval sur deux (une phrase recollee sur deux pages ne se coupe pas). `ignore: true` garde le texte dans le cours mais ne cree pas de fiche (par exemple la fin d'un autre chapitre).
+         *     Sans `sections`: une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). `sections` et `subject`/`topic`/`folderId` ensemble: 400.
+         *     Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections; la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
          */
         post: operations["confirmJob"];
         delete?: never;
@@ -253,6 +255,27 @@ export interface paths {
         post?: never;
         /** Retire une fiche du dossier (la fiche reste). 404 si la fiche n'est pas dans ce dossier (handler folders-api) */
         delete: operations["removeScanFromFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cours/{coursId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent n'y accede que par l'export (403).
+         * @description `coursId` vient de `DocSummary.coursId` ou de `ScanSummary.coursId`. Un lien de section vers une fiche supprimee n'a plus de `docId` (statut `supprimee`).
+         */
+        get: operations["getCours"];
+        put?: never;
+        post?: never;
+        /** Supprime le texte du cours. Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours) ou `supprimer` (les fiches du cours sont supprimees aussi). Supprimer une fiche ne supprime jamais le cours (handler cours-api) */
+        delete: operations["deleteCours"];
         options?: never;
         head?: never;
         patch?: never;
@@ -522,6 +545,8 @@ export interface components {
             docId?: string;
             message?: string;
             status?: components["schemas"]["ScanStatus"];
+            /** @description Fiches du scan, dans l'ordre des sections (v1.3). `docId` = la premiere. Present quand state = termine. */
+            docIds?: string[];
         };
         /**
          * @description Matiere (liste fermee). Libelles affiches: Maths, Physique-chimie, SVT, Histoire-geo, Francais, Autre. Les identifiants `physique` et `histoire_geo` sont ceux de la v1 (donnees existantes).
@@ -577,6 +602,14 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             status: components["schemas"]["ScanStatus"];
+            /** @description Cours complet conserve (v1.3), present des la confirmation */
+            coursId?: string;
+            /** @description Rang de la fiche dans son scan (0 = premiere). Un scan decoupe en plusieurs fiches donne UNE entree par fiche, avec le meme `scanId`, `sectionCount` et `docIds`; le client regroupe par `scanId`. Absent pour un scan en cours ou a une seule fiche ancienne. */
+            sectionIndex?: number;
+            /** @description Nombre de fiches du scan */
+            sectionCount?: number;
+            /** @description Toutes les fiches du scan (v1.3), dans l'ordre; `docId` est celle de cette entree */
+            docIds?: string[];
         };
         ScanList: {
             items: components["schemas"]["ScanSummary"][];
@@ -596,6 +629,32 @@ export interface components {
                     count: number;
                 }[];
             };
+        };
+        /** @description Cours complet corrige, conserve jusqu'a suppression par l'eleve ou le parent (comme les fiches). Contient le texte lu et corrige, jamais la photo. */
+        Cours: {
+            coursId: string;
+            /** Format: date-time */
+            createdAt: string;
+            pages: number;
+            /** @description Une entree par page, triee numeriquement; meme forme que `Transcription.pages` */
+            texts: {
+                page: number;
+                sentences: components["schemas"]["Sentence"][];
+            }[];
+            sections: {
+                fromSentenceId: string;
+                subject: components["schemas"]["Subject"];
+                topic?: components["schemas"]["Topic"];
+                title?: string;
+                folderId?: string;
+                /**
+                 * @description fiche = une fiche existe (`docId`); ignoree = `ignore: true`; sans_fiche = aucune affirmation exploitable dans cette section; supprimee = la fiche a ete supprimee
+                 * @enum {string}
+                 */
+                status: "fiche" | "ignoree" | "sans_fiche" | "supprimee";
+                /** @description Present si status = fiche */
+                docId?: string;
+            }[];
         };
         Folder: {
             folderId: string;
@@ -618,6 +677,25 @@ export interface components {
             subject?: components["schemas"]["Subject"];
             /** @description Sujet (voir Topic); null efface le sujet */
             topic?: string | null;
+        };
+        ConfirmSection: {
+            /** @description Premiere phrase de la section (identifiant de `Transcription`, ex. p2-s3). La section va jusqu'a la phrase qui precede la section suivante. */
+            fromSentenceId: string;
+            subject: components["schemas"]["Subject"];
+            topic?: components["schemas"]["Topic"];
+            /** @description Titre de la fiche; a defaut, propose par l'extraction */
+            title?: string;
+            /** @description Dossier de la fiche (404 s'il n'existe pas) */
+            folderId?: string;
+            /** @description true: le texte est garde dans le cours, aucune fiche n'est creee (`subject` reste obligatoire pour l'uniformite, sans effet). */
+            ignore?: boolean;
+        };
+        /** @description Decoupage propose par la lecture du cours (une proposition par section possible), modifiable par l'eleve. Meme sens que ConfirmSection. */
+        SuggestedSection: {
+            fromSentenceId: string;
+            subject: components["schemas"]["Subject"];
+            topic?: components["schemas"]["Topic"];
+            title?: string;
         };
         ScanCreateRequest: {
             /** @description Nombre de pages de l'envoi (10 max). v1: une image = 1 page (PDF refuse, voir contentType) */
@@ -675,6 +753,8 @@ export interface components {
             }[];
             suggestedSubject?: components["schemas"]["Subject"];
             suggestedTopic?: components["schemas"]["Topic"];
+            /** @description Decoupage suggere (v1.3), au plus 6 sections; la premiere commence a la premiere phrase. Absent: pas de decoupage suggere (une seule section). */
+            suggestedSections?: components["schemas"]["SuggestedSection"][];
             /** @description Dans l'ordre des pages (1 par page) */
             photoUrls: string[];
             /** Format: date-time */
@@ -682,8 +762,8 @@ export interface components {
         };
         ConfirmRequest: {
             corrections: components["schemas"]["Sentence"][];
-            /** @description Facultatif (v1.3): identifiants des phrases retirees (ex. p2-s1). Voir la description de la route pour les regles: inconnu, en double avec `corrections` ou plus aucune phrase = 400. Absent ou vide: rien n'est retire (client 1.2 inchange). */
-            removed?: string[];
+            /** @description Facultatif (v1.3): decoupage du texte en sections par sujet, dans l'ordre du texte (voir la route). Absent: une seule section. */
+            sections?: components["schemas"]["ConfirmSection"][];
             subject?: components["schemas"]["Subject"];
             /** @description Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle. */
             topic?: components["schemas"]["Topic"];
@@ -698,6 +778,9 @@ export interface components {
             createdAt: string;
             topic?: components["schemas"]["Topic"];
             folderId?: string;
+            /** @description Cours complet d'ou vient la fiche (v1.3); absent pour une fiche ancienne ou si le cours a ete supprime */
+            coursId?: string;
+            sectionIndex?: number;
         };
         DocList: {
             items: components["schemas"]["DocSummary"][];
@@ -889,6 +972,8 @@ export interface components {
             createdAt?: string;
             /** @description Dossiers de l'eleve (v1.3) */
             folders?: components["schemas"]["Folder"][];
+            /** @description Cours complets conserves (v1.3), texte compris: donnee personnelle exportee comme les fiches */
+            cours?: components["schemas"]["Cours"][];
             /** @description Profil de jeu (XP, serie, badges, signalements valides) */
             profile: {
                 [key: string]: unknown;
@@ -1023,6 +1108,7 @@ export interface components {
     parameters: {
         JobId: string;
         DocId: string;
+        CoursId: string;
         FolderId: string;
         StudentId: string;
     };
@@ -1341,23 +1427,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "corrections": [
-                 *         {
-                 *           "id": "p1-s1",
-                 *           "text": "La photosynthese produit du dioxygene."
-                 *         }
-                 *       ],
-                 *       "removed": [
-                 *         "p2-s1",
-                 *         "p2-s2"
-                 *       ],
-                 *       "subject": "svt",
-                 *       "topic": "La photosynthese",
-                 *       "folderId": "01JEXAMPLE0FLD0000000000AA"
-                 *     }
-                 */
                 "application/json": components["schemas"]["ConfirmRequest"];
             };
         };
@@ -1379,7 +1448,7 @@ export interface operations {
                     "application/json": components["schemas"]["Job"];
                 };
             };
-            /** @description Demande invalide. Cas propres aux retraits: identifiant de phrase inconnu, identifiant present dans `corrections` et `removed`, aucune phrase restante, `topic` vide apres nettoyage. */
+            /** @description Demande invalide. Cas propres aux sections: phrase inconnue, coupes pas dans l'ordre ou en double, premiere section pas au debut, plus de 6 sections, aucune section non ignoree, `sections` avec `subject`/`topic`/`folderId`, `topic` ou `title` vide apres nettoyage. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1944,6 +2013,98 @@ export interface operations {
                 };
                 content?: never;
             };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                coursId: components["parameters"]["CoursId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cours */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "coursId": "01JEXAMPLE0CRS0000000000AA",
+                     *       "createdAt": "2026-12-01T10:05:00Z",
+                     *       "pages": 2,
+                     *       "texts": [
+                     *         {
+                     *           "page": 1,
+                     *           "sentences": [
+                     *             {
+                     *               "id": "p1-s1",
+                     *               "text": "La photosynthese produit du dioxygene."
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "page": 2,
+                     *           "sentences": [
+                     *             {
+                     *               "id": "p2-s1",
+                     *               "text": "La Revolution commence en 1789."
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "sections": [
+                     *         {
+                     *           "fromSentenceId": "p1-s1",
+                     *           "subject": "svt",
+                     *           "topic": "La photosynthese",
+                     *           "title": "La photosynthese",
+                     *           "status": "fiche",
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA"
+                     *         },
+                     *         {
+                     *           "fromSentenceId": "p2-s1",
+                     *           "subject": "histoire_geo",
+                     *           "status": "ignoree"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Cours"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteCours: {
+        parameters: {
+            query: {
+                /** @description Obligatoire, pas de valeur par defaut: l'eleve choisit */
+                fiches: "garder" | "supprimer";
+            };
+            header?: never;
+            path: {
+                coursId: components["parameters"]["CoursId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Supprime */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
