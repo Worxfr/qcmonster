@@ -117,6 +117,14 @@ export class PipelineStack extends Stack {
     readRole.addToPolicy(listScans);
     // Ecriture (scans-create, jobs-confirm, jobs-cancel, docs-report): ecrit des elements, signe le depot (PutObject), efface les photos d'un job annule, pilote la machine.
     writeRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem']));
+    // scans-create lit le compteur de cout (garde de budget): lecture seule de COST#<env>, aucune ecriture. Sans cela, POST /v1/scans repond 500 (AccessDenied).
+    writeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': [`COST#${envName}`] }, Null: { 'dynamodb:LeadingKeys': 'false' } },
+      }),
+    );
     writeRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [objects] }));
     writeRole.addToPolicy(listScans);
     writeRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [smArn] }));

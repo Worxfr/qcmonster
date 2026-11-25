@@ -197,6 +197,17 @@ describe('parcours parent', () => {
     const box = await screen.findByLabelText("Lien d'activation");
     expect(box).toHaveValue('https://app.example.invalid/activer#token=example');
   });
+
+  it('B2: un quota au-dessus du plafond de la famille affiche un message et n\'envoie rien', async () => {
+    const { user } = await enter('parent');
+    const input = await screen.findByLabelText(/Quota mensuel/);
+    const before = calls.length;
+    await user.clear(input);
+    await user.type(input, '9999');
+    await user.tab();
+    expect(await screen.findByText(/entre 0 et 50/)).toBeInTheDocument();
+    expect(calls.slice(before).filter((x) => x.method === 'PATCH')).toEqual([]);
+  });
 });
 
 describe('activation et famille', () => {
