@@ -1,6 +1,6 @@
 # FEAT-A: decoupage en lots (back, infra, front), sans fichier partage
 
-Prerequis: cette PR (contrat 1.3, `shared/**`, `docs/data-model.md`) fusionnee. Aucun des lots ci-dessous ne modifie `shared/**`, `shared/contract/openapi.yaml` ni `docs/data-model.md`: une demande de changement revient au proprietaire du contrat. Un fichier n'apparait que dans un seul lot.
+Prerequis: cette PR (contrat 1.3, `shared/**`, `docs/data-model.md`) fusionnee. Seul B1 modifie `shared/bedrock.ts`, `shared/cost.ts` et `shared/names.ts` (lot « B1 bis » et plafond de cout); aucun des lots ne modifie le reste de `shared/**`, `shared/contract/openapi.yaml` ni `docs/data-model.md`: une demande de changement revient au proprietaire du contrat. Un fichier n'apparait que dans un seul lot.
 
 Regles communes: aucun texte de cours dans les journaux; aucun appel reel a Bedrock (modele simule); pas de PNG dans le depot; compte factice `123456789012`; commits `Worxfr <worx@pouf.org>`.
 
@@ -20,7 +20,7 @@ A faire:
 5. `jobsConfirm`: accepter `subject`, `topic`, `folderId` (404 si dossier inconnu); les ecrire sur le job (`subjectChoice`, `topicChoice`, `folderId`) dans la meme transition que `a_confirmer -> verification`.
 6. `extract`: ecrire `stage: 'fiche'` au debut, `stage: 'verification'` a la fin (avant `verify-run`). `generate`: copier sur la fiche `sujet` (`topicChoice ?? suggestedTopic`), `matiere` (`subjectChoice ?? draftSubject`), `dossierId` (`folderId` s'il existe encore), `pages`.
 7. **Delai de confirmation 12 h** (cote code): `api/src/pipeline/steps.ts` importe `CONFIRM_TIMEOUT_S` de `shared/scans.ts` (supprimer la constante locale de 30 min), `awaitConfirm` ecrit `confirmExpiresAt = awaitingSince + CONFIRM_TIMEOUT_S` (a la meme transition que `a_confirmer`, une relance de l'etape ne le change pas), `MSG.expiredConfirm` devient « Pas de confirmation apres 12 heures, la photo est supprimee » (en dur dans le message: le deriver de la constante si facile). Test: l'echeance est ecrite; une relance garde la premiere; l'expiration rend le quota et supprime la photo.
-8. Plafond de cout par traitement: voir le rapport (question ouverte Q1) avant de fusionner ce lot avec N > 2 pages.
+8. **Plafond de cout proportionnel** (decision du 2026-11-25): `jobCapEur(pages) = max(0,25 ; 0,15 x pages)` EUR (1,50 EUR a 10 pages), documente dans `docs/cost-guard.md`. Ajouter `jobCapEur(pages)` a `shared/names.ts` (derogation: B1 peut modifier `shared/names.ts`, voir lot « Alarme de cout »), l'utiliser dans `budgetLeftCents` (`steps-doc.ts`), dans `callModel` (`ctx.ts`, option `jobCapEur` qui existe deja dans `shared/bedrock.ts`) et a la ligne du `Math.min(..., JOB_COST_CAP_EUR)` de `api/src/verify/run.ts` (une ligne, L2b: derogation B1). Les `pages` viennent du job. Tests: 1 page = 0,25; 3 pages = 0,45; 10 pages = 1,50; le refus a lieu avant l'appel; le plafond d'essais de 50 EUR prime. Sans ce point, un scan de 3 pages ou plus finit en `non_verifiable`.
 
 Tests (a ecrire par B1): scan 1 page (comme avant), 3 pages (3 URLs, ordre), types mixtes jpeg+png, `contentTypes` de mauvaise longueur, dossier inconnu sans reservation, echec en cours (pages rendues), statut a chaque etat, confirmation avec choix, ancien job sans champs 1.3.
 
@@ -41,9 +41,19 @@ A faire:
 
 Tests (a ecrire par B2): voir « entrees voisines » dans le rapport: scan 1 page existant, scan sans matiere, dossier vide, dossier d'un autre eleve (via les handlers, avec deux eleves et deux familles), parent d'une autre famille, parent qui tente d'ecrire, suppression de dossier interrompue.
 
+## Lot B1 bis: alarme de cout 10 EUR (proprietaire: B1)
+
+Probleme: l'alarme `qcm-<env>-cout-mensuel-10` ne s'est jamais declenchee (voir `docs/cost-guard.md`, `FEAT-D-report.md` section 4). Proprietaire: **B1**, avec le role infra pour les droits (lot I, ci-dessous). Fichiers de B1 en plus de sa liste, sans autre lot qui les touche: `shared/bedrock.ts` (`costStoreFromDynamo`), `shared/cost.ts` (`publishCostMetric`), `shared/names.ts` (`jobCapEur`), leurs tests, et `api/src/verify/run.ts` (une ligne, plafond). Apres la fusion de cette PR, B1 est donc le seul a toucher `shared/bedrock.ts`, `shared/cost.ts`, `shared/names.ts`.
+
+A faire:
+1. `costStoreFromDynamo(client, table, now?, cw?)` publie par defaut: apres `addCost`, il appelle `publishCostMetric(cw, env, monthEur)` (client CloudWatch cree a la demande, region de la Lambda); erreur capturee, journalisee (`status: 'metric-error'`, aucun texte de cours), jamais propagee. Ainsi **`api/src/pipeline/entry.ts` (B2) et `api/src/verify/handler.ts` ne changent pas**: aucun fichier partage avec un autre lot.
+2. Tests: une metrique par ecriture du compteur, valeur = total du mois, une erreur CloudWatch ne fait pas echouer l'appel de modele ni ne double le cout, aucune metrique si l'ecriture du compteur echoue.
+3. Verification apres deploiement dev: la metrique `QCMonster` / `CostMonth` / `Env=dev` existe dans CloudWatch apres un scan (CLI en lecture), et l'alarme quitte `INSUFFICIENT_DATA`.
+Variante sans code (non retenue): remplacer l'alarme par un budget AWS de 10 EUR filtre sur le tag; elle reste possible si on prefere ne pas publier de metrique.
+
 ## Lot I (infra): un seul proprietaire
 
-Possede: `infra/lib/api-stack.ts`, `infra/lib/pipeline-stack.ts`, `infra/test/**`.
+Possede: `infra/lib/api-stack.ts`, `infra/lib/pipeline-stack.ts`, `infra/lib/verify-stack.ts` (droit CloudWatch seulement), `infra/test/**`.
 
 A faire, apres B2 (les exports d'`entry.ts` doivent exister):
 0. **`CONFIRM_TIMEOUT` (`infra/lib/pipeline-stack.ts`, ligne `Duration.minutes(30)`): ce lot en est proprietaire.** Remplacer par `Duration.seconds(CONFIRM_TIMEOUT_S)` importee de `shared/scans.ts` (12 h). Un seul changement dans ce fichier pour cette constante. Verifier dans le test d'infra que le delai de la tache `AttenteConfirmation` vaut 43200 s et que le cycle de vie S3 (1 jour) reste en place. Cout: une attente `waitForTaskToken` ne coute que les transitions d'etat (aucun frais par heure d'attente). Ne pas monter au-dela de 20 h (promesse « 1 jour »).
@@ -55,7 +65,8 @@ A faire, apres B2 (les exports d'`entry.ts` doivent exister):
 3. Index DynamoDB: **aucun**. Table, TTL, S3, EventBridge, Step Functions: inchanges.
 4. Verifier que le role de `family-admin` (export) lit `FOLDER#` (partition `STUDENT#*`): normalement deja le cas.
 5. Tests d'infra: les 8 routes ont une fonction, `folders-api` n'a pas `s3:*`, `bedrock:*`, `states:*`; la liste des fonctions Bedrock (`processingRoleNames`) est inchangee.
-6. Hors FEAT-A: tag de cout `project` (lot infra separe).
+6. **Alarme 10 EUR (pour B1 bis)**: ajouter a `pipeline-role` (`pipeline-stack.ts`) et au role de `verify-run` (`verify-stack.ts`, `verifyRoleName`) `cloudwatch:PutMetricData` sur `*` (l'action n'accepte pas de ressource) avec la condition `StringEquals: { 'cloudwatch:namespace': 'QCMonster' }` (constante `METRIC_NAMESPACE`). Rien pour les roles de lecture, d'ecriture, de suppression ni de dossiers. Test: aucun autre role n'a `cloudwatch:*`. `budget-stack.ts` (l'alarme elle-meme) ne change pas. A deployer avant ou avec B1 bis.
+7. Hors FEAT-A: tag de cout `project` (lot infra separe).
 
 ## Lot F (front): un seul proprietaire
 
@@ -71,4 +82,4 @@ A faire: `docs/scan-screens.md`. Types depuis `shared/contract/generated/types.t
 
 - `api/src/pipeline/entry.ts`: B2 seul. `api/src/pipeline/ctx.ts`: B1 seul; B2 le lit.
 - `infra/lib/api-stack.ts` et `pipeline-stack.ts`: I seul.
-- `shared/**`: personne apres cette PR (demande au proprietaire du contrat).
+- `shared/**`: personne apres cette PR, sauf B1 pour `bedrock.ts`, `cost.ts`, `names.ts` (plafond proportionnel et alarme). Contrat et modele de donnees: demande au proprietaire du contrat.
