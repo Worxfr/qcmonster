@@ -2,7 +2,9 @@
 
 Cette page explique, simplement, ce que QCMonster fait de tes données. Elle est écrite pour les élèves et pour leurs parents.
 
-*Version de travail du 2026-11-24, à faire relire par une personne compétente avant toute ouverture au-delà de la famille.*
+**Version : 2026-11-25**
+
+*Version de travail, à faire relire par une personne compétente avant toute ouverture au-delà de la famille.*
 
 ## C'est quoi QCMonster ?
 
@@ -10,13 +12,14 @@ Tu prends en photo une page de cours. L'application lit la page, vérifie les fa
 
 ## Quelles données sont collectées ?
 
-- **Le compte du parent** : adresse e-mail et mot de passe. Une double authentification (application d'authentification) est proposée.
+- **Le compte du parent** : adresse e-mail et mot de passe. Quand il crée sa famille ou un compte élève, l'application garde la **date de son accord** et la **version de cette politique** qu'il a acceptée. Une double authentification (application d'authentification) est proposée.
 - **Le compte de l'élève** : un pseudo choisi par le parent, sans nom de famille (l'application y ajoute des lettres au hasard), et un mot de passe. Aucune adresse e-mail d'élève. On garde seulement la réponse « moins de 15 ans : oui ou non ». Aucune date de naissance.
 - **Les photos et PDF de cours** : envoyés pour être analysés.
 - **Le texte du cours** lu sur la photo, et les **fiches** créées (QCM, textes à trous).
 - **Tes résultats** : les réponses données, les points d'expérience (XP), les passages d'entraînement.
 - **Des données techniques** : numéro du travail d'analyse, étape, durée, coût. Jamais le contenu de tes cours.
 - **Des extraits de sites web** trouvés pour vérifier les faits de ton cours (texte de la source et son adresse).
+- **Des mots de ton cours envoyés à Wikimédia** : pour vérifier un fait, l'application cherche sur Wikipédia, Wikibooks, Wikiversité et Vikidia (sites de la Fondation Wikimedia). Elle leur envoie **au plus 8 mots tirés de l'affirmation**, sans ton nom, ton pseudo ni aucun identifiant. Si un mot de ton cours est un nom de personne, il peut donc faire partie de cette recherche.
 
 ## Pourquoi et sur quelle règle ?
 
@@ -36,9 +39,9 @@ Rien n'est utilisé pour de la publicité. Rien n'est vendu.
 |---|---|
 | Fiches et textes de cours | Jusqu'à suppression par le parent ou l'élève |
 | Résultats, réponses et points d'expérience (XP) | Jusqu'à suppression du compte ou de l'élève |
-| Travaux d'analyse (suivi d'un scan en cours) | 7 jours |
-| Extraits de sites web trouvés pour vérifier les faits | 30 jours |
-| Photos et PDF envoyés | Supprimés dès que tu as confirmé le texte lu, et au plus tard après 1 jour |
+| Travaux d'analyse et texte lu sur les photos (suivi d'un scan en cours) | 7 jours, plus un délai technique d'au plus 2 jours |
+| Extraits de sites web trouvés pour vérifier les faits | 30 jours, plus un délai technique d'au plus 2 jours |
+| Photos et PDF envoyés | Supprimés dès que tu as confirmé le texte lu, et au plus tard dans les 2 jours |
 | Journaux techniques | 14 jours en principe (sans contenu de cours) |
 | Historique technique du traitement chez AWS | 90 jours (numéros de travaux et étapes, jamais le texte de tes cours) |
 
@@ -59,9 +62,9 @@ Chez Amazon Web Services (AWS), dans l'Union européenne. Tes données sont **st
 
 Toi, ou ton parent, tu peux demander :
 
-- à **voir** tes données ;
-- à les **corriger** ;
-- à les **supprimer** (le parent peut supprimer le compte de l'élève, l'effacement est immédiat) ;
+- à **voir** tes données : le parent peut télécharger dans l'application un fichier avec son e-mail, les comptes élèves (profil de jeu, jours de jeu, réponses), les fiches (affirmations, sources, questions et réponses) et les signalements. Ce fichier ne contient pas le texte brut lu sur les photos (gardé 7 jours seulement) ni les extraits de sites web partagés ;
+- à les **corriger** : le parent peut changer le niveau d'un élève dans l'application. Pour changer un pseudo ou la réponse « moins de 15 ans », il faut **supprimer le compte de l'élève et le recréer** (les fiches sont alors perdues) ;
+- à les **supprimer** (le parent peut supprimer le compte de l'élève ; l'effacement est immédiat et comprend ses fiches, ses résultats et ses signalements) ;
 - à **limiter** ou t'**opposer** à leur utilisation (pour le budget et la sécurité) ;
 - à **retirer ton accord** à tout moment ;
 - à les **récupérer** dans un format lisible.

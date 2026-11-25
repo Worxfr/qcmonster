@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { POLICY_VERSION } from '../../shared/policy';
 import { BADGES, badgeLabel } from './game';
 import { passwordProblem } from './screens/Activate';
 import { MOCK_URL, startMock, stopMock } from './test/mock-server';
@@ -191,6 +192,8 @@ describe('parcours parent', () => {
     await user.click(screen.getByLabelText(/autorité parentale/));
     expect(submit).toBeEnabled();
     await user.click(submit);
+    const sent = JSON.parse(calls.filter((x) => x.method === 'POST' && x.url.endsWith('/students')).at(-1)?.body ?? '{}');
+    expect(sent).toMatchObject({ parentalAuthority: true, policyVersion: POLICY_VERSION });
     const box = await screen.findByLabelText("Lien d'activation");
     expect(box).toHaveValue('https://app.example.invalid/activer#token=example');
   });
@@ -251,9 +254,14 @@ describe('activation et famille', () => {
   it('parent invite sans famille: crée la famille puis charge le tableau de bord', async () => {
     noFamily = true;
     const { user } = await enter('parent');
-    await user.click(await screen.findByRole('button', { name: 'Créer ma famille' }));
+    const create = await screen.findByRole('button', { name: 'Créer ma famille' });
+    expect(create).toBeDisabled(); // pas de création sans la case de consentement
+    await user.click(screen.getByLabelText(/J'ai lu la politique de confidentialité/));
+    await user.click(create);
     expect(await screen.findByText(/pages utilisées sur 50/)).toBeInTheDocument();
-    expect(calls.filter((x) => x.method === 'POST' && x.url.endsWith('/family'))).toHaveLength(1);
+    const posts = calls.filter((x) => x.method === 'POST' && x.url.endsWith('/family'));
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0].body ?? '{}')).toEqual({ consent: true, policyVersion: POLICY_VERSION });
   });
 });
 

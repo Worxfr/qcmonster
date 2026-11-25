@@ -100,3 +100,6 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 
 .warn-text { color: var(--warn); font-weight: 600; }
 .badges .todo .muted { font-size: .85rem; }
+
+.card table { border-collapse: collapse; width: 100%; }
+.card th, .card td { border: 1px solid var(--line); padding: .4rem .5rem; text-align: left; vertical-align: top; }

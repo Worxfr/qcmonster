@@ -333,7 +333,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/StudentCreateRequest' }
-            example: { pseudo: Lila, schoolLevel: seconde, under15: false, parentalAuthority: true }
+            example: { pseudo: Lila, schoolLevel: seconde, under15: false, parentalAuthority: true, policyVersion: '2026-11-25' }
       responses:
         '201':
           description: Eleve cree
@@ -448,20 +448,26 @@ paths:
     get:
       operationId: exportFamily
       tags: [family]
-      summary: Export des donnees de la famille (handler family-admin, L3)
+      summary: Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Le texte brut lu sur les photos (7 jours) n'est pas exporte.
       responses:
         '200':
           description: Export
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FamilyExport' }
-              example: { familyId: 01JEXAMPLE0FAM0000000000AA, exportedAt: '2026-12-01T10:00:00Z', students: [], docs: [] }
+              example: { familyId: 01JEXAMPLE0FAM0000000000AA, exportedAt: '2026-12-01T10:00:00Z', parentEmail: parent@example.invalid, students: [], docs: [], reports: [] }
         '403': { $ref: '#/components/responses/Forbidden' }
   /family:
     post:
       operationId: createFamily
       tags: [family]
-      summary: Premiere connexion d'un parent invite - cree la famille, pose famille_id et le groupe parent. Le jeton deja emis ne les contient pas, le front se reconnecte (handler family-create, L3)
+      summary: Premiere connexion d'un parent invite - cree la famille, pose famille_id et le groupe parent. Le jeton deja emis ne les contient pas, le front se reconnecte (handler family-create, L3). Exige le consentement explicite du parent a la politique de confidentialite (date et version enregistrees).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyCreateRequest' }
+            example: { consent: true, policyVersion: '2026-11-25' }
       responses:
         '201':
           description: Famille creee
@@ -469,6 +475,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
               example: { userId: 7b0f6c1e-0000-4000-8000-00000000a002, role: parent, familyId: 01JEXAMPLE0FAM0000000000AA }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
     delete:
       operationId: deleteFamily
@@ -587,7 +594,7 @@ components:
       required: [passageId, url, site, titre, extrait, niveau]
       properties:
         passageId: { type: string }
-        url: { type: string, format: uri }
+        url: { type: string, format: uri, pattern: '^https://' }
         site: { type: string }
         titre: { type: string }
         extrait: { type: string, maxLength: 1000 }
@@ -705,12 +712,23 @@ components:
         pageQuota: { type: integer, minimum: 0, maximum: 50 }
     StudentCreateRequest:
       type: object
-      required: [pseudo, schoolLevel, under15, parentalAuthority]
+      required: [pseudo, schoolLevel, under15, parentalAuthority, policyVersion]
       properties:
         pseudo: { type: string, pattern: "^[A-Za-z][A-Za-z0-9 -]{1,19}$", description: Sans nom de famille }
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
         under15: { type: boolean }
-        parentalAuthority: { type: boolean, const: true }
+        parentalAuthority: { type: boolean, const: true, description: Case cochee par le parent (autorite parentale et lecture de la politique) }
+        policyVersion: { $ref: '#/components/schemas/PolicyVersion' }
+    PolicyVersion:
+      type: string
+      pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      description: Version de la politique affichee au parent. Refusee si ce n'est pas la version en vigueur.
+    FamilyCreateRequest:
+      type: object
+      required: [consent, policyVersion]
+      properties:
+        consent: { type: boolean, const: true }
+        policyVersion: { $ref: '#/components/schemas/PolicyVersion' }
     ActivationLink:
       type: object
       required: [url, expiresAt]
@@ -726,9 +744,11 @@ components:
     StudentUpdateRequest:
       type: object
       minProperties: 1
+      description: Le pseudo et under15 ne se modifient pas (supprimer puis recreer l'eleve).
       properties:
         status: { type: string, enum: [actif, suspendu] }
         pageQuota: { type: integer, minimum: 0, maximum: 50 }
+        schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
     Dashboard:
       type: object
       required: [students, familyPagesRemaining, familyPagesLimit]
@@ -760,9 +780,69 @@ components:
               activeDays: { type: integer, minimum: 0, maximum: 7 }
     FamilyExport:
       type: object
-      required: [familyId, exportedAt, students, docs]
+      required: [familyId, exportedAt, students, docs, reports]
       properties:
         familyId: { type: string }
         exportedAt: { type: string, format: date-time }
-        students: { type: array, items: { $ref: '#/components/schemas/Student' } }
-        docs: { type: array, items: { $ref: '#/components/schemas/DocSummary' } }
+        parentEmail: { type: string }
+        consentement: { $ref: '#/components/schemas/Consent' }
+        students: { type: array, items: { $ref: '#/components/schemas/StudentExport' } }
+        docs: { type: array, items: { $ref: '#/components/schemas/DocExport' } }
+        reports: { type: array, items: { $ref: '#/components/schemas/ReportExport' } }
+    Consent:
+      type: object
+      properties:
+        consentementLe: { type: string, format: date-time }
+        versionPolitique: { type: string }
+    StudentExport:
+      allOf:
+        - $ref: '#/components/schemas/Student'
+        - type: object
+          required: [activeDays, attempts, profile]
+          properties:
+            consentement: { $ref: '#/components/schemas/Consent' }
+            createdAt: { type: string }
+            profile:
+              type: object
+              description: Profil de jeu (XP, serie, badges, signalements valides)
+              additionalProperties: true
+            activeDays: { type: array, items: { type: string }, description: Jours (Paris) ou l'eleve a joue }
+            attempts:
+              type: array
+              items:
+                type: object
+                required: [questionId, date, attempts]
+                properties:
+                  questionId: { type: string }
+                  date: { type: string }
+                  attempts: { type: integer }
+    ExportQuestion:
+      type: object
+      required: [questionId, kind, prompt, answer]
+      properties:
+        questionId: { type: string }
+        kind: { type: string, enum: [qcm, gap] }
+        prompt: { type: string }
+        choices: { type: array, items: { type: string } }
+        answer: { type: string }
+    DocExport:
+      allOf:
+        - $ref: '#/components/schemas/DocSummary'
+        - type: object
+          required: [studentId, summary, claims, questions]
+          properties:
+            studentId: { type: string }
+            summary: { type: string }
+            claims: { type: array, items: { $ref: '#/components/schemas/Claim' } }
+            questions: { type: array, items: { $ref: '#/components/schemas/ExportQuestion' } }
+    ReportExport:
+      type: object
+      required: [reportId, docId, comment, status, createdAt]
+      properties:
+        reportId: { type: string }
+        docId: { type: string }
+        claimId: { type: string }
+        studentId: { type: string }
+        comment: { type: string }
+        status: { type: string, enum: [ouvert, valide, rejete] }
+        createdAt: { type: string }

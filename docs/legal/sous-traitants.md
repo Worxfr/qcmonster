@@ -6,6 +6,12 @@
 - **Localisation** : stockage à Paris. Les modèles d'IA sont appelés par des profils d'inférence de l'UE : l'analyse peut se faire dans une autre région de l'UE que Paris. Liste des régions de destination à relever au lot 1.
 - **Contrat** : conditions d'AWS, dont l'accord de traitement des données (DPA). *Non relu pour ce document.*
 
+## Fondation Wikimedia (Wikipédia, Wikibooks, Wikiversité, Vikidia)
+
+- **Rôle** : destinataire, pas sous-traitant. Pour vérifier un fait, l'application interroge ces sites publics avec au plus 8 mots tirés de l'affirmation du cours. Aucun identifiant, pseudo, nom de famille ni jeton n'est envoyé. Les adresses de contact sont celles de l'application, jamais celles d'un élève ou d'un parent.
+- **Risque** : si le cours contient un nom de personne, ce nom peut faire partie des 8 mots. Voir l'AIPD (§4).
+- **Localisation** : serveurs de la Fondation (hors de l'UE possible). *Pas de contrat: services publics ouverts.*
+
 ## Le fournisseur du modèle a-t-il accès aux données ?
 
 Source relue le 2026-11-24 : [Amazon Bedrock, Data protection](https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html)

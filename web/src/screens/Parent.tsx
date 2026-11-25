@@ -5,6 +5,8 @@ import { Bar, Card, ErrorBox, Loading } from '../components/ui';
 import { badgeLabel } from '../game';
 import { errMsg, useLoad } from '../hooks';
 import type { Student } from '../types';
+import { POLICY_VERSION } from '../../../shared/policy';
+import { PolicyLink } from './Policy';
 
 export function Parent() {
   const d = useLoad(() => api.dashboard(), []);
@@ -71,11 +73,22 @@ export function Parent() {
                   {s.status === 'actif' ? 'Suspendre' : 'Réactiver'}
                 </button>
                 <button className="btn btn-small btn-alt" onClick={() => newLink(s)}>Nouveau lien (mot de passe perdu)</button>
+                <label>Niveau
+                  <select value={s.schoolLevel} onChange={(e) => void act(() => api.updateStudent(s.studentId, { schoolLevel: e.target.value as Student['schoolLevel'] }))}>
+                    <option value="seconde">Seconde</option>
+                    <option value="premiere">Première</option>
+                    <option value="terminale">Terminale</option>
+                  </select>
+                </label>
                 <button className="btn btn-small btn-ghost" onClick={() => { if (window.confirm(`Supprimer ${s.pseudo} et toutes ses données ?`)) void act(() => api.deleteStudent(s.studentId)); }}>Supprimer</button>
               </div>
             </li>
           ))}
         </ul>
+      </Card>
+      <Card title="Tes données">
+        <p>Tu peux récupérer toutes les données de ta famille (comptes, fiches, résultats, signalements) dans un fichier lisible. Lis aussi la <PolicyLink />.</p>
+        <button className="btn btn-small" onClick={() => void act(downloadExport)}>Télécharger les données</button>
       </Card>
       <Invite onCreated={(l) => { setLink(l); d.reload(); }} />
       {lb.data && lb.data.entries.length > 0 && (
@@ -89,6 +102,16 @@ export function Parent() {
       )}
     </>
   );
+}
+
+async function downloadExport() {
+  const data = await api.exportFamily();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'qcmonster-donnees.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; expiresAt: string }) => void }) {
@@ -106,7 +129,7 @@ function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; e
     setBusy(true);
     setError(null);
     try {
-      const r = await api.createStudent({ pseudo, schoolLevel: level, under15, parentalAuthority: true });
+      const r = await api.createStudent({ pseudo, schoolLevel: level, under15, parentalAuthority: authority as true, policyVersion: POLICY_VERSION });
       onCreated({ pseudo: r.student.pseudo, ...r.activationLink });
       setPseudo('');
       setAuthority(false);
@@ -132,7 +155,10 @@ function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; e
           </select>
         </label>
         <label className="check"><input type="checkbox" checked={under15} onChange={(e) => setUnder15(e.target.checked)} /> L'élève a moins de 15 ans</label>
-        <label className="check"><input type="checkbox" checked={authority} onChange={(e) => setAuthority(e.target.checked)} required /> J'ai l'autorité parentale sur cet élève</label>
+        <label className="check">
+          <input type="checkbox" checked={authority} onChange={(e) => setAuthority(e.target.checked)} required />
+          <span>J'ai l'autorité parentale sur cet élève. J'ai lu la <PolicyLink /> et j'accepte, pour lui ou elle, que ses cours soient analysés et que son pseudo et ses résultats soient gardés. Je peux retirer mon accord à tout moment en supprimant son compte.</span>
+        </label>
         <ErrorBox message={error} />
         <button className="btn" disabled={busy || !valid || !authority}>Créer et obtenir le lien</button>
       </form>

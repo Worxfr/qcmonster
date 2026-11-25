@@ -20,6 +20,8 @@ export interface AuthStackProps extends StackProps {
 export class AuthStack extends Stack {
   readonly userPool: cognito.UserPool;
   readonly webClient: cognito.UserPoolClient;
+  /** Client reserve a l'inscription du parent (sans connexion possible). */
+  readonly signupClient: cognito.UserPoolClient;
 
   constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, props);
@@ -74,8 +76,17 @@ export class AuthStack extends Stack {
 
     // famille_id n'est jamais modifiable par le client: seul le serveur l'ecrit.
     const readAttrs = new cognito.ClientAttributes().withStandardAttributes({ email: true, emailVerified: true }).withCustomAttributes('famille_id');
-    const writeAttrs = new cognito.ClientAttributes().withStandardAttributes({ email: true, preferredUsername: true });
 
+    // B1: pas d'OAuth par defaut (ni flux implicite, ni rappel factice, ni Hosted UI). L'application se connecte par SRP (amazon-cognito-identity-js).
+    // Point d'extension: `-c oauthCallbackUrls=<url,url>` active le flux « code » (jamais implicite) avec la portee `openid` seule, pour ces URL exactes.
+    const callbacks = String(this.node.tryGetContext('oauthCallbackUrls') ?? '').split(',').map((u) => u.trim()).filter(Boolean);
+    if (callbacks.some((u) => !u.startsWith('https://'))) throw new Error('oauthCallbackUrls: https uniquement');
+    const oAuth = callbacks.length
+      ? { oAuth: { flows: { authorizationCodeGrant: true, implicitCodeGrant: false, clientCredentials: false }, scopes: [cognito.OAuthScope.OPENID], callbackUrls: callbacks } }
+      : { disableOAuth: true };
+
+    // B2: ce client sert a la connexion de TOUS (parents et eleves): il n'ecrit AUCUN attribut. Un eleve ne peut donc ni mettre un e-mail reel
+    // (recuperation de mot de passe sans le parent, adresse d'enfant stockee) ni changer son alias de connexion.
     this.webClient = this.userPool.addClient('Web', {
       userPoolClientName: `qcm-${envName}-web`,
       generateSecret: false, // client public (PWA)
@@ -86,14 +97,30 @@ export class AuthStack extends Stack {
       idTokenValidity: Duration.hours(1),
       refreshTokenValidity: Duration.days(30),
       readAttributes: readAttrs,
-      writeAttributes: writeAttrs,
+      writeAttributes: new cognito.ClientAttributes(),
+      ...oAuth,
     });
 
     // Identifiants publics (client sans secret), lus par le build du front dans deploy.yml via --outputs-file.
     new CfnOutput(this, 'UserPoolId', { value: this.userPool.userPoolId });
     new CfnOutput(this, 'WebClientId', { value: this.webClient.userPoolClientId });
 
+    // Inscription du parent (SignUp exige que le client puisse ecrire l'e-mail): client DISTINCT, sans aucun flux de connexion.
+    // Les jetons ne viennent jamais de lui (l'API n'accepte que ceux du client Web), donc un eleve ne peut pas s'en servir pour ecrire son e-mail.
+    this.signupClient = this.userPool.addClient('Signup', {
+      userPoolClientName: `qcm-${envName}-signup`,
+      generateSecret: false,
+      authFlows: {}, // vide = Cognito appliquerait ses flux par defaut (SRP): force ci-dessous
+      preventUserExistenceErrors: true,
+      readAttributes: new cognito.ClientAttributes(),
+      writeAttributes: new cognito.ClientAttributes().withStandardAttributes({ email: true }),
+      disableOAuth: true,
+    });
+
+    (this.signupClient.node.defaultChild as cognito.CfnUserPoolClient).explicitAuthFlows = ['ALLOW_REFRESH_TOKEN_AUTH']; // aucun flux de connexion
+
     new ssm.StringParameter(this, 'ParamUserPoolId', { parameterName: ssmParam(envName, 'auth/userPoolId'), stringValue: this.userPool.userPoolId });
     new ssm.StringParameter(this, 'ParamClientId', { parameterName: ssmParam(envName, 'auth/webClientId'), stringValue: this.webClient.userPoolClientId });
+    new ssm.StringParameter(this, 'ParamSignupClientId', { parameterName: ssmParam(envName, 'auth/signupClientId'), stringValue: this.signupClient.userPoolClientId });
   }
 }

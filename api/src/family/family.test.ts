@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { StudentCreateRequestSchema } from '../../../shared/contract/generated/schemas.js';
+import { FamilyCreateRequestSchema, StudentCreateRequestSchema } from '../../../shared/contract/generated/schemas.js';
+import { POLICY_VERSION } from '../../../shared/policy.js';
 import { keys, sha256 } from '../../../shared/ddb/keys.js';
 import { postAnswer } from '../game/answers.js';
 import { getSession } from '../game/session.js';
@@ -16,8 +17,10 @@ const rejects = async (p: Promise<unknown>, status: number, code?: string) => {
   expect((e as HttpError).status).toBe(status);
   if (code) expect((e as HttpError).code).toBe(code);
 };
+const OK = { consent: true as const, policyVersion: POLICY_VERSION };
+const CONSENT = { parentalAuthority: true as const, policyVersion: POLICY_VERSION };
 const tokenOf = (url: string) => url.split('#token=')[1];
-const newStudent = (t: TestEnv, ctx = parentCtx) => createStudent(t.deps, ctx, { pseudo: 'Pseudo', schoolLevel: 'seconde', under15: false });
+const newStudent = (t: TestEnv, ctx = parentCtx) => createStudent(t.deps, ctx, { pseudo: 'Pseudo', schoolLevel: 'seconde', under15: false, ...CONSENT });
 
 async function family(t: TestEnv) {
   await t.store.commit([{ item: { ...keys.family(FID), plafondPages: 50, ownerSub: 'sub-par1' }, when: 'any' }]);
@@ -28,7 +31,7 @@ describe('POST /family', () => {
   const a = { sub: 'sub-new', username: 'new1' };
   it('cree la famille, pose famille_id et le groupe parent; l\'identifiant derive du sub', async () => {
     const t = testDeps();
-    const me = await createFamily(t.deps, a);
+    const me = await createFamily(t.deps, a, OK);
     expect(me).toEqual({ userId: 'sub-new', role: 'parent', familyId: familyIdFor('sub-new') });
     expect(me.familyId).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(t.identity.users.get('new1')).toMatchObject({ familyId: me.familyId, groups: ['parent'] });
@@ -36,47 +39,77 @@ describe('POST /family', () => {
   });
   it('POST /family est idempotent: un second appel renvoie la meme famille', async () => {
     const t = testDeps();
-    const first = await createFamily(t.deps, a);
-    expect(await createFamily(t.deps, a)).toEqual(first);
+    const first = await createFamily(t.deps, a, OK);
+    expect(await createFamily(t.deps, a, OK)).toEqual(first);
     expect(t.identity.users.get('new1')?.groups).toEqual(['parent']);
   });
   it('B2: si l\'ajout au groupe echoue apres famille_id, la reprise repare le compte (plus de 409 definitif)', async () => {
     const t = testDeps();
     t.identity.failAddToGroup = true;
-    await expect(createFamily(t.deps, a)).rejects.toThrow('ThrottlingException');
+    await expect(createFamily(t.deps, a, OK)).rejects.toThrow('ThrottlingException');
     expect(t.identity.users.get('new1')).toMatchObject({ familyId: familyIdFor('sub-new'), groups: [] }); // etat partiel
     t.identity.failAddToGroup = false;
-    expect((await createFamily(t.deps, a)).familyId).toBe(familyIdFor('sub-new'));
+    expect((await createFamily(t.deps, a, OK)).familyId).toBe(familyIdFor('sub-new'));
     expect(t.identity.users.get('new1')?.groups).toEqual(['parent']);
   });
   it('reprise apres echec entre META et Cognito; META d\'un autre parent: 409; autre famille deja posee: 409', async () => {
     const t2 = testDeps();
     await t2.store.commit([{ item: { ...keys.family(familyIdFor('sub-new')), ownerSub: 'sub-new' }, when: 'any' }]);
-    expect((await createFamily(t2.deps, a)).familyId).toBe(familyIdFor('sub-new'));
+    expect((await createFamily(t2.deps, a, OK)).familyId).toBe(familyIdFor('sub-new'));
     const t3 = testDeps();
     await t3.store.commit([{ item: { ...keys.family(familyIdFor('sub-new')), ownerSub: 'quelqu-un-d-autre' }, when: 'any' }]);
-    await rejects(createFamily(t3.deps, a), 409);
+    await rejects(createFamily(t3.deps, a, OK), 409);
     const t4 = testDeps();
     t4.identity.users.set('new1', { sub: 'sub-new', familyId: 'autre-famille', enabled: true, groups: ['parent'] });
-    await rejects(createFamily(t4.deps, a), 409);
+    await rejects(createFamily(t4.deps, a, OK), 409);
   });
   it('refuse un eleve, un compte avec famille ou sans nom d\'utilisateur', async () => {
     const t = testDeps();
-    await rejects(createFamily(t.deps, { ...a, role: 'eleve', familyId: FID }), 403);
-    await rejects(createFamily(t.deps, { ...a, role: 'parent', familyId: FID }), 409); // jeton qui porte deja une famille
-    await rejects(createFamily(t.deps, { sub: 'x', username: '' }), 409);
+    await rejects(createFamily(t.deps, { ...a, role: 'eleve', familyId: FID }, OK), 403);
+    await rejects(createFamily(t.deps, { ...a, role: 'parent', familyId: FID }, OK), 409); // jeton qui porte deja une famille
+    await rejects(createFamily(t.deps, { sub: 'x', username: '' }, OK), 409);
   });
   it('deux appels simultanes: une seule famille', async () => {
     const t = testDeps();
-    await Promise.allSettled([createFamily(t.deps, a), createFamily(t.deps, a)]);
+    await Promise.allSettled([createFamily(t.deps, a, OK), createFamily(t.deps, a, OK)]);
     expect([...t.store.items.keys()].filter((k) => k.endsWith('|META'))).toHaveLength(1);
     expect(t.identity.users.get('new1')?.familyId).toBe(familyIdFor('sub-new'));
   });
 });
 
+describe('D2: consentement', () => {
+  it('POST /family refuse sans consentement ou sur une autre version de la politique, et enregistre date et version', async () => {
+    const t = testDeps();
+    const a = { sub: 'sub-c', username: 'c1' };
+    await rejects(createFamily(t.deps, a, { consent: false, policyVersion: POLICY_VERSION }), 400);
+    await rejects(createFamily(t.deps, a, { consent: true, policyVersion: '2000-01-01' }), 400);
+    expect(t.store.items.size).toBe(0);
+    expect(t.identity.users.size).toBe(0);
+    const me = await createFamily(t.deps, a, OK);
+    expect(await t.store.get(keys.family(me.familyId))).toMatchObject({ consentementLe: t.clk.now().toISOString(), versionPolitique: POLICY_VERSION });
+  });
+  it('le contrat refuse un corps sans consentement', () => {
+    const body = (b: unknown) => ({ body: JSON.stringify(b) });
+    expect(() => parseBody(body({ policyVersion: POLICY_VERSION }), FamilyCreateRequestSchema)).toThrow(HttpError);
+    expect(() => parseBody(body({ consent: false, policyVersion: POLICY_VERSION }), FamilyCreateRequestSchema)).toThrow(HttpError);
+    expect(() => parseBody(body({ pseudo: 'Pseudo', schoolLevel: 'seconde', under15: false, parentalAuthority: true }), StudentCreateRequestSchema)).toThrow(HttpError); // sans policyVersion
+  });
+  it('POST /students refuse sans la case ou sur une autre version, sans rien creer; sinon enregistre consentementLe, versionPolitique, moins15', async () => {
+    const t = testDeps();
+    await family(t);
+    const base = { pseudo: 'Pseudo', schoolLevel: 'seconde', under15: true };
+    await rejects(createStudent(t.deps, parentCtx, { ...base, parentalAuthority: false, policyVersion: POLICY_VERSION }), 400);
+    await rejects(createStudent(t.deps, parentCtx, { ...base, parentalAuthority: true, policyVersion: '2000-01-01' }), 400);
+    expect(t.identity.users.size).toBe(0);
+    const r = await createStudent(t.deps, parentCtx, { ...base, ...CONSENT });
+    expect(await t.store.get(keys.student(FID, r.student.studentId))).toMatchObject({ moins15: true, consentementLe: t.clk.now().toISOString(), versionPolitique: POLICY_VERSION });
+    expect(JSON.stringify(r)).not.toContain('consentementLe');
+  });
+});
+
 describe('POST /students', () => {
   it('sans la case « autorite parentale », la requete est refusee', () => {
-    const body = (parentalAuthority: unknown) => ({ body: JSON.stringify({ pseudo: 'Pseudo', schoolLevel: 'seconde', under15: false, parentalAuthority }) });
+    const body = (parentalAuthority: unknown) => ({ body: JSON.stringify({ pseudo: 'Pseudo', schoolLevel: 'seconde', under15: false, parentalAuthority, policyVersion: POLICY_VERSION }) });
     expect(() => parseBody(body(false), StudentCreateRequestSchema)).toThrow(HttpError);
     expect(() => parseBody({ body: JSON.stringify({ pseudo: 'Pseudo', schoolLevel: 'seconde', under15: false }) }, StudentCreateRequestSchema)).toThrow(HttpError);
     expect(parseBody(body(true), StudentCreateRequestSchema).pseudo).toBe('Pseudo');
@@ -125,7 +158,7 @@ describe('POST /students', () => {
   it('le pseudo est nettoye (espaces) avant le suffixe', async () => {
     const t = testDeps();
     await family(t);
-    const r = await createStudent(t.deps, parentCtx, { pseudo: ' Deux  mots ', schoolLevel: 'premiere', under15: true });
+    const r = await createStudent(t.deps, parentCtx, { pseudo: ' Deux  mots ', schoolLevel: 'premiere', under15: true, ...CONSENT });
     expect(r.student.pseudo).toMatch(/^Deux-mots-s/);
   });
 });
@@ -320,13 +353,42 @@ describe('export et suppression de la famille', () => {
     const e = await exportFamily(t.deps, parentCtx);
     expect(e.familyId).toBe(FID);
     expect(e.students.map((s) => s.studentId)).toEqual([SID]);
-    expect(e.docs).toEqual([{ docId: 'doc1', title: 'Titre', subject: 'svt', createdAt: '2026-12-01T09:00:00.000Z' }]);
+    expect(e.docs.map((d) => [d.docId, d.title, d.subject, d.createdAt])).toEqual([['doc1', 'Titre', 'svt', '2026-12-01T09:00:00.000Z']]);
     expect(JSON.stringify(e)).not.toContain('cognitoSub');
     const empty = testDeps();
     const e2 = await exportFamily(empty.deps, { ...parentCtx, familyId: 'vide' });
     expect(e2.docs).toEqual([]);
     await t.store.commit([{ item: { ...keys.doc(SID, 'doc3'), GSI1PK: `FAMILY#${FID}`, GSI1SK: 'DOC#x' }, when: 'any' }]);
-    expect((await exportFamily(t.deps, parentCtx)).docs.find((d) => d.docId === 'doc3')).toEqual({ docId: 'doc3', title: '', subject: 'autre', createdAt: '' });
+    expect((await exportFamily(t.deps, parentCtx)).docs.find((d) => d.docId === 'doc3')).toMatchObject({ docId: 'doc3', title: '', subject: 'autre', createdAt: '', claims: [], questions: [] });
+  });
+  it('D1: export complet (e-mail, fiches avec affirmations et questions, profil, jours actifs, signalements) sans rien d\'une autre famille', async () => {
+    const t = testDeps();
+    await seed(t, { nQcm: 1, nGap: 1 });
+    await seed(t, { fid: 'fam2', sid: 'stu2', docId: 'doc2' });
+    const put = (item: Record<string, unknown> & { PK: string; SK: string }) => t.store.commit([{ item, when: 'any' }]);
+    await put({ ...keys.family(FID), ownerSub: 'sub-par1', consentementLe: '2026-12-01T09:00:00.000Z', versionPolitique: POLICY_VERSION });
+    await put({ ...keys.claim('doc1', 1), texte: 'Le Soleil est une etoile.', aRisque: false });
+    await put({ ...keys.profile(SID), xp: 120, streak: 3, badges: ['b1'] });
+    await put({ ...keys.day(SID, '2026-12-01'), xp: 40 });
+    await put({ ...keys.day(SID, '2026-12-02'), xp: 0 });
+    await put({ ...keys.attempt(SID, 'doc1:qcm:01', '2026-12-01'), attempts: 2, done: true });
+    await put({ ...keys.report(FID, 'rep1'), docId: 'doc1', studentId: SID, claimId: '01', commentaire: 'La date est fausse', statut: 'ouvert', createdAt: 'x' });
+    await put({ ...keys.report('fam2', 'rep2'), docId: 'doc2', commentaire: 'AUTRE-FAMILLE', statut: 'ouvert', createdAt: 'x' });
+    await put({ ...keys.profile('stu2'), xp: 999 });
+    const e = await exportFamily(t.deps, { ...parentCtx, email: 'parent@example.invalid' });
+    expect(e.parentEmail).toBe('parent@example.invalid');
+    expect(e.consentement).toEqual({ consentementLe: '2026-12-01T09:00:00.000Z', versionPolitique: POLICY_VERSION });
+    expect(e.students[0]).toMatchObject({ studentId: SID, profile: { xp: 120, streak: 3, badges: ['b1'] }, activeDays: ['2026-12-01'], attempts: [{ questionId: 'doc1:qcm:01', date: '2026-12-01', attempts: 2 }] });
+    const doc = e.docs[0];
+    expect(doc.studentId).toBe(SID);
+    expect(doc.claims).toMatchObject([{ claimId: '01', text: 'Le Soleil est une etoile.', status: 'verifiee' }]);
+    expect(doc.questions).toEqual([
+      { questionId: 'doc1:gap:01', kind: 'gap', prompt: 'Le ____ 1', answer: 'Énergie' },
+      { questionId: 'doc1:qcm:01', kind: 'qcm', prompt: 'Question 1 ?', choices: ['A', 'B', 'C', 'D'], answer: 'B' },
+    ]);
+    expect(e.reports).toEqual([{ reportId: 'rep1', docId: 'doc1', claimId: '01', studentId: SID, comment: 'La date est fausse', status: 'ouvert', createdAt: 'x' }]);
+    const raw = JSON.stringify(e);
+    for (const bad of ['AUTRE-FAMILLE', 'stu2', 'doc2', '999', 'cognitoSub', 'activationHash']) expect(raw).not.toContain(bad);
   });
   it('suppression complete: elements de la famille, utilisateurs Cognito des eleves et du parent; autre famille intacte', async () => {
     const t = testDeps();
@@ -341,6 +403,28 @@ describe('export et suppression de la famille', () => {
     expect(left.filter((k) => k.PK === `FAMILY#${FID}` || k.PK === `STUDENT#${SID}` || k.PK === 'DOC#doc1')).toHaveLength(0);
     expect(left).toHaveLength(foreign);
     expect(t.identity.users.size).toBe(0);
+  });
+});
+
+describe('D3 et D5', () => {
+  it('supprimer un eleve supprime ses signalements (avec studentId, ou anciens via sa fiche), pas ceux d\'un autre eleve', async () => {
+    const t = testDeps();
+    await seed(t);
+    await seed(t, { sid: 'stu3', docId: 'doc3' });
+    const rep = (id: string, extra: Record<string, unknown>) => t.store.commit([{ item: { ...keys.report(FID, id), commentaire: `c-${id}`, statut: 'ouvert', createdAt: 'x', ...extra }, when: 'any' }]);
+    await rep('r1', { docId: 'doc1', studentId: SID });
+    await rep('r2', { docId: 'doc1' }); // ancien signalement, sans studentId
+    await rep('r3', { docId: 'doc3', studentId: 'stu3' });
+    await deleteStudent(t.deps, parentCtx, SID);
+    const left = [...t.store.items.keys()].filter((k) => k.includes('REPORT#'));
+    expect(left).toEqual([`FAMILY#${FID}|REPORT#r3`]);
+  });
+  it('le niveau se corrige par PATCH; le pseudo reste inchange', async () => {
+    const t = testDeps();
+    await seed(t);
+    const v = await updateStudent(t.deps, parentCtx, SID, { schoolLevel: 'terminale' });
+    expect(v).toMatchObject({ schoolLevel: 'terminale', pseudo: 'Pseudo-1abc' });
+    expect(await t.store.get(keys.student(FID, SID))).toMatchObject({ niveau: 'terminale' });
   });
 });
 
