@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { signIn, mockSignIn, type MockRole } from '../auth';
+import { signIn, mockSignIn, mockAdminSignIn, type MockRole } from '../auth';
 import { CONFIG_ERROR, MOCK_AUTH, SIGNUP_ENABLED } from '../env';
 import { Mascot } from '../components/Mascot';
 import { ErrorBox } from '../components/ui';
@@ -50,6 +50,7 @@ export function Login({ onDone }: { onDone: () => void }) {
           <p className="muted">Mode démo : l'API simulée remplace la connexion.</p>
           <button className="btn" onClick={() => pick('eleve')}>Entrer comme élève</button>
           <button className="btn btn-alt" onClick={() => pick('parent')}>Entrer comme parent</button>
+          <button className="btn btn-ghost" onClick={() => { mockAdminSignIn(); onDone(); }}>Entrer comme administrateur</button>
         </div>
       ) : (
         <form className="stack" onSubmit={submit}>

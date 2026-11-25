@@ -58,3 +58,14 @@ describe('N1 et N4: pool et declencheur PreSignUp', () => {
     expect(ddb[0].Condition).toEqual({ 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['INVITE#*'] }, Null: { 'dynamodb:LeadingKeys': 'false' } });
   });
 });
+
+describe('A1: groupe admin', () => {
+  it('le groupe `admin` existe, et aucun utilisateur n\'y est ajoute par le code', () => {
+    const app = buildApp('dev', 'test@example.invalid');
+    const t = Template.fromStack(app.node.findChild(stackName('dev', 'auth')) as never);
+    const names = Object.values(t.findResources('AWS::Cognito::UserPoolGroup')).map((g) => (g as { Properties: { GroupName: string } }).Properties.GroupName);
+    expect(names.sort()).toEqual(['admin', 'eleve', 'parent']);
+    expect(Object.keys(t.findResources('AWS::Cognito::UserPoolUserToGroupAttachment'))).toEqual([]);
+    expect(Object.keys(t.findResources('AWS::Cognito::UserPoolUser'))).toEqual([]);
+  });
+});

@@ -7,6 +7,7 @@ import { ErrorBox, Loading } from './components/ui';
 import { MOCK_AUTH, SIGNUP_ENABLED } from './env';
 import { errMsg } from './hooks';
 import { useRoute } from './router';
+import { Admin, useIsAdmin } from './screens/Admin';
 import { Activate } from './screens/Activate';
 import { CreateFamily } from './screens/CreateFamily';
 import { DocView as Doc } from './screens/Doc';
@@ -31,6 +32,7 @@ export function App() {
   if (!signed && SIGNUP_ENABLED && route === '/inscription') return <Signup onDone={() => setSigned(true)} />;
   if (!signed && SIGNUP_ENABLED && route === '/mot-de-passe-oublie') return <ForgotPassword />;
   if (!signed) return <Login onDone={() => setSigned(true)} />;
+  if (route === '/admin') return <Admin />; // hors Shell: un administrateur sans famille n'a pas de profil (/me 404)
   return <Shell />;
 }
 
@@ -42,6 +44,7 @@ function Shell() {
   const [noFamily, setNoFamily] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const route = useRoute();
+  const isAdmin = useIsAdmin();
 
   const refreshProgress = useCallback(async () => {
     try {
@@ -100,6 +103,7 @@ function Shell() {
       <a className="skip" href="#contenu">Aller au contenu</a>
       <header className="top">
         <span className="logo">QCMonster</span>
+        {isAdmin && <a className="link" href="#/admin">Invitations</a>}
         <button className="link" onClick={signOut}>Déconnexion</button>
       </header>
       <main id="contenu" className="page" tabIndex={-1}>

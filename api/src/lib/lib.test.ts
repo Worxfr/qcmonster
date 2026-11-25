@@ -84,11 +84,12 @@ describe('aleatoire', () => {
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
-  it('13 handlers, tous relies a authOf (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(13);
+  it('14 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
+    expect(files).toHaveLength(14);
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT
+      else if (f === 'admin-invitations.ts') expect(src).toMatch(/requireAdmin\(/); // groupe `admin` du jeton
       else expect(src, f).toMatch(/authOf\(/);
     }
   });

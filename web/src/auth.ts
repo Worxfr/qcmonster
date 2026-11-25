@@ -24,6 +24,23 @@ export function mockSignIn(role: MockRole) {
   sessionStorage.setItem(ROLE_KEY, role);
 }
 
+const ADMIN_KEY = 'qcm.mockAdmin';
+/** Mode mock: connexion comme administrateur (en plus de parent). */
+export function mockAdminSignIn() {
+  mockSignIn('parent');
+  sessionStorage.setItem(ADMIN_KEY, '1');
+}
+
+/** Groupes Cognito du jeton d'identite (affichage seulement: le serveur controle l'acces). */
+export async function getGroups(): Promise<string[]> {
+  if (MOCK_AUTH) return sessionStorage.getItem(ADMIN_KEY) === '1' ? ['admin'] : [];
+  const part = (await getToken()).split('.')[1];
+  if (!part) return [];
+  const claims = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(part.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))) as { 'cognito:groups'?: unknown };
+  const g = claims['cognito:groups'];
+  return Array.isArray(g) ? g.map(String) : [];
+}
+
 export function isSignedIn(): boolean {
   if (CONFIG_ERROR) return false;
   return MOCK_AUTH ? mockRole() !== null : getPool().getCurrentUser() !== null;

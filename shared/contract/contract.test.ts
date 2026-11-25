@@ -24,6 +24,8 @@ const EXPECTED = [
   'GET /family/dashboard', 'GET /family/leaderboard', 'POST /reports/{id}/validate', 'GET /family/export', 'DELETE /family',
   // contract-v1.1 (L1c)
   'POST /activation', 'POST /docs/{docId}/read', 'POST /family',
+  // contract-v1.2 (A1)
+  'POST /admin/invitations',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),

@@ -57,6 +57,8 @@ export const PolicyVersionSchema = z.string().regex(new RegExp("^[0-9]{4}-[0-9]{
 
 export const FamilyCreateRequestSchema = z.object({ "consent": z.literal(true), "policyVersion": z.string().regex(new RegExp("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")).describe("Version de la politique affichee au parent. Refusee si ce n'est pas la version en vigueur.") });
 
+export const InvitationCreatedSchema = z.object({ "code": z.string().regex(new RegExp("^[0-9a-f]{32}$")).describe("Code d'invitation en clair"), "createdAt": z.string().datetime({ offset: true }), "remainingToday": z.number().int().gte(0).lte(20).describe("Codes restants aujourd'hui pour cet administrateur.") });
+
 export const ActivationLinkSchema = z.object({ "url": z.string().url(), "expiresAt": z.string().datetime({ offset: true }) });
 
 export const StudentCreateResponseSchema = z.object({ "student": z.object({ "studentId": z.string(), "pseudo": z.string().describe("Pseudo avec suffixe aleatoire (Lila-7k2f)"), "schoolLevel": z.enum(["seconde","premiere","terminale"]), "under15": z.boolean(), "status": z.enum(["actif","suspendu"]), "pageQuota": z.number().int().gte(0).lte(50) }), "activationLink": z.object({ "url": z.string().url(), "expiresAt": z.string().datetime({ offset: true }) }) });

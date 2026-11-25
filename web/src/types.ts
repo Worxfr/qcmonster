@@ -16,6 +16,7 @@ export type Session = S['Session'];
 export type AnswerResult = S['AnswerResult'];
 export type Student = S['Student'];
 export type StudentCreateRequest = S['StudentCreateRequest'];
+export type InvitationCreated = S['InvitationCreated'];
 export type FamilyCreateRequest = S['FamilyCreateRequest'];
 export type StudentCreateResponse = S['StudentCreateResponse'];
 export type Dashboard = S['Dashboard'];

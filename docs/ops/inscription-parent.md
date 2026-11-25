@@ -11,7 +11,7 @@ Cette page remplace les consignes d'inscription par ligne de commande de `L5-rep
 Les deux identifiants sont des sorties de la stack `qcm-<env>-auth` (et `auth/webClientId`, `auth/signupClientId` en SSM). `scripts/front-env.mjs` les passe au build du front.
 
 ## Parcours normal (navigateur)
-1. Le propriétaire génère un code: `npx tsx scripts/create-invite.ts --env=dev --apply` (droit `dynamodb:PutItem` sur la table `qcm-dev` seulement) ou le workflow manuel `invite` (une fois son rôle créé).
+1. Le propriétaire génère un code dans le site (page `#/admin`, voir `admin.md`), ou en repli: `npx tsx scripts/create-invite.ts --env=dev --apply` (droit `dynamodb:PutItem` sur la table `qcm-dev` seulement) ou le workflow manuel `invite` (une fois son rôle créé).
 2. Le parent ouvre le site, « Créer un compte parent » (`#/inscription`): e-mail, mot de passe (12 caractères, majuscule, minuscule, chiffre), code d'invitation, consentement.
 3. Il saisit le code à 6 chiffres reçu par e-mail. Connexion automatique, puis « Créer ma famille ».
 4. Ensuite il se connecte avec son e-mail.

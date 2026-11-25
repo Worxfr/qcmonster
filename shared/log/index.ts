@@ -16,9 +16,12 @@ export interface LogFields {
   verdictsReceived?: number;
   citationsRejected?: number;
   retried?: boolean;
+  /** Audit sans contenu: evenement et auteur (hache du `sub`, 16 caracteres hexadecimaux). */
+  audit?: 'invitation_creee';
+  actor?: string;
 }
 
-const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode', 'outputReadable', 'claimsExpected', 'verdictsReceived', 'citationsRejected', 'retried'] as const;
+const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode', 'outputReadable', 'claimsExpected', 'verdictsReceived', 'citationsRejected', 'retried', 'audit', 'actor'] as const;
 
 /** Ecrit une ligne JSON. Les champs hors liste blanche sont ignores (jamais de texte libre). */
 export function log(fields: LogFields): void {

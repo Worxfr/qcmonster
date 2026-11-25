@@ -13,7 +13,7 @@ export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'play' | 'account' | 'manage' | 'admin' | 'activation';
+type RoleKey = 'read' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite';
 interface HandlerDef {
   name: string;
   role: RoleKey;
@@ -39,6 +39,8 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'students-delete', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET'] },
   { name: 'family-admin', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET'] },
   { name: 'activation-post', role: 'activation', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
+  // contract-v1.2 (A1): codes d'invitation parent par un administrateur (groupe Cognito `admin`)
+  { name: 'admin-invitations', role: 'invite' },
 ];
 
 export const gameRoleName = (env: Env, key: RoleKey) => `qcm-${env}-game-${key}-role`;
@@ -102,6 +104,8 @@ export class GameStack extends Stack {
       ],
       // Route publique: lit l'eleve et le jeton (hache), consomme le jeton, pose le mot de passe. Rien d'autre.
       activation: [ddb([...READ, 'PutItem', 'DeleteItem'], ['ACTIVATION#*', ...FAM]), cognito(['AdminSetUserPassword'])],
+      // Codes d'invitation: PutItem sur INVITE#* seulement (code et audit). Ni lecture, ni Cognito, ni autre partition (audit securite 2).
+      invite: [ddb(['PutItem'], ['INVITE#*'])],
     };
 
     const roles = {} as Record<RoleKey, iam.Role>;
