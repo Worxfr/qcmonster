@@ -41,3 +41,36 @@ export async function endWithoutDoc(ctx: Ctx, sid: string, jobId: string, from: 
 export const ALL_OPEN: JobState[] = ['en_attente_envoi', 'verification_fichier', 'transcription', 'a_confirmer', 'verification', 'generation'];
 
 export { monthParis };
+
+// ---------------------------------------------------------------- texte du scan et plan de sections
+/** Phrase du texte de travail (`JOB#.../TEXT#`). */
+export interface TextSentence {
+  id: string;
+  text: string;
+  pages?: number[];
+}
+/** Pages du texte de travail, triees NUMERIQUEMENT par numero de page (`TEXT#10` passerait avant `TEXT#2` en tri lexical). */
+export async function sortedTexts(ctx: Ctx, jobId: string): Promise<Item[]> {
+  return (await ctx.db.query(`JOB#${jobId}`, 'TEXT#')).sort((a, b) => Number(a.page) - Number(b.page));
+}
+/** Toutes les phrases du cours, dans l'ordre du texte (une phrase recollee compte une fois). Pas de numeros supposes consecutifs. */
+export const sentencesOf = (texts: Item[]): TextSentence[] => texts.flatMap((t) => t.sentences as TextSentence[]);
+
+/** Section du plan ecrit sur le job a la confirmation (`Job.sections`). */
+export interface PlanSection {
+  fromSentenceId: string;
+  subject: string;
+  topic?: string;
+  title?: string;
+  folderId?: string;
+  ignore: boolean;
+  docId?: string;
+}
+/** Intervalle [start, end[ de phrases de chaque section du plan, dans l'ordre du texte. */
+export function rangesOf(ids: string[], plan: PlanSection[]): { start: number; end: number }[] {
+  const starts = plan.map((s) => ids.indexOf(s.fromSentenceId));
+  return starts.map((start, n) => ({ start, end: n + 1 < starts.length ? starts[n + 1] : ids.length }));
+}
+/** Sections avec fiche prevue (non ignorees), avec leur rang dans le plan. */
+export const keptSections = (plan: PlanSection[]): { section: PlanSection; planIndex: number }[] =>
+  plan.map((section, planIndex) => ({ section, planIndex })).filter((x) => !x.section.ignore);

@@ -3,14 +3,18 @@
 // (4) ajout au compteur IMMEDIATEMENT apres la reponse (un Retry Step Functions ne perd jamais un cout).
 // Mode `mock` par defaut (QCM_BEDROCK absent ou 'mock'): aucun appel reseau, aucun cout. L'appel reel exige QCM_BEDROCK=real.
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { addCost, costGateFor, readCost, type CostTotals } from './cost.js';
+import { CloudWatchClient } from '@aws-sdk/client-cloudwatch';
+import { addCost, costGateFor, publishCostMetric, readCost, type CostTotals } from './cost.js';
 import { monthParis } from './ddb/keys.js';
 import { ENVS, JOB_COST_CAP_EUR, REGION, type Env } from './names.js';
 import { costEur, type ModelKey, type Usage } from './pricing.js';
 import { log } from './log/index.js';
 
+/** Limite par image de l'API Converse: 3,75 Mo, 8000 px de cote (AWS, API Message / ImageBlock). Marge: 3 750 000 octets. */
+export const BEDROCK_MAX_IMAGE_BYTES = 3_750_000;
+
 /** Bornes d'une requete: un seul appel ne peut pas depasser le plafond d'un job (0,25 EUR) par construction. */
-export const LIMITS = { maxTokens: 8192, maxImages: 10, maxImageBytes: 5 * 1024 * 1024, maxPromptChars: 400_000 } as const;
+export const LIMITS = { maxTokens: 8192, maxImages: 10, maxImageBytes: BEDROCK_MAX_IMAGE_BYTES, maxPromptChars: 400_000 } as const;
 
 export interface ModelRequest {
   /** ARN du profil d'application (arn:aws:bedrock:eu-west-3:...), jamais un profil systeme. */
@@ -43,10 +47,31 @@ export function currentEnv(): Env {
   return v as Env;
 }
 
-export const costStoreFromDynamo = (client: DynamoDBDocumentClient, table: string, now: () => Date = () => new Date()): CostStore => ({
-  read: () => readCost(client, table, currentEnv(), monthParis(now())),
-  add: (eur) => addCost(client, table, currentEnv(), monthParis(now()), eur),
-});
+/** Client CloudWatch minimal (injectable dans les tests). */
+export type MetricClient = Pick<CloudWatchClient, 'send'>;
+
+/**
+ * Compteur de cout sur DynamoDB. Apres chaque ecriture reussie du compteur, publie le total du mois (metrique de l'alarme a 10 EUR,
+ * `QCMonster` / `CostMonthToDateEur` / `Env`). Une erreur de publication est journalisee (nom de classe seulement) et jamais propagee:
+ * elle ne fait pas echouer l'appel de modele et ne rejoue pas l'ecriture du compteur (pas de double cout). Aucune metrique si l'ecriture echoue.
+ */
+export const costStoreFromDynamo = (client: DynamoDBDocumentClient, table: string, now: () => Date = () => new Date(), cw?: MetricClient): CostStore => {
+  let metrics = cw;
+  return {
+    read: () => readCost(client, table, currentEnv(), monthParis(now())),
+    async add(eur) {
+      const env = currentEnv();
+      const totals = await addCost(client, table, env, monthParis(now()), eur);
+      try {
+        metrics ??= new CloudWatchClient({});
+        await publishCostMetric(metrics as CloudWatchClient, env, totals.monthEur);
+      } catch (e) {
+        log({ step: 'cost-metric', status: 'error', errorCode: (e as { name?: string })?.name });
+      }
+      return totals;
+    },
+  };
+};
 
 export class CostBlockedError extends Error {
   constructor(readonly gate: 'block_new' | 'stop_all', readonly totals: CostTotals) {

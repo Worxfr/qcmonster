@@ -3,15 +3,17 @@ import { z } from 'zod';
 import { CostBlockedError, JobBudgetExceededError } from '../../../shared/bedrock.js';
 import { gsi1, keys } from '../../../shared/ddb/keys.js';
 import { ClaimItemSchema, FicheItemSchema, GapItemSchema, QcmItemSchema, questionId } from '../../../shared/items.js';
-import { JOB_COST_CAP_EUR } from '../../../shared/names.js';
+import { jobCapEur } from '../../../shared/names.js';
+import { cleanLabel, cleanTopic } from '../../../shared/scans.js';
 import { callModel, centsFromMicros, iso, jobKey, type Ctx } from './ctx.js';
 import { isDuplicate, minhash } from './fingerprint.js';
-import { endWithoutDoc, transition } from './job.js';
+import { endWithoutDoc, keptSections, rangesOf, sentencesOf, sortedTexts, transition, type PlanSection, type TextSentence } from './job.js';
 import { consumeQuotaOnce } from './quota-ops.js';
 import { extractPrompt, generatePrompt, solvePrompt, SYSTEM_JSON } from './prompts.js';
 import type { Item } from './ports.js';
-import { MSG, type WfInput } from './steps.js';
-import { ModelOutputError, normalize, parseModelJson } from './text.js';
+import { MSG, purgeScan, type WfInput } from './steps.js';
+import { addVerifyCostOnce, currentAttempt, draftKey } from './steps-cost.js';
+import { ModelOutputError, normalize, parseModelJson, words } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
 export const MAX_CLAIMS = 60;
@@ -54,8 +56,12 @@ export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>): {
   return { kept, dropped: raw.length - kept.length };
 }
 
-/** Budget transmis a L2b: plafond du job moins ce qui est depense moins la reserve de generation. */
-export const budgetLeftCents = (micros: number): number => Math.max(0, Math.floor(JOB_COST_CAP_EUR * 100) - centsFromMicros(micros) - GEN_RESERVE_CENTS);
+/**
+ * Budget transmis a L2b: plafond du job (`jobCapEur(pages)`) moins ce qui est depense moins la reserve de generation. Avec des sections,
+ * `share` = part de la section dans le reste (mots de la section / mots des sections pas encore traitees): la somme ne depasse jamais le plafond.
+ */
+export const budgetLeftCents = (micros: number, pages = 1, share = 1): number =>
+  Math.max(0, Math.floor((Math.floor(jobCapEur(pages) * 100) - centsFromMicros(micros) - GEN_RESERVE_CENTS) * Math.min(1, Math.max(0, share))));
 
 /** Supprime les elements d'une tentative precedente (les numeros en trop ne doivent pas survivre a une relance). */
 async function clearDoc(ctx: Ctx, docId: string, prefixes: string[]): Promise<void> {
@@ -63,22 +69,87 @@ async function clearDoc(ctx: Ctx, docId: string, prefixes: string[]): Promise<vo
   if (old.length) await ctx.db.remove(old.map((o) => ({ PK: o.PK, SK: o.SK })));
 }
 
-export async function extract(ctx: Ctx, i: WfInput): Promise<{ ok: boolean; docId?: string; budgetRestantCentimes?: number }> {
+export interface ExtractResult {
+  ok: boolean;
+  docId?: string;
+  budgetRestantCentimes?: number;
+  /** Nombre d'affirmations ancrees de la section (0: pas de fiche, la machine passe a la section suivante sans verify-run). */
+  claims?: number;
+}
+
+/** Plan de sections du job (absent pour un job d'avant 1.3 ou une machine ancienne: une seule section couvre tout le texte). */
+const planOf = (job: Item): PlanSection[] | undefined => (Array.isArray(job.sections) ? (job.sections as PlanSection[]) : undefined);
+
+/** Phrases de la section `index` (rang parmi les sections non ignorees) et son identite. Sans plan: tout le texte. */
+async function sectionOf(ctx: Ctx, jobId: string, job: Item, index: number) {
+  const all = sentencesOf(await sortedTexts(ctx, jobId));
+  const plan = planOf(job);
+  if (!plan) return { plan, sentences: all, section: undefined, planIndex: 0, rank: 0, kept: [] as ReturnType<typeof keptSections>, restWords: 0, ownWords: 0 };
+  const kept = keptSections(plan);
+  const k = kept[index];
+  if (!k) throw new Error('section inconnue');
+  const ranges = rangesOf(all.map((s) => s.id), plan);
+  const slice = (n: number): TextSentence[] => all.slice(ranges[n].start, ranges[n].end);
+  const wc = (n: number) => slice(n).reduce((a, s) => a + words(s.text).length, 0);
+  return {
+    plan,
+    sentences: slice(k.planIndex),
+    section: k.section,
+    planIndex: k.planIndex,
+    rank: index,
+    kept,
+    ownWords: wc(k.planIndex),
+    restWords: kept.slice(index).reduce((a, x) => a + wc(x.planIndex), 0),
+  };
+}
+
+/** Ecrit le statut d'une section dans l'en-tete du cours durable (`COURS#`). Sans effet si le job n'a pas de cours. */
+async function setCoursStatus(ctx: Ctx, sid: string, job: Item, planIndex: number, statut: 'fiche' | 'sans_fiche'): Promise<void> {
+  if (typeof job.coursId !== 'string') return;
+  const head = await ctx.db.get(keys.cours(sid, job.coursId));
+  if (!head) return;
+  const sections = (head.sections as Record<string, unknown>[]).map((s, n) => {
+    if (n !== planIndex) return s;
+    const { docId, ...rest } = s;
+    return statut === 'fiche' ? { ...rest, statut, docId } : { ...rest, statut };
+  });
+  await ctx.db.put({ ...head, sections });
+}
+
+export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
   const job0 = await ctx.db.get(jobKey(i.sid, i.jobId));
   if (!job0 || job0.state !== 'verification') return { ok: false };
-  const docId = (job0.docId as string | undefined) ?? ctx.newId();
-  await ctx.db.update(jobKey(i.sid, i.jobId), { set: { docId } });
+  const pages = (job0.pages as number | undefined) ?? 1;
+  const sec = await sectionOf(ctx, i.jobId, job0, i.index ?? 0);
+  const docId = sec.section ? sec.section.docId! : ((job0.docId as string | undefined) ?? ctx.newId());
+  if (!sec.section) await ctx.db.update(jobKey(i.sid, i.jobId), { set: { docId } });
+  await ctx.db.update(jobKey(i.sid, i.jobId), { set: { stage: 'fiche' } });
+  // Reprise: le cout de la tentative precedente (verdicts sur le point d'etre effaces) est d'abord ajoute au job, une seule fois.
+  const attempt = await currentAttempt(ctx, docId);
+  if (attempt > 0) await addVerifyCostOnce(ctx, i.sid, i.jobId, docId, attempt);
   await clearDoc(ctx, docId, ['CLAIM#', 'VERDICT#', 'QCM#', 'GAP#']); // restes d'une tentative precedente
 
-  const texts = (await ctx.db.query(`JOB#${i.jobId}`, 'TEXT#')).sort((a, b) => Number(a.page) - Number(b.page));
-  const sentences = new Map<string, string>();
-  for (const t of texts) for (const s of t.sentences as { id: string; text: string }[]) sentences.set(s.id, s.text);
-  const numbered = [...sentences].map(([id, text]) => `[${id}] ${text}`).join('\n');
-
+  const sentences = new Map(sec.sentences.map((s) => [s.id, s.text]));
+  const numbered = sec.sentences.map((s) => `[${s.id}] ${s.text}`).join('\n');
   const raw = await callModel(ctx, i, 'extraction', 'haiku', { system: SYSTEM_JSON, prompt: extractPrompt(numbered), maxTokens: 8000 });
   const out = parseModelJson(raw, ExtractOut);
   const { kept } = anchorClaims(out.affirmations, sentences);
+  const sectionsDone = sec.plan ? (await ctx.db.update(jobKey(i.sid, i.jobId), { addSet: { extractedSections: [sec.rank] } }))?.extractedSections ?? [] : [];
+
   if (kept.length === 0) {
+    if (sec.plan) {
+      // Section sans affirmation exploitable: pas de fiche, on continue; aucune section avec fiche: le scan est rejete.
+      await ctx.db.put({ ...draftKey(docId), attempt: attempt + 1 });
+      await setCoursStatus(ctx, i.sid, job0, sec.planIndex, 'sans_fiche');
+      const head = typeof job0.coursId === 'string' ? await ctx.db.get(keys.cours(i.sid, job0.coursId)) : undefined;
+      const all = (head?.sections as { ignore?: boolean; statut?: string }[] | undefined) ?? [];
+      if ((sectionsDone as number[]).length >= sec.kept.length && all.filter((s) => !s.ignore).every((s) => s.statut === 'sans_fiche')) {
+        await endWithoutDoc(ctx, i.sid, i.jobId, ['verification'], 'rejete', MSG.noClaims);
+        await purgeScan(ctx, i.sid, i.jobId, job0);
+        return { ok: false };
+      }
+      return { ok: true, docId, claims: 0, budgetRestantCentimes: 0 };
+    }
     await endWithoutDoc(ctx, i.sid, i.jobId, ['verification'], 'rejete', MSG.noClaims);
     return { ok: false };
   }
@@ -86,24 +157,47 @@ export async function extract(ctx: Ctx, i: WfInput): Promise<{ ok: boolean; docI
   for (const [n, c] of kept.entries()) {
     await ctx.db.put(ClaimItemSchema.parse({ ...keys.claim(docId, n + 1), texte: c.texte, origine: { page: c.page, phraseId: c.phraseId, extrait: c.extrait }, type: c.type, aRisque: c.aRisque }));
   }
-  const subject = (SUBJECTS as readonly string[]).includes(out.matiere) ? out.matiere : 'autre';
-  const cur = await ctx.db.update(jobKey(i.sid, i.jobId), { set: { draftTitle: out.titre.trim().slice(0, 200) || 'Cours', draftSubject: subject, claimCount: kept.length } });
-  return { ok: true, docId, budgetRestantCentimes: budgetLeftCents((cur?.coutMicros as number | undefined) ?? 0) };
+  const modelSubject = (SUBJECTS as readonly string[]).includes(out.matiere) ? out.matiere : 'autre';
+  // Les choix de l'eleve (matiere, titre de la section) priment sur l'extraction.
+  const subject = sec.section?.subject ?? modelSubject;
+  const title = cleanLabel(sec.section?.title, 200) ?? (out.titre.trim().slice(0, 200) || 'Cours');
+  await ctx.db.put({ ...draftKey(docId), titre: title, matiere: subject, attempt: attempt + 1 });
+  const draft = sec.plan && sec.rank > 0 ? {} : { draftTitle: title, draftSubject: subject };
+  await ctx.db.update(jobKey(i.sid, i.jobId), { set: { stage: 'verification', ...draft, ...(sec.plan ? {} : { claimCount: kept.length }) } });
+  const cur = await ctx.db.get(jobKey(i.sid, i.jobId));
+  const share = sec.plan ? (sec.restWords > 0 ? sec.ownWords / sec.restWords : 1) : 1;
+  return { ok: true, docId, claims: kept.length, budgetRestantCentimes: budgetLeftCents((cur?.coutMicros as number | undefined) ?? 0, pages, share) };
+}
+
+/** Pas `sectionsPlan` de la machine: indices (rang parmi les sections non ignorees) a traiter, sans aucun texte. Sans plan: une section. */
+export async function sectionsPlan(ctx: Ctx, i: WfInput): Promise<{ indices: number[] }> {
+  const job = await ctx.db.get(jobKey(i.sid, i.jobId));
+  const plan = job ? planOf(job) : undefined;
+  return { indices: plan ? keptSections(plan).map((_, n) => n) : [0] };
+}
+
+/** Pas `sectionCost` (apres verify-run, par section): ajoute au job le cout de la verification de cette fiche, une seule fois par tentative. */
+export async function sectionCost(ctx: Ctx, i: WfInput & { docId: string }): Promise<{ addedMicros: number }> {
+  return { addedMicros: await addVerifyCostOnce(ctx, i.sid, i.jobId, i.docId) };
 }
 
 /**
- * Consommation du quota, etat distinct juste apres `verify-run`. Reprenable: le passage a `generation` ajoute le cout de L2b une seule
- * fois (meme ecriture), la consommation des pages est idempotente (quota-ops.ts).
+ * Consommation du quota, etat distinct apres les verifications. Reprenable: le passage a `generation` est conditionnel a l'etat `verification`
+ * et la consommation des pages est idempotente (quota-ops.ts), donc le quota est consomme UNE fois pour le scan, quel que soit le nombre de
+ * sections. `verify` (ancienne machine, une seule fiche): son cout est ajoute ici; avec les sections, `sectionCost` l'a deja fait.
  */
-export async function quotaConsume(ctx: Ctx, i: WfInput & { verify?: { coutCentimes?: number } }): Promise<void> {
+export async function quotaConsume(ctx: Ctx, i: WfInput & { verify?: { coutCentimes?: number } }): Promise<{ ok: boolean }> {
   const c = i.verify?.coutCentimes;
   const verifyCents = typeof c === 'number' && Number.isInteger(c) && c > 0 ? c : 0;
-  await ctx.db.update(jobKey(i.sid, i.jobId), {
-    set: { state: 'generation', verifyCostAdded: true },
+  const moved = await ctx.db.update(jobKey(i.sid, i.jobId), {
+    set: { state: 'generation', ...(verifyCents ? { verifyCostAdded: true } : {}) },
     add: { coutMicros: verifyCents * 10_000 },
-    cond: { exists: true, in: { state: ['verification'] }, absent: ['verifyCostAdded'] },
+    cond: { exists: true, in: { state: ['verification'] } },
   });
+  // `ok` = le job est (ou etait deja, apres une relance) en `generation`; faux s'il a ete rejete, annule ou termine: la machine ne publie rien.
+  if (!moved && (await ctx.db.get(jobKey(i.sid, i.jobId)))?.state !== 'generation') return { ok: false };
   await consumeQuotaOnce(ctx, i.sid, i.jobId);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------- 11-13
@@ -194,10 +288,18 @@ async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, Eligibl
   return { resume, qcm, gaps };
 }
 
-export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; qcm: number; gaps: number; doublon: boolean }> {
+export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; qcm: number; gaps: number; doublon: boolean; skipped?: boolean }> {
   const job = await ctx.db.get(jobKey(i.sid, i.jobId));
-  if (!job || typeof job.docId !== 'string') throw new Error('job sans fiche');
-  const docId = job.docId;
+  const plan = job ? planOf(job) : undefined;
+  const slot = plan ? keptSections(plan)[i.index ?? 0] : undefined;
+  const docId = slot ? slot.section.docId : job?.docId;
+  if (!job || typeof docId !== 'string') throw new Error('job sans fiche');
+  if (plan && slot) {
+    // Reprise: la fiche existe deja (publiee en dernier) = rien a refaire. Section sans affirmation: pas de fiche.
+    if (await ctx.db.get(keys.doc(i.sid, docId))) return { docId, qcm: 0, gaps: 0, doublon: false };
+    const head = typeof job.coursId === 'string' ? await ctx.db.get(keys.cours(i.sid, job.coursId)) : undefined;
+    if ((head?.sections as { statut?: string }[] | undefined)?.[slot.planIndex]?.statut === 'sans_fiche') return { docId, qcm: 0, gaps: 0, doublon: false, skipped: true };
+  }
   if (job.state === 'termine') return { docId, qcm: (job.nbQcm as number) ?? 0, gaps: (job.nbTrous as number) ?? 0, doublon: job.doublon === true };
   const part = await ctx.db.query(`DOC#${docId}`);
   const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
@@ -232,20 +334,67 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
     await ctx.db.put(GapItemSchema.parse({ ...keys.gap(docId, k + 1), questionId: questionId(docId, 'gap', k + 1), phrase: g.phrase.trim(), attendu: g.attendu.trim(), claimId: g.claimId }));
   }
 
-  // Empreinte et doublon (meme famille). Un texte sans groupe de mots n'est jamais un doublon.
-  const texts = (await ctx.db.query(`JOB#${i.jobId}`, 'TEXT#')).sort((a, b) => Number(a.page) - Number(b.page));
-  const fullText = texts.flatMap((t) => (t.sentences as { text: string }[]).map((s) => s.text)).join(' ');
-  const mh = minhash(fullText);
+  // Empreinte et doublon (meme famille), sur le texte de la section seule. Un texte sans groupe de mots n'est jamais un doublon.
+  const sec = await sectionOf(ctx, i.jobId, job, i.index ?? 0);
+  const mh = minhash(sec.sentences.map((s) => s.text).join(' '));
   const empty = mh.every((v) => v === 0xffffffff);
   const familyDocs = await ctx.db.queryGsi1(`FAMILY#${job.familyId as string}`, 'DOC#');
   const doublon = !empty && familyDocs.some((d) => d.SK !== `DOC#${docId}` && Array.isArray(d.empreinteMinHash) && (d.empreinteMinHash as number[]).length === mh.length && isDuplicate(mh, d.empreinteMinHash as number[]));
 
+  // Copie sur la fiche: sujet, dossier (s'il existe encore), nombre de pages. Section: ses choix; sinon ceux du job (1.2 et 1.3 sans sections).
+  const draft = await ctx.db.get(draftKey(docId));
+  const topic = cleanTopic(slot ? slot.section.topic : (job.topicChoice ?? job.suggestedTopic));
+  const folderRaw = slot ? slot.section.folderId : job.folderId;
+  const folderId = typeof folderRaw === 'string' && (await ctx.db.get(keys.folder(i.sid, folderRaw))) ? folderRaw : undefined;
+  const subject = slot ? slot.section.subject : (job.subjectChoice ?? job.draftSubject ?? 'autre');
+  const title = slot ? (draft?.titre ?? job.draftTitle) : (job.draftTitle ?? 'Cours');
+  // Le quota est consomme une fois pour le scan: `pagesConsommees` porte les pages sur la premiere fiche, 0 sur les suivantes.
+  let firstFiche = true;
+  if (plan && slot) {
+    const head = typeof job.coursId === 'string' ? await ctx.db.get(keys.cours(i.sid, job.coursId)) : undefined;
+    const st = (head?.sections as { ignore?: boolean; statut?: string }[] | undefined) ?? [];
+    firstFiche = st.slice(0, slot.planIndex).every((s) => s.ignore === true || s.statut === 'sans_fiche');
+  }
   const createdAt = iso(ctx);
-  const fiche = FicheItemSchema.parse({ ...keys.doc(i.sid, docId), titre: job.draftTitle ?? 'Cours', matiere: job.draftSubject ?? 'autre', empreinteMinHash: mh, pagesConsommees: job.pages, doublon, createdAt });
+  const fiche = FicheItemSchema.parse({
+    ...keys.doc(i.sid, docId),
+    titre: title ?? 'Cours',
+    matiere: subject,
+    empreinteMinHash: mh,
+    pagesConsommees: firstFiche ? job.pages : 0,
+    doublon,
+    createdAt,
+    ...(topic ? { sujet: topic } : {}),
+    ...(folderId ? { dossierId: folderId } : {}),
+    pages: job.pages,
+    ...(plan && slot && typeof job.coursId === 'string' ? { coursId: job.coursId, sectionIndex: sec.rank, sectionCount: sec.kept.length } : {}),
+  });
   // La fiche est ecrite en dernier: elle n'apparait dans les listes que complete.
   await ctx.db.put({ ...fiche, ...gsi1.doc(job.familyId as string, `${createdAt}#${docId}`), familyId: job.familyId, studentId: i.sid, jobId: i.jobId, resume: made.resume });
+  if (plan) return { docId, qcm: made.qcm.length, gaps: made.gaps.length, doublon }; // la fin du scan est le pas `finalize`
   const done = await ctx.db.get(jobKey(i.sid, i.jobId));
   const micros = (done?.coutMicros as number | undefined) ?? 0;
   await transition(ctx, i.sid, i.jobId, ['generation'], 'termine', { finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros), doublon, nbQcm: made.qcm.length, nbTrous: made.gaps.length });
   return { docId, qcm: made.qcm.length, gaps: made.gaps.length, doublon };
+}
+
+/** Dernier pas: le scan est termine. `docId` = premiere fiche, `docIds` = les fiches reellement creees (une section sans affirmation n'en a pas). */
+export async function finalize(ctx: Ctx, i: WfInput): Promise<{ docIds: string[] }> {
+  const job = await ctx.db.get(jobKey(i.sid, i.jobId));
+  if (!job) throw new Error('job introuvable');
+  const plan = planOf(job);
+  if (!plan) return { docIds: typeof job.docId === 'string' ? [job.docId] : [] };
+  const docIds: string[] = [];
+  let doublon = false;
+  for (const { section } of keptSections(plan)) {
+    const f = section.docId ? await ctx.db.get(keys.doc(i.sid, section.docId)) : undefined;
+    if (f && section.docId) {
+      docIds.push(section.docId);
+      doublon ||= f.doublon === true;
+    }
+  }
+  if (docIds.length === 0) throw new Error('aucune fiche creee');
+  const micros = (job.coutMicros as number | undefined) ?? 0;
+  await transition(ctx, i.sid, i.jobId, ['generation'], 'termine', { finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros), doublon, docId: docIds[0], docIds });
+  return { docIds };
 }
