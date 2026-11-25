@@ -64,7 +64,7 @@ export async function activate(deps: Deps, identity: Identity, body: { token: st
     await identity.setPassword(sid, body.password);
   } catch (e) {
     await release();
-    if (e instanceof InvalidPasswordError) throw badRequest('Mot de passe refuse: 12 caracteres, avec majuscule, minuscule et chiffre');
+    if (e instanceof InvalidPasswordError) throw badRequest('Mot de passe refusé : 12 caractères, avec majuscule, minuscule et chiffre');
     if (e instanceof UserGoneError) {
       await deps.store.remove(key); // utilisateur supprime cote Cognito seulement: meme 404 que tout jeton inutilisable
       throw notFound();

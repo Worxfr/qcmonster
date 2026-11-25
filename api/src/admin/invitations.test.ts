@@ -86,7 +86,7 @@ describe('handler admin-invitations: refus avant tout appel AWS', () => {
     const h = (await import('../handlers/admin-invitations.js')).handler as H;
     const r = await h(ev(groups));
     expect(r.statusCode).toBe(403);
-    expect(JSON.parse(r.body as string)).toEqual({ code: 'interdit', message: 'Acces refuse' });
+    expect(JSON.parse(r.body as string)).toEqual({ code: 'interdit', message: 'Accès refusé' });
   });
 
   it('administrateur sur une autre route: 404, jamais de code', async () => {

@@ -19,7 +19,7 @@ import { treeDbFrom, type Item } from './ports.js';
 /** Limites d'envoi (design-v2 4.1 etape 1): 5 Mo par image. Les PDF ne sont pas pris en charge dans cette version (voir L2a-report.md). */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const UPLOAD_WINDOW_S = 15 * 60;
-export const MESSAGES = { cancelled: "Annule par l'eleve" } as const;
+export const MESSAGES = { cancelled: "Annulé par l'élève" } as const;
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
 
@@ -48,7 +48,7 @@ export async function scansCreate(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   const parsed = ScanCreateRequestSchema.safeParse(bodyOf(event));
   if (!parsed.success) return fail('requete_invalide', 'Demande invalide');
   const { pages, contentType, contentTypes, folderId } = parsed.data;
-  if (contentType === 'application/pdf') return fail('requete_invalide', 'Les PDF ne sont pas encore pris en charge: envoie des photos');
+  if (contentType === 'application/pdf') return fail('requete_invalide', 'Les PDF ne sont pas encore pris en charge : envoie des photos');
   // Tout est controle AVANT la reservation des pages: un refus ne laisse rien a rendre.
   if (contentTypes && contentTypes.length !== pages) return fail('requete_invalide', 'Un type par page est attendu');
   if (folderId !== undefined && !(await ctx.db.get(keys.folder(sid, folderId)))) return fail('introuvable', 'Dossier introuvable');
@@ -59,7 +59,7 @@ export async function scansCreate(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
 
   const month = monthParis(ctx.now());
   const scope = await quotaScope(ctx, caller.familyId, sid, month);
-  if (!(await reservePages(ctx.quota, scope, pages))) return fail('quota_epuise', 'Quota de pages epuise', { resetDate: resetDate(ctx.now()) });
+  if (!(await reservePages(ctx.quota, scope, pages))) return fail('quota_epuise', 'Quota de pages épuisé', { resetDate: resetDate(ctx.now()) });
 
   const jobId = ctx.newId();
   try {
@@ -127,7 +127,7 @@ const PHOTO_URL_TTL_S = 300;
 
 export async function jobsTranscription(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const { sid, jobId, job } = await ownJob(ctx, event);
-  if (job.state !== 'a_confirmer') return fail('etat_invalide', "Le job n'est pas a confirmer");
+  if (job.state !== 'a_confirmer') return fail('etat_invalide', "Le job n'est pas à confirmer");
   const texts = await sortedTexts(ctx, jobId); // tri NUMERIQUE des pages
   // Seules les photos attendues (indices < nombre de pages): un envoi en trop sous le prefixe n'est jamais montre. Tri numerique: « 10 » apres « 2 ».
   const prefix = scansPrefix(sid, jobId);
@@ -149,9 +149,9 @@ export async function jobsTranscription(ctx: Ctx, event: APIGatewayProxyEventV2)
 
 /** Messages des refus de decoupage: des constantes, jamais le texte d'une phrase. */
 const SECTION_MESSAGES: Record<SectionError, string> = {
-  inconnu: 'Phrase de depart inconnue',
+  inconnu: 'Phrase de départ inconnue',
   ordre: 'Les sections doivent suivre l\'ordre du texte',
-  debut: 'La premiere section commence a la premiere phrase',
+  debut: 'La première section commence à la première phrase',
   trop: 'Trop de sections pour ce scan',
   aucune_fiche: 'Garde au moins une section',
   vide: 'Une section est vide',
@@ -171,7 +171,7 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   const { sid, jobId, job } = await ownJob(ctx, event);
   const parsed = ConfirmRequestSchema.safeParse(bodyOf(event));
   if (!parsed.success) return fail('requete_invalide', 'Demande invalide');
-  if (job.state !== 'a_confirmer') return fail('etat_invalide', "Le job n'est pas a confirmer");
+  if (job.state !== 'a_confirmer') return fail('etat_invalide', "Le job n'est pas à confirmer");
   const req = parsed.data;
 
   // Corrections: chaque identifiant doit exister; on remplace le texte de la phrase (jamais d'ajout ni de suppression).
@@ -198,7 +198,7 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   let chosen: Chosen[];
   let single: { subjectChoice?: string; topicChoice?: string; folderId?: string } | undefined;
   if (req.sections) {
-    if (req.subject !== undefined || req.topic !== undefined || req.folderId !== undefined) return fail('requete_invalide', 'Choisis soit des sections, soit une matiere pour tout le cours');
+    if (req.subject !== undefined || req.topic !== undefined || req.folderId !== undefined) return fail('requete_invalide', 'Choisis soit des sections, soit une matière pour tout le cours');
     chosen = [];
     for (const s of req.sections) {
       const topic = s.topic === undefined ? undefined : cleanTopic(s.topic);
@@ -235,7 +235,7 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     // est bien termine (jamais si une autre confirmation a gagne: meme `coursId`).
     const now = await ctx.db.get(jobKey(sid, jobId));
     if (now && ['rejete', 'expire', 'echec'].includes(now.state as string)) await deleteCoursTree(treeDbFrom(ctx.db), sid, coursId, { jobId });
-    return fail('etat_invalide', "Le job n'est plus a confirmer");
+    return fail('etat_invalide', "Le job n'est plus à confirmer");
   }
   const token = typeof moved.confirmToken === 'string' ? moved.confirmToken : undefined;
   try {
@@ -258,9 +258,9 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
 
 export async function jobsCancel(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const { sid, jobId, job } = await ownJob(ctx, event);
-  if (job.state !== 'en_attente_envoi' && job.state !== 'a_confirmer') return fail('etat_invalide', 'Ce traitement ne peut plus etre annule');
+  if (job.state !== 'en_attente_envoi' && job.state !== 'a_confirmer') return fail('etat_invalide', 'Ce traitement ne peut plus être annulé');
   const won = await endWithoutDoc(ctx, sid, jobId, ['en_attente_envoi', 'a_confirmer'], 'rejete', MESSAGES.cancelled);
-  if (!won) return fail('etat_invalide', 'Ce traitement ne peut plus etre annule');
+  if (!won) return fail('etat_invalide', 'Ce traitement ne peut plus être annulé');
   const after = await loadJob(ctx, sid, jobId);
   // Libere l'attente du workflow (envoi ou confirmation); un jeton deja termine est ignore par l'adaptateur Step Functions.
   for (const token of [after.confirmToken, after.uploadToken]) if (typeof token === 'string') await ctx.sfn.taskFailure(token, 'Cancelled');

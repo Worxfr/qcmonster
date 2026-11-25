@@ -21,10 +21,10 @@ export async function validateReport(deps: Deps, ctx: ParentCtx, reportId: strin
   const parsed = SignalementItemSchema.safeParse(first);
   if (!first || !parsed.success) throw notFound();
   const view = (status: ReportView['status']): ReportView => ({ reportId, docId: parsed.data.docId, ...(parsed.data.claimId ? { claimId: parsed.data.claimId } : {}), status });
-  if (parsed.data.statut !== 'ouvert') throw conflict('Signalement deja traite');
+  if (parsed.data.statut !== 'ouvert') throw conflict('Signalement déjà traité');
 
   if (decision === 'rejete') {
-    if (!(await deps.store.commit([{ item: { ...first, statut: 'rejete' }, when: first.v ?? 'any' }]))) throw conflict('Reessayez');
+    if (!(await deps.store.commit([{ item: { ...first, statut: 'rejete' }, when: first.v ?? 'any' }]))) throw conflict('Réessaie');
     return view('rejete');
   }
 
@@ -44,7 +44,7 @@ export async function validateReport(deps: Deps, ctx: ParentCtx, reportId: strin
 
   if (!owner) {
     // Fiche supprimee entre-temps: le signalement est valide, sans XP.
-    if (!(await deps.store.commit([{ item: { ...first, statut: 'valide' }, when: first.v ?? 'any' }]))) throw conflict('Reessayez');
+    if (!(await deps.store.commit([{ item: { ...first, statut: 'valide' }, when: first.v ?? 'any' }]))) throw conflict('Réessaie');
     return view('valide');
   }
   const sid = owner;
@@ -54,12 +54,12 @@ export async function validateReport(deps: Deps, ctx: ParentCtx, reportId: strin
     sid,
     async (s) => {
       const cur = await deps.store.get(key); // relu a chaque essai: deux validations simultanees ne paient qu'une fois
-      if (!cur || cur.statut !== 'ouvert') throw conflict('Signalement deja traite');
+      if (!cur || cur.statut !== 'ouvert') throw conflict('Signalement déjà traité');
       s.profile.validReports += 1;
       const c = credit(s, XP.report, subject);
       return { extra: [{ item: { ...cur, statut: 'valide' }, when: cur.v ?? 'any' }], result: { streakBonus: c.streakBonus, badges: awardBadges(s) } };
     },
-    () => conflict('Reessayez'),
+    () => conflict('Réessaie'),
   );
   if (result.streakBonus) await grantStreakBonus(deps, ctx.familyId, sid, st.month);
   return view('valide');

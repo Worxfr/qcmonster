@@ -22,16 +22,16 @@ export async function createFamily(deps: FamilyDeps, a: Auth, body: { consent: b
   if (a.role === 'eleve' || a.conflicting) throw forbidden();
   // Consentement explicite a la politique EN VIGUEUR (la version affichee au parent doit etre la version actuelle).
   if (body.consent !== true || body.policyVersion !== POLICY_VERSION) throw badRequest('Consentement requis');
-  if (a.familyId || !a.username) throw conflict('Famille deja creee');
+  if (a.familyId || !a.username) throw conflict('Famille déjà créée');
   const fid = familyIdFor(a.sub);
   const existing = await deps.store.get(keys.family(fid));
   if (!existing) {
     const now = deps.now().toISOString();
     const meta = { ...keys.family(fid), createdAt: now, consentementLe: now, versionPolitique: body.policyVersion, ownerSub: a.sub, plafondPages: quotaDefaults(deps.env).familyPages };
-    if (!(await deps.store.commit([{ item: meta, when: 'absent' }]))) throw conflict('Famille deja creee');
-  } else if (existing.ownerSub !== a.sub) throw conflict('Famille deja creee');
+    if (!(await deps.store.commit([{ item: meta, when: 'absent' }]))) throw conflict('Famille déjà créée');
+  } else if (existing.ownerSub !== a.sub) throw conflict('Famille déjà créée');
   // Reprise possible: si Cognito a echoue apres l'ecriture de META, un nouvel appel arrive ici avec la meme famille.
-  if (!(await deps.identity.attachFamily(a.username, fid))) throw conflict('Famille deja creee');
+  if (!(await deps.identity.attachFamily(a.username, fid))) throw conflict('Famille déjà créée');
   return { userId: a.sub, role: 'parent' as const, familyId: fid };
 }
 

@@ -240,7 +240,7 @@ paths:
                 state: rejete
                 pages: 2
                 createdAt: '2026-12-01T10:00:00Z'
-                message: Annule par l'eleve
+                message: Annulé par l'élève
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /docs:
@@ -426,7 +426,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { code: dossier_nom_pris, message: Tu as deja un dossier avec ce nom }
+              example: { code: dossier_nom_pris, message: Tu as déjà un dossier avec ce nom }
   /folders/{folderId}:
     patch:
       operationId: renameFolder
@@ -454,7 +454,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { code: dossier_nom_pris, message: Tu as deja un dossier avec ce nom }
+              example: { code: dossier_nom_pris, message: Tu as déjà un dossier avec ce nom }
     delete:
       operationId: deleteFolder
       tags: [folders]

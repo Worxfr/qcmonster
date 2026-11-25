@@ -24,7 +24,7 @@ describe('FIX-T4 (liste des scans)', () => {
   });
   it('B1: un scan annule n\'apparait plus dans la liste; un echec reste visible avec accents', async () => {
     const t = await world();
-    await putJob(t, 's1', 'JA', { state: 'rejete', message: "Annule par l'eleve" });
+    await putJob(t, 's1', 'JA', { state: 'rejete', message: "Annulé par l'élève" });
     await putJob(t, 's1', 'JE', { state: 'echec' });
     const items = await list(t);
     expect(items.map((i) => i.scanId)).toEqual(['JE']);

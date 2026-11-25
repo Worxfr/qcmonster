@@ -34,6 +34,6 @@ export async function getSession(deps: Deps, ctx: StudentCtx, docId: string): Pr
     st.profile.tick = st.now;
     st.profile.series = newSeries(st.now);
     return { result: null };
-  }, () => conflict('Reessayez'), ['profile']);
+  }, () => conflict('Réessaie'), ['profile']);
   return { docId, questions };
 }
