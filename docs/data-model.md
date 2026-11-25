@@ -83,7 +83,7 @@ Regles:
 - **0 ou 1 dossier par fiche**: `DOC#.dossierId` est la seule source. Supprimer un dossier retire `dossierId` des fiches concernees (une ecriture par fiche; interrompu, une fiche qui cite un dossier absent est vue hors dossier: la liste ignore les dossiers inconnus). Les fiches ne sont jamais supprimees avec le dossier.
 - **Dossier par eleve**: la cle contient `<sid>` pris dans le jeton, jamais dans la requete. Un `folderId` ou `docId` d'un autre eleve n'existe pas dans la partition lue: 404. Un parent lit les partitions de ses eleves (verifiees dans `FAMILY#<fid>`), sans rien ecrire.
 - **Unicite du nom**: `nomCle` compare a ceux de l'eleve (50 au plus) avant l'ecriture. shortcut: deux creations simultanees du meme nom peuvent passer; sans consequence (deux dossiers homonymes), a corriger par un element `FOLDERNAME#` conditionnel si cela gene.
-- **Quota par page**: `scans-create` reserve `pages` en une transaction (`reservePages`, regles existantes), la rend si le job echoue, est annule ou expire (`releaseQuotaOnce`). Inchange.
+- **Quota par page**: `scans-create` reserve `pages` en une transaction (`reservePages`, regles existantes), la rend si le job echoue, est annule ou expire (`releaseQuotaOnce`). Si le job echoue apres la consommation, les pages sont rendues aussi, une seule fois (`returnQuotaOnce`, marqueur `QUOTAOP#<job>#refund`).
 - **Suppression** (`shared/delete-tree.ts`): `deleteStudentTree` supprime deja tout ce qui n'est pas `DOC#` dans `STUDENT#<sid>`, donc `FOLDER#` est couvert (test dans `shared/scans.test.ts`). `deleteDocTree` n'a rien a nettoyer (pas de liste dans le dossier).
 - **Export** (`GET /family/export`): `StudentExport.folders` (nom, date) et `DocExport.topic`, `folderId`. Le lot back B2 les ajoute.
 

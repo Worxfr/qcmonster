@@ -8,7 +8,7 @@ import { CONFIRM_TIMEOUT_S, cleanLabel, cleanTopic, MAX_SECTIONS, MAX_TOPIC, pla
 import { BEDROCK_MAX_IMAGE_BYTES } from '../../../shared/bedrock.js';
 import { callModel, DAY_S, dayParis, iso, jobKey, mapLimit, ttlIn, type Ctx } from './ctx.js';
 import { ALL_OPEN, endWithoutDoc, isTerminal, scansPrefix, transition } from './job.js';
-import { releaseQuotaOnce } from './quota-ops.js';
+import { returnQuotaOnce } from './quota-ops.js';
 import { classifyPrompt, readPrompt, SYSTEM_JSON } from './prompts.js';
 import { treeDbFrom, type Item } from './ports.js';
 import { assemblePages, ModelOutputError, parseModelJson, type ReadPage, words } from './text.js';
@@ -262,9 +262,10 @@ export async function failJob(ctx: Ctx, i: WfInput & { error?: { Error?: string 
   if (isTerminal(job.state)) {
     // Fin deja decidee: on repare seulement un nettoyage interrompu (quota encore reserve, photos et cours restants).
     if (job.state !== 'termine') {
-      await releaseQuotaOnce(ctx, i.sid, i.jobId);
-      await ctx.s3.deleteAll(scansPrefix(i.sid, i.jobId));
-      await purgeScan(ctx, i.sid, i.jobId, job);
+      // Trois nettoyages independants: une panne du rendu ne doit jamais empecher la suppression des donnees de l'eleve (photos, cours). Erreur relevee a la fin.
+      const results = await Promise.allSettled([returnQuotaOnce(ctx, i.sid, i.jobId), ctx.s3.deleteAll(scansPrefix(i.sid, i.jobId)), purgeScan(ctx, i.sid, i.jobId, job)]);
+      const failed = results.find((r) => r.status === 'rejected');
+      if (failed) throw (failed as PromiseRejectedResult).reason;
     }
     return;
   }
@@ -274,6 +275,8 @@ export async function failJob(ctx: Ctx, i: WfInput & { error?: { Error?: string 
     for (const docId of docIds) await addVerifyCostOnce(ctx, i.sid, i.jobId, docId);
   }
   const msg = i.error?.Error === 'CostBlockedError' ? MSG.budget : MSG.failed;
-  await endWithoutDoc(ctx, i.sid, i.jobId, ALL_OPEN, 'echec', msg);
+  // Meme regle: si le rendu des pages echoue (endWithoutDoc leve), le cours et les fiches sont quand meme supprimes, puis l'erreur est relevee (la relance rend).
+  const ended = await endWithoutDoc(ctx, i.sid, i.jobId, ALL_OPEN, 'echec', msg).then(() => undefined, (e: unknown) => ({ e }));
   await purgeScan(ctx, i.sid, i.jobId, job);
+  if (ended) throw ended.e;
 }
