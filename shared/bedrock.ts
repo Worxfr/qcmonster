@@ -10,8 +10,11 @@ import { ENVS, JOB_COST_CAP_EUR, REGION, type Env } from './names.js';
 import { costEur, type ModelKey, type Usage } from './pricing.js';
 import { log } from './log/index.js';
 
+/** Limite par image de l'API Converse: 3,75 Mo, 8000 px de cote (AWS, API Message / ImageBlock). Marge: 3 750 000 octets. */
+export const BEDROCK_MAX_IMAGE_BYTES = 3_750_000;
+
 /** Bornes d'une requete: un seul appel ne peut pas depasser le plafond d'un job (0,25 EUR) par construction. */
-export const LIMITS = { maxTokens: 8192, maxImages: 10, maxImageBytes: 5 * 1024 * 1024, maxPromptChars: 400_000 } as const;
+export const LIMITS = { maxTokens: 8192, maxImages: 10, maxImageBytes: BEDROCK_MAX_IMAGE_BYTES, maxPromptChars: 400_000 } as const;
 
 export interface ModelRequest {
   /** ARN du profil d'application (arn:aws:bedrock:eu-west-3:...), jamais un profil systeme. */

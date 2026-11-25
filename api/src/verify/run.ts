@@ -68,6 +68,7 @@ const chunks = <T>(a: T[], n: number): T[][] => Array.from({ length: Math.ceil(a
 
 export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promise<{ costEur: number }> {
   const { store, search, model } = deps;
+  // shortcut: le plafond effectif vient de `budgetRestantCentimes` (calcule par `extract` avec jobCapEur(pages)); 1,50 EUR (10 pages) n'est que la borne absolue. Tout autre appelant doit transmettre un budget proportionnel aux pages.
   const capEur = Math.min(input.budgetRestantCentimes / 100, jobCapEur(10));
   const existing = await store.listVerdicts(input.docId);
   // Cout deja depense par les tentatives precedentes (porte par les verdicts ecrits): le plafond du job vaut pour le cumul des tentatives.

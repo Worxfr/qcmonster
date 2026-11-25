@@ -1,7 +1,7 @@
 // FEAT-A, lot B1: scan de plusieurs photos lu comme un seul document, sections par sujet, echec = tout supprime, plafond de cout proportionnel.
 // Modele simule uniquement (aucun appel reel, aucun cout).
 import { describe, expect, it } from 'vitest';
-import { JobBudgetExceededError } from '../../../shared/bedrock.js';
+import { BEDROCK_MAX_IMAGE_BYTES, JobBudgetExceededError } from '../../../shared/bedrock.js';
 import { JobSchema, ScanCreateResponseSchema, TranscriptionSchema } from '../../../shared/contract/generated/schemas.js';
 import { keys } from '../../../shared/ddb/keys.js';
 import { deleteStudentTree } from '../../../shared/delete-tree.js';
@@ -525,5 +525,86 @@ describe('plafond de cout proportionnel aux pages', () => {
     const small = await calls(25);
     expect(await calls(45)).toBeGreaterThanOrEqual(small);
     expect(await calls(2000)).toBeLessThanOrEqual(Math.ceil((jobCapEur(10) * 100) / 15) + 1); // borne absolue 1,50 EUR
+  });
+});
+
+describe('relecture PR #49: corrections', () => {
+  it('quotaConsume renvoie { ok }: vrai (aussi a la relance), faux si le job est deja rejete ou termine, sans consommer le quota', async () => {
+    const k = await makeCtx(threePages());
+    const u = await toConfirm(k);
+    await confirm(k, u.jobId, { sections: [{ fromSentenceId: 'p1-s1', subject: 'svt' }] });
+    expect(await quotaConsume(k.ctx, u.i)).toEqual({ ok: true });
+    expect(await quotaConsume(k.ctx, u.i)).toEqual({ ok: true }); // relance
+    expect(await quota(k)).toMatchObject({ reserve: 0, utilise: 3 });
+    const k2 = await makeCtx(threePages());
+    const u2 = await toConfirm(k2);
+    await confirm(k2, u2.jobId);
+    await failJob(k2.ctx, { ...u2.i, error: { Error: 'x' } });
+    expect(await quotaConsume(k2.ctx, u2.i)).toEqual({ ok: false });
+    expect(await quota(k2)).toMatchObject({ utilise: 0, restant: 200 });
+  });
+  it('section sans affirmation: ok true et claims 0 (la machine teste claims)', async () => {
+    const k = await makeCtx(threePages({ extraction: (p) => (p.includes('Bastille') ? JSON.stringify({ titre: 'x', matiere: 'autre', affirmations: [] }) : extraction(p)) }));
+    const u = await toConfirm(k);
+    await confirm(k, u.jobId, { sections: [{ fromSentenceId: 'p1-s1', subject: 'svt' }, { fromSentenceId: 'p3-s1', subject: 'histoire_geo' }] });
+    expect(await extract(k.ctx, { ...u.i, index: 0 })).toMatchObject({ ok: true, claims: 1 });
+    expect(await extract(k.ctx, { ...u.i, index: 1 })).toMatchObject({ ok: true, claims: 0 });
+  });
+  it('confirmation qui perd la course contre l annulation: 409 et le cours (en-tete, textes, copie de travail) est supprime', async () => {
+    const k = await makeCtx(threePages());
+    const u = await toConfirm(k);
+    const put = k.ctx.db.put.bind(k.ctx.db);
+    let cancelled = false;
+    k.ctx.db.put = async (item, ifNotExists) => {
+      const r = await put(item, ifNotExists);
+      if (!cancelled && String(item.SK).startsWith('COURS#') && String(item.SK).includes('#T')) {
+        cancelled = true;
+        await guarded(api.jobsCancel)(k.ctx, event({ params: { jobId: u.jobId } })); // l'annulation passe entre (b) et (c)
+      }
+      return r;
+    };
+    expect((await confirm(k, u.jobId)).statusCode).toBe(409);
+    expect((await job(k, u.jobId)).state).toBe('rejete');
+    expect(await k.db.query('STUDENT#s1', 'COURS#')).toHaveLength(0);
+    expect(await k.db.query(`JOB#${u.jobId}`, 'TEXT#')).toHaveLength(0);
+  });
+  it('confirmation qui perd contre UNE AUTRE confirmation: le cours du gagnant est conserve', async () => {
+    const k = await makeCtx(threePages());
+    const u = await toConfirm(k);
+    const put = k.ctx.db.put.bind(k.ctx.db);
+    let done = false;
+    k.ctx.db.put = async (item, ifNotExists) => {
+      const r = await put(item, ifNotExists);
+      if (!done && String(item.SK).includes('#T')) {
+        done = true;
+        await k.db.update(jobKey('s1', u.jobId), { set: { state: 'verification' } }); // l'autre confirmation a gagne
+      }
+      return r;
+    };
+    expect((await confirm(k, u.jobId)).statusCode).toBe(409);
+    expect((await k.db.query('STUDENT#s1', 'COURS#')).length).toBeGreaterThan(0);
+  });
+  it('COSTADDED: sectionCost deux fois pour la meme tentative ne compte le cout qu une fois', async () => {
+    const k = await makeCtx(threePages());
+    const u = await toConfirm(k);
+    await confirm(k, u.jobId, { sections: [{ fromSentenceId: 'p1-s1', subject: 'svt' }] });
+    const a = await extract(k.ctx, { ...u.i, index: 0 });
+    await fakeVerify(k, a.docId!, 30_000);
+    const before = (await job(k, u.jobId)).coutMicros as number;
+    expect(await sectionCost(k.ctx, { ...u.i, docId: a.docId! })).toEqual({ addedMicros: 30_000 });
+    expect(await sectionCost(k.ctx, { ...u.i, docId: a.docId! })).toEqual({ addedMicros: 0 });
+    expect(((await job(k, u.jobId)).coutMicros as number) - before).toBe(30_000);
+    expect(await k.db.query(`JOB#${u.jobId}`, 'COSTADDED#')).toHaveLength(1);
+  });
+  it('image de plus de 3,75 Mo (limite Bedrock Converse): refusee au controle avec un message lisible, quota rendu', async () => {
+    const k = await makeCtx(goodScript());
+    const big = new Uint8Array(BEDROCK_MAX_IMAGE_BYTES + 1);
+    big.set(JPEG);
+    const u = await upload(k, 2, { bytes: [JPEG, big] });
+    await awaitUpload(k.ctx, { ...u.i, token: 't' });
+    expect((await scanCheck(k.ctx, u.i)).ok).toBe(false);
+    expect((await job(k, u.jobId)).message).toBe(MSG.imageTooBig);
+    expect(await quota(k)).toMatchObject({ reserve: 0, restant: 200 });
+    expect(k.calls).toEqual([]);
   });
 });

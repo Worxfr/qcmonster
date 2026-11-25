@@ -4,6 +4,7 @@ import { ConfirmRequestSchema, ScanCreateRequestSchema } from '../../../shared/c
 import { costGateFor } from '../../../shared/cost.js';
 import { keys, monthParis } from '../../../shared/ddb/keys.js';
 import { cleanLabel, cleanTopic, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
+import { deleteCoursTree } from '../../../shared/delete-tree.js';
 import { CoursItemSchema, CoursTextItemSchema } from '../../../shared/items.js';
 import { releasePages, reservePages } from '../../../shared/quota.js';
 import { log } from '../../../shared/log/index.js';
@@ -13,7 +14,7 @@ import { endWithoutDoc, loadJob, scansPrefix, sentencesOf, sortedTexts, transiti
 import { MIN_WORDS } from './steps.js';
 import { words } from './text.js';
 import { quotaScope } from './quota-ops.js';
-import type { Item } from './ports.js';
+import { treeDbFrom, type Item } from './ports.js';
 
 /** Limites d'envoi (design-v2 4.1 etape 1): 5 Mo par image. Les PDF ne sont pas pris en charge dans cette version (voir L2a-report.md). */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -229,7 +230,13 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   // (c) le plan sur le job et la transition, en une seule ecriture conditionnelle: le premier qui change l'etat gagne la course
   // contre une annulation ou l'expiration.
   const moved = await transition(ctx, sid, jobId, ['a_confirmer'], 'verification', { confirmedAt: iso(ctx), coursId, docIds, sections, ...(single ?? {}) });
-  if (!moved) return fail('etat_invalide', "Le job n'est plus a confirmer");
+  if (!moved) {
+    // Course perdue contre l'annulation ou l'expiration: le cours durable ecrit en (b) n'a plus de raison d'etre. On ne le supprime que si le job
+    // est bien termine (jamais si une autre confirmation a gagne: meme `coursId`).
+    const now = await ctx.db.get(jobKey(sid, jobId));
+    if (now && ['rejete', 'expire', 'echec'].includes(now.state as string)) await deleteCoursTree(treeDbFrom(ctx.db), sid, coursId, { jobId });
+    return fail('etat_invalide', "Le job n'est plus a confirmer");
+  }
   const token = typeof moved.confirmToken === 'string' ? moved.confirmToken : undefined;
   try {
     // (d) copie de travail corrigee, puis (e) reprise de la machine.

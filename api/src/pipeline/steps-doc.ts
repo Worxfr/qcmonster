@@ -186,15 +186,18 @@ export async function sectionCost(ctx: Ctx, i: WfInput & { docId: string }): Pro
  * et la consommation des pages est idempotente (quota-ops.ts), donc le quota est consomme UNE fois pour le scan, quel que soit le nombre de
  * sections. `verify` (ancienne machine, une seule fiche): son cout est ajoute ici; avec les sections, `sectionCost` l'a deja fait.
  */
-export async function quotaConsume(ctx: Ctx, i: WfInput & { verify?: { coutCentimes?: number } }): Promise<void> {
+export async function quotaConsume(ctx: Ctx, i: WfInput & { verify?: { coutCentimes?: number } }): Promise<{ ok: boolean }> {
   const c = i.verify?.coutCentimes;
   const verifyCents = typeof c === 'number' && Number.isInteger(c) && c > 0 ? c : 0;
-  await ctx.db.update(jobKey(i.sid, i.jobId), {
+  const moved = await ctx.db.update(jobKey(i.sid, i.jobId), {
     set: { state: 'generation', ...(verifyCents ? { verifyCostAdded: true } : {}) },
     add: { coutMicros: verifyCents * 10_000 },
     cond: { exists: true, in: { state: ['verification'] } },
   });
+  // `ok` = le job est (ou etait deja, apres une relance) en `generation`; faux s'il a ete rejete, annule ou termine: la machine ne publie rien.
+  if (!moved && (await ctx.db.get(jobKey(i.sid, i.jobId)))?.state !== 'generation') return { ok: false };
   await consumeQuotaOnce(ctx, i.sid, i.jobId);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------- 11-13

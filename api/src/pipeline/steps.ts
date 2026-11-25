@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { keys } from '../../../shared/ddb/keys.js';
 import { deleteCoursTree, deleteDocTree } from '../../../shared/delete-tree.js';
 import { CONFIRM_TIMEOUT_S, cleanLabel, cleanTopic, MAX_SECTIONS, MAX_TOPIC, planSections, SUBJECTS } from '../../../shared/scans.js';
+import { BEDROCK_MAX_IMAGE_BYTES } from '../../../shared/bedrock.js';
 import { callModel, DAY_S, dayParis, iso, jobKey, mapLimit, ttlIn, type Ctx } from './ctx.js';
 import { ALL_OPEN, endWithoutDoc, isTerminal, scansPrefix, transition } from './job.js';
 import { releaseQuotaOnce } from './quota-ops.js';
@@ -27,6 +28,7 @@ const TRANSCRIBE_CONCURRENCY = 3;
 
 export const MSG = {
   badFile: 'Fichier non reconnu : envoie une photo JPEG ou PNG',
+  imageTooBig: 'Une photo est trop lourde (3,7 Mo au plus) : reprends-la en plus petit',
   notCourse: 'Ce document ne ressemble pas à un cours : rien ne sera lu',
   tooShort: 'Le texte est trop court pour faire une fiche',
   dailyLimit: 'Limite de 10 transcriptions par jour atteinte, reviens demain',
@@ -78,15 +80,18 @@ export async function scanCheck(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }> 
   if (!job) return { ok: false };
   const prefix = scansPrefix(i.sid, i.jobId);
   let valid = true;
+  let tooBig = false;
   for (let n = 0; n < (job.expectedFiles as number); n++) {
     const h = await ctx.s3.head(`${prefix}${n}`, 16);
     const f = h ? imageFormat(h.bytes) : undefined;
     // Le type annonce doit correspondre au contenu (jpeg ou png), pas a l'en-tete HTTP.
     const expected = (job.contentTypes as string[] | undefined)?.[n] ?? job.contentType; // type de CETTE page (v1.3), a defaut celui du job
     if (!h || h.size < 1 || !f || `image/${f}` !== expected) valid = false;
+    // L'envoi accepte 5 Mo, mais Bedrock (Converse) refuse une image de plus de 3,75 Mo: refus lisible ici plutot qu'un echec plus loin.
+    else if (h.size > BEDROCK_MAX_IMAGE_BYTES) tooBig = true;
   }
-  if (!valid) {
-    await endWithoutDoc(ctx, i.sid, i.jobId, ['verification_fichier'], 'rejete', MSG.badFile);
+  if (!valid || tooBig) {
+    await endWithoutDoc(ctx, i.sid, i.jobId, ['verification_fichier'], 'rejete', valid ? MSG.imageTooBig : MSG.badFile);
     return { ok: false };
   }
   return { ok: true };
