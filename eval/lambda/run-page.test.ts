@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelPort } from '../../shared/bedrock.js';
-import { goodScript, JPEG, memoryCost, scriptedPort } from '../../api/src/pipeline/testkit.js';
+import { classifyJson, goodScript, JPEG, memoryCost, scriptedPort } from '../../api/src/pipeline/testkit.js';
 import { heuristicModel } from '../../api/src/verify/testkit.js';
 import { passageId, type SearchPort } from '../../api/src/verify/search.js';
 import { bytesFromBase64, PAGE_ID, runPage } from './run-page.js';
@@ -43,7 +43,7 @@ describe('runPage (pipeline reel, base en memoire)', () => {
     expect(r.claims.every((c) => typeof c.excerpt === 'string' && r.transcript.includes(c.excerpt.slice(0, 20)))).toBe(true);
   });
   it('page refusee (document non scolaire): refused, aucune fiche', async () => {
-    const script = goodScript({ transcription: () => JSON.stringify({ docType: 'autre', text: 'Bulletin de notes de quelqu un.' }) });
+    const script = goodScript({ classify: classifyJson({ docType: 'autre' }) });
     const r = await runPage({ models: { haiku: ARN, sonnet: SONNET }, port: scriptedPort(script), costStore: memoryCost(), search }, { pageId: 'neg-bulletin', image: JPEG });
     expect(r.refused).toBe(true);
     expect(r.state).toBe('rejete');

@@ -10,8 +10,8 @@ import { scansPrefix } from './job.js';
 import { defang, extractPrompt } from './prompts.js';
 import { applyQuotaOnce, consumeQuotaOnce, releaseQuotaOnce } from './quota-ops.js';
 import { awaitConfirm, awaitUpload, expire, failJob, scanCheck, scanStart, transcribe } from './steps.js';
-import { extract, generate, quotaConsume } from './steps-doc.js';
-import { event, goodScript, JPEG, makeCtx, parent } from './testkit.js';
+import { extract, quotaConsume } from './steps-doc.js';
+import { event, genFin, goodScript, JPEG, makeCtx, parent } from './testkit.js';
 
 type K = Awaited<ReturnType<typeof makeCtx>>;
 const scansCreate = guarded(api.scansCreate);
@@ -107,8 +107,9 @@ describe('confirmation: ordre des ecritures', () => {
     const k = await makeCtx(goodScript());
     const u = await toConfirm(k);
     const put = k.ctx.db.put.bind(k.ctx.db);
-    k.ctx.db.put = async () => {
-      throw new Error('DynamoDB indisponible');
+    k.ctx.db.put = async (item, ifNotExists) => {
+      if (String(item.SK).startsWith('TEXT#')) throw new Error('DynamoDB indisponible'); // la copie de travail apres la transition
+      return put(item, ifNotExists);
     };
     await expect(jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [{ id: 'p1-s1', text: 'x' }] } }))).rejects.toThrow();
     k.ctx.db.put = put;
@@ -186,7 +187,7 @@ describe('T3 B2/B3: la consigne ne devient ni resume ni question', () => {
     const st: Record<number, string> = { 1: 'verifiee', 2: 'non_factuelle', 3: 'erreur', 4: 'non_verifiable' };
     for (const [n, statut] of Object.entries(st)) await k.db.put({ ...keys.verdict(ex.docId!, Number(n)), statut, secondeLecture: false, sources: [] });
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 0 } });
-    const g = await generate(k.ctx, u.i);
+    const g = await genFin(k.ctx, u.i);
     const p = prompts[0];
     expect(p).not.toContain('poilu'); // la consigne n'est pas envoyee
     expect(p).toContain('[01] La photosynthese'); // verifiee
@@ -204,7 +205,7 @@ describe('T3 B2/B3: la consigne ne devient ni resume ni question', () => {
     await k.db.put({ ...keys.claim(ex.docId!, 1), texte: 'Decris la vie d un poilu.', origine: {}, type: 'non_factuelle', aRisque: false });
     await k.db.put({ ...keys.verdict(ex.docId!, 1), statut: 'non_factuelle', secondeLecture: false, sources: [] });
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 0 } });
-    expect(await generate(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 0 });
+    expect(await genFin(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 0 });
     expect(k.calls).not.toContain('generation');
   });
 });
@@ -214,7 +215,7 @@ describe('generation: sorties illisibles et relances', () => {
     const k = await makeCtx(goodScript({ generation: 'pas du json' }));
     const u = await toVerified(k);
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 3 } });
-    expect(await generate(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 0 });
+    expect(await genFin(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 0 });
     expect((await job(k, u.jobId)).state).toBe('termine');
     expect(await quota(k)).toMatchObject({ utilise: 1 });
   });
@@ -222,7 +223,7 @@ describe('generation: sorties illisibles et relances', () => {
     const k = await makeCtx(goodScript({ solve: '{"reponses": "oups"}' }));
     const u = await toVerified(k);
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 3 } });
-    expect(await generate(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 1 });
+    expect(await genFin(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 1 });
     expect(await k.db.query(`DOC#${u.docId}`, 'QCM#')).toHaveLength(0);
   });
   it('relance de extract: les affirmations en trop de la tentative precedente disparaissent', async () => {
@@ -242,7 +243,7 @@ describe('generation: sorties illisibles et relances', () => {
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 0 } });
     await k.db.put({ ...keys.qcm(u.docId, 5), questionId: `${u.docId}:qcm:05` });
     await k.db.put({ ...keys.gap(u.docId, 5), questionId: `${u.docId}:gap:05` });
-    await generate(k.ctx, u.i);
+    await genFin(k.ctx, u.i);
     expect((await k.db.query(`DOC#${u.docId}`, 'QCM#')).map((q) => q.SK)).toEqual(['QCM#01', 'QCM#02']);
     expect((await k.db.query(`DOC#${u.docId}`, 'GAP#')).map((q) => q.SK)).toEqual(['GAP#01']);
   });
@@ -290,7 +291,7 @@ describe('suppression et prompts', () => {
     const k = await makeCtx(goodScript());
     const u = await toVerified(k);
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 0 } });
-    await generate(k.ctx, u.i);
+    await genFin(k.ctx, u.i);
     expect((await k.db.query(`JOB#${u.jobId}`, 'TEXT#')).length).toBe(1);
     expect((await docsDelete(k.ctx, parent({ params: { docId: u.docId } }))).statusCode).toBe(204);
     expect(await k.db.query(`JOB#${u.jobId}`, 'TEXT#')).toHaveLength(0);

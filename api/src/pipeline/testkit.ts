@@ -5,28 +5,38 @@ import type { CostTotals } from '../../../shared/cost.js';
 import { memoryQuotaDb } from '../../../shared/quota.js';
 import { ulid, type Ctx } from './ctx.js';
 import { memoryDb, memoryScanStore, memorySfn } from './ports.js';
+import { finalize, generate } from './steps-doc.js';
 
 export const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 export const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8]);
 
 /** Reponses du faux modele, par etape reconnue dans le prompt. */
 export interface Script {
-  transcription: (page: number) => string;
-  extraction: string;
+  /** Lecture des photos: reçoit les pages NOUVELLES de l'appel (hors page de contexte) et le nombre d'images jointes. */
+  transcription: (pages: number[], images: number) => string;
+  /** Appel de texte seul: type du document, matiere, sujet, decoupage propose. */
+  classify: string;
+  extraction: string | ((prompt: string) => string);
   generation: string;
   solve: string;
 }
 
-export function scriptedPort(script: Script, calls: string[] = []): ModelPort {
+export function scriptedPort(script: Script, calls: string[] = [], prompts: string[] = []): ModelPort {
   return {
     async converse(req: ModelRequest) {
       let text: string;
       if (req.images?.length) {
         calls.push('transcription');
-        text = script.transcription(Number(/page (\d+)/.exec(req.prompt)?.[1] ?? 1));
+        prompts.push(req.prompt);
+        const pages = [...req.prompt.matchAll(/image \d+ = page (\d+)( \(contexte)?/g)].filter((m) => !m[2]).map((m) => Number(m[1]));
+        text = script.transcription(pages, req.images.length);
+      } else if (req.prompt.includes('<texte>')) {
+        calls.push('classement');
+        text = script.classify;
       } else if (req.prompt.includes('<cours>')) {
         calls.push('extraction');
-        text = script.extraction;
+        prompts.push(req.prompt);
+        text = typeof script.extraction === 'function' ? script.extraction(req.prompt) : script.extraction;
       } else if (req.prompt.includes('<affirmations>')) {
         calls.push('generation');
         text = script.generation;
@@ -59,6 +69,7 @@ export const MODEL_ARN = 'arn:aws:bedrock:eu-west-3:123456789012:application-inf
 export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>; now?: () => Date } = {}) {
   process.env.QCM_ENV = 'dev';
   const calls: string[] = [];
+  const prompts: string[] = []; // invites des appels de lecture et d'extraction (pour verifier ce que le modele voit)
   const quota = memoryQuotaDb();
   const db = memoryDb(quota.items); // une seule table, comme en production (le quota et le marqueur QUOTAOP# sont dans la meme transaction)
   const s3 = memoryScanStore();
@@ -72,7 +83,7 @@ export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>
     s3,
     sfn,
     models: { haiku: MODEL_ARN, sonnet: MODEL_ARN },
-    port: scriptedPort(script, calls),
+    port: scriptedPort(script, calls, prompts),
     costStore,
     now: opts.now ?? (() => new Date('2026-12-01T10:00:00Z')),
     newId: () => `DOC${String(++n).padStart(23, '0')}`,
@@ -80,7 +91,7 @@ export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>
   await db.put({ PK: 'FAMILY#f1', SK: 'META' });
   await db.put({ PK: 'FAMILY#f1', SK: 'STUDENT#s1', cognitoSub: 'sub-s1', statut: 'actif' });
   await db.put({ PK: 'FAMILY#f1', SK: 'STUDENT#s2', cognitoSub: 'sub-s2', statut: 'suspendu' });
-  return { ctx, db, quota, s3, sfn, costStore, calls };
+  return { ctx, db, quota, s3, sfn, costStore, calls, prompts };
 }
 
 export function event(o: { sub?: string; family?: string; groups?: string; params?: Record<string, string>; body?: unknown } = {}): APIGatewayProxyEventV2 {
@@ -108,8 +119,13 @@ export const COURSE_LINES = [
 ];
 export const COURSE_TEXT = COURSE_LINES.join('\n');
 
+/** Sortie de lecture: une entree par page, avec ses lignes et son indicateur `suite`. */
+export const readJson = (pages: { page: number; lines: string[]; suite?: boolean }[]) => JSON.stringify({ pages: pages.map((p) => ({ suite: false, ...p })) });
+export const classifyJson = (o: Record<string, unknown> = {}) => JSON.stringify({ docType: 'cours', matiere: 'svt', sujet: 'La photosynthese', sections: [], ...o });
+
 export const goodScript = (over: Partial<Script> = {}): Script => ({
-  transcription: () => JSON.stringify({ docType: 'cours', text: COURSE_TEXT }),
+  transcription: (pages) => readJson(pages.map((page) => ({ page, lines: COURSE_LINES }))),
+  classify: classifyJson(),
   extraction: JSON.stringify({
     titre: 'La photosynthese',
     matiere: 'svt',
@@ -139,3 +155,10 @@ export const goodScript = (over: Partial<Script> = {}): Script => ({
   solve: JSON.stringify({ reponses: [{ n: 1, choix: 0 }, { n: 2, choix: 3 }, { n: 3, choix: 0 }] }),
   ...over,
 });
+
+/** `generate` puis `finalize` (le dernier pas de la machine), pour les tests qui regardent le scan termine. */
+export async function genFin(ctx: Ctx, i: { jobId: string; sid: string; index?: number }) {
+  const r = await generate(ctx, i);
+  await finalize(ctx, i);
+  return r;
+}

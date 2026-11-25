@@ -11,8 +11,8 @@ import { jobKey } from './ctx.js';
 import { scansPrefix } from './job.js';
 import { treeDbFrom } from './ports.js';
 import { awaitConfirm, awaitUpload, expire, failJob, scanCheck, scanStart, transcribe } from './steps.js';
-import { budgetLeftCents, extract, generate, quotaConsume } from './steps-doc.js';
-import { COURSE_TEXT, event, goodScript, JPEG, makeCtx, parent, PNG } from './testkit.js';
+import { budgetLeftCents, extract, quotaConsume } from './steps-doc.js';
+import { classifyJson, readJson, event, genFin, goodScript, JPEG, makeCtx, parent, PNG } from './testkit.js';
 
 const { docsDelete, docsRead, docsReport } = { docsDelete: guarded(docs.docsDelete), docsRead: guarded(docs.docsRead), docsReport: guarded(docs.docsReport) };
 const { jobsCancel, jobsConfirm, jobsGet, jobsTranscription, scansCreate } = {
@@ -88,7 +88,7 @@ describe('parcours complet', () => {
     await quotaConsume(k.ctx, { ...u.i, verify }); // relance: sans effet
     expect(await qState(k)).toMatchObject({ reserve: 0, utilise: 1 });
 
-    const gen = await generate(k.ctx, u.i);
+    const gen = await genFin(k.ctx, u.i);
     expect(gen).toMatchObject({ qcm: 2, gaps: 1, doublon: false }); // QCM 2 rejete a l'aveugle, QCM 99 inconnu, trou 2 faux
     const qcms = (await k.db.query(`DOC#${ex.docId}`, 'QCM#')).map((q) => QcmItemSchema.parse(q));
     expect(qcms.map((q) => parseQuestionId(q.questionId).nn)).toEqual([1, 2]);
@@ -134,7 +134,7 @@ describe('parcours complet', () => {
       await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
       const ex = await extract(k.ctx, u.i);
       await quotaConsume(k.ctx, { ...u.i, verify: await fakeVerify(k, ex.docId!) });
-      ids.push((await generate(k.ctx, u.i)).doublon ? 'dup' : 'new');
+      ids.push((await genFin(k.ctx, u.i)).doublon ? 'dup' : 'new');
     }
     expect(ids).toEqual(['new', 'dup']);
   });
@@ -145,16 +145,16 @@ describe('parcours complet', () => {
     await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
     const ex = await extract(k.ctx, u.i);
     await quotaConsume(k.ctx, { ...u.i, verify: await fakeVerify(k, ex.docId!) });
-    await generate(k.ctx, u.i);
+    await genFin(k.ctx, u.i);
     const calls = k.calls.length;
-    expect((await generate(k.ctx, u.i)).qcm).toBe(2);
+    expect((await genFin(k.ctx, u.i)).docId).toBe(ex.docId);
     expect(k.calls.length).toBe(calls);
   });
 });
 
 describe('refus et nettoyage', () => {
   it('document de type autre: refuse, quota rendu, photo supprimee', async () => {
-    const k = await makeCtx(goodScript({ transcription: () => JSON.stringify({ docType: 'autre', text: COURSE_TEXT }) }));
+    const k = await makeCtx(goodScript({ classify: classifyJson({ docType: 'autre' }) }));
     const u = await upload(k);
     await awaitUpload(k.ctx, { ...u.i, token: 't' });
     await scanCheck(k.ctx, u.i);
@@ -167,7 +167,7 @@ describe('refus et nettoyage', () => {
   });
 
   it('moins de 40 mots: refuse et quota rendu', async () => {
-    const k = await makeCtx(goodScript({ transcription: () => JSON.stringify({ docType: 'cours', text: 'Un cours bien trop court.' }) }));
+    const k = await makeCtx(goodScript({ transcription: (pages) => readJson(pages.map((page) => ({ page, lines: ['Un cours bien trop court.'] }))) }));
     const u = await upload(k);
     await awaitUpload(k.ctx, { ...u.i, token: 't' });
     await scanCheck(k.ctx, u.i);
@@ -304,7 +304,7 @@ describe('cout et garde', () => {
     const ex = await extract(k.ctx, u.i);
     await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 30 } }); // L2b a depense 0,30 EUR: plafond depasse
     await fakeVerify(k, ex.docId!);
-    const g = await generate(k.ctx, u.i);
+    const g = await genFin(k.ctx, u.i);
     expect(g).toMatchObject({ qcm: 0, gaps: 0 });
     expect((await job(k, u.jobId)).state).toBe('termine');
   });
@@ -351,7 +351,7 @@ describe('fiches: lecture, suppression, signalement', () => {
     await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
     const ex = await extract(k.ctx, u.i);
     await quotaConsume(k.ctx, { ...u.i, verify: await fakeVerify(k, ex.docId!) });
-    await generate(k.ctx, u.i);
+    await genFin(k.ctx, u.i);
     return { k, docId: ex.docId!, u };
   }
 

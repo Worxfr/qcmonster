@@ -21,7 +21,7 @@ export interface UpdateSpec {
   set?: Record<string, unknown>;
   add?: Record<string, number>;
   /** ADD d'elements a un ensemble de chaines (idempotent). */
-  addSet?: Record<string, string[]>;
+  addSet?: Record<string, (string | number)[]>;
   remove?: string[];
   cond?: Cond;
 }

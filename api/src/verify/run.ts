@@ -1,7 +1,7 @@
 // verify-run: etapes 7 a 10 pour un document (design-v2 4.1, revue B4). Entree {jobId, docId, budgetRestantCentimes}, sortie avec SON cout.
 // Ecrit VERDICT#<nn>, PASSAGE#, CLAIMCACHE#. Ne modifie jamais CLAIM# (ecrit par L2a). Aucun texte de cours dans les journaux.
 import { CostBlockedError, invokeModel, JobBudgetExceededError, type CostStore, type ModelPort } from '../../../shared/bedrock.js';
-import { JOB_COST_CAP_EUR } from '../../../shared/names.js';
+import { jobCapEur } from '../../../shared/names.js';
 import { costEur } from '../../../shared/pricing.js';
 import { log } from '../../../shared/log/index.js';
 import type { VerifyInput, VerifyOutput } from '../../../shared/items.js';
@@ -68,7 +68,7 @@ const chunks = <T>(a: T[], n: number): T[][] => Array.from({ length: Math.ceil(a
 
 export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promise<{ costEur: number }> {
   const { store, search, model } = deps;
-  const capEur = Math.min(input.budgetRestantCentimes / 100, JOB_COST_CAP_EUR);
+  const capEur = Math.min(input.budgetRestantCentimes / 100, jobCapEur(10));
   const existing = await store.listVerdicts(input.docId);
   // Cout deja depense par les tentatives precedentes (porte par les verdicts ecrits): le plafond du job vaut pour le cumul des tentatives.
   let spent = [...existing.values()].reduce((n, v) => n + (v.coutMicros ?? 0), 0) / 1e6;

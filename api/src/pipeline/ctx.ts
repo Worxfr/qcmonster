@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { invokeModel, type CostStore, type ModelPort } from '../../../shared/bedrock.js';
 import { toMicros } from '../../../shared/cost.js';
 import { keys } from '../../../shared/ddb/keys.js';
-import type { Env } from '../../../shared/names.js';
+import { jobCapEur, type Env } from '../../../shared/names.js';
 import type { QuotaDb } from '../../../shared/quota.js';
 import type { Db, Item, ScanStore, Sfn } from './ports.js';
 
@@ -88,6 +88,7 @@ export async function callModel(
     store: ctx.costStore,
     port: ctx.port,
     jobSpentEur: spentEur,
+    jobCapEur: jobCapEur((cur?.pages as number | undefined) ?? 1), // proportionnel aux pages du job: max(0,25 ; 0,15 x pages)
     retryDelaysMs,
   });
   await ctx.db.update(jobKey(job.sid, job.jobId), { add: { coutMicros: toMicros(r.costEur) } });
