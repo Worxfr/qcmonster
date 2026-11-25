@@ -108,8 +108,8 @@ type Http = (ctx: Ctx, e: APIGatewayProxyEventV2) => Promise<APIGatewayProxyStru
 const http = (name: string, h: Http) => async (e: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> => {
   try {
     return await guarded(h)(await context(), e);
-  } catch {
-    log({ step: name, status: 'error' });
+  } catch (e) {
+    log({ step: name, status: 'error', errorCode: (e as { name?: string })?.name }); // nom de la classe d'erreur seulement
     return json(500, { message: 'Erreur interne' });
   }
 };

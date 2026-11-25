@@ -584,6 +584,7 @@ export interface components {
             under15: boolean;
             /** @enum {string} */
             status: "actif" | "suspendu";
+            /** @description Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur */
             pageQuota: number;
         };
         StudentCreateRequest: {
@@ -628,6 +629,7 @@ export interface components {
         StudentUpdateRequest: {
             /** @enum {string} */
             status?: "actif" | "suspendu";
+            /** @description Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur */
             pageQuota?: number;
             /** @enum {string} */
             schoolLevel?: "seconde" | "premiere" | "terminale";

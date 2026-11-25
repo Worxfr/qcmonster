@@ -27,7 +27,7 @@ export function Home() {
                 <p><strong>Niveau {progress.level}</strong> · {progress.xp} XP</p>
                 <Bar pct={lp.pct} label="Progression vers le niveau suivant" />
                 <p className="muted">Encore {lp.remaining} XP pour devenir {progress.level + 1}. {stageName(progress.stage)}.</p>
-                <p><span className="chip">🔥 {progress.streakDays} jour{progress.streakDays > 1 ? 's' : ''} de suite</span> <span className="chip">📄 {progress.pagesRemaining}/{progress.pagesLimit} pages</span></p>
+                <p><span className="chip">🔥 {progress.streakDays} jour{progress.streakDays > 1 ? 's' : ''} de suite</span> <span className="chip">📄 {progress.pagesRemaining} page{progress.pagesRemaining > 1 ? 's' : ''} restante{progress.pagesRemaining > 1 ? 's' : ''} sur {progress.pagesLimit}</span></p>
               </>
             ) : (
               <Loading />

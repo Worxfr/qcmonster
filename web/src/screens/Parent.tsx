@@ -56,7 +56,7 @@ export function Parent() {
                 <div className="grow">
                   <h3>{s.pseudo} {s.status === 'suspendu' && <span className="pill pill-warn">Suspendu</span>}</h3>
                   <p className="muted">Niveau {p.level} · {p.xp} XP · série {p.streakDays} j</p>
-                  <p>Pages : {p.pagesRemaining}/{p.pagesLimit} (quota {s.pageQuota})</p>
+                  <p>Pages restantes ce mois-ci : {p.pagesRemaining} sur {p.pagesLimit} (quota de l'élève : {s.pageQuota})</p>
                   {(p.badges?.length ?? 0) > 0 && (
                     <ul className="badges" aria-label={`Badges de ${s.pseudo}`}>
                       {p.badges!.map((b) => <li key={b} className="got"><span aria-hidden="true">🏅</span> {badgeLabel(b)}</li>)}
@@ -65,9 +65,15 @@ export function Parent() {
                 </div>
               </div>
               <div className="actions">
-                <label>Quota mensuel
-                  <input type="number" min={0} max={50} defaultValue={s.pageQuota} className="num"
-                    onBlur={(e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 0 && v <= 50 && v !== s.pageQuota) void act(() => api.updateStudent(s.studentId, { pageQuota: v })); }} />
+                <label>Quota mensuel (pages, 0 à {dash.familyPagesLimit})
+                  <input type="number" min={0} max={dash.familyPagesLimit} defaultValue={s.pageQuota} className="num"
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (e.target.value === '' || !Number.isInteger(v) || v < 0 || v > dash.familyPagesLimit) {
+                        setError(`Le quota doit être un nombre entier entre 0 et ${dash.familyPagesLimit} (plafond de la famille).`);
+                        e.target.value = String(s.pageQuota);
+                      } else if (v !== s.pageQuota) void act(() => api.updateStudent(s.studentId, { pageQuota: v }));
+                    }} />
                 </label>
                 <button className="btn btn-small" onClick={() => act(() => api.updateStudent(s.studentId, { status: s.status === 'actif' ? 'suspendu' : 'actif' }))}>
                   {s.status === 'actif' ? 'Suspendre' : 'Réactiver'}

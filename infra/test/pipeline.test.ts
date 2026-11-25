@@ -55,6 +55,14 @@ describe('Pipeline (L2a)', () => {
           for (const st of d) expect(JSON.stringify((st as unknown as { Condition: unknown }).Condition)).toContain('dynamodb:LeadingKeys');
         }
       });
+      it('B1: scans-create peut lire le compteur COST#<env> (GetItem seul), et seul le role ecriture le peut', () => {
+        const cost = (re: RegExp) => statements(t, re).filter((x) => JSON.stringify((x as unknown as { Condition?: unknown }).Condition ?? '').includes(`COST#${env}`));
+        const w = cost(/pipelineapiwrite/i);
+        expect(w.length).toBe(1);
+        expect(actions(w)).toEqual(['dynamodb:GetItem']);
+        expect(cost(/pipelineapiread/i)).toEqual([]);
+        expect(cost(/pipelineapidelete/i)).toEqual([]);
+      });
       it('aucune action avec joker, pas de s3:PutObject hors role API', () => {
         const all = (Object.values(t.findResources('AWS::IAM::Policy')) as Pol[]).flatMap((p) => p.Properties.PolicyDocument.Statement);
         expect(actions(all).filter((a) => a.includes('*'))).toEqual([]);
@@ -139,8 +147,10 @@ describe('Pipeline (L2a): relecture PR #14', () => {
           if (as.some((a) => a.startsWith('dynamodb:'))) {
             expect(res).toContain(`table/qcm-${env}`);
             expect(res).not.toContain('"*"');
-            expect((x.Resource as unknown[]).length).toBe(2);
-            expect(res).toContain('index/GSI1');
+            // Exception: le compteur de cout (COST#, GetItem) n'a pas besoin de l'index.
+            const costRead = JSON.stringify((x as unknown as { Condition?: unknown }).Condition ?? '').includes('COST#');
+            expect(Array.isArray(x.Resource) ? x.Resource.length : 1).toBe(costRead ? 1 : 2);
+            if (!costRead) expect(res).toContain('index/GSI1');
           }
           if (as.some((a) => a.startsWith('s3:GetObject') || a === 's3:PutObject' || a === 's3:DeleteObject')) expect(res).toContain('/scans/*');
           if (as.includes('s3:ListBucket')) expect(JSON.stringify(x)).toContain('scans/*');

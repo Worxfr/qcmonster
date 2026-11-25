@@ -730,7 +730,7 @@ components:
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
         under15: { type: boolean }
         status: { type: string, enum: [actif, suspendu] }
-        pageQuota: { type: integer, minimum: 0, maximum: 50 }
+        pageQuota: { type: integer, minimum: 0, maximum: 500, description: "Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur" }
     StudentCreateRequest:
       type: object
       required: [pseudo, schoolLevel, under15, parentalAuthority, policyVersion]
@@ -775,7 +775,7 @@ components:
       description: Le pseudo et under15 ne se modifient pas (supprimer puis recreer l'eleve).
       properties:
         status: { type: string, enum: [actif, suspendu] }
-        pageQuota: { type: integer, minimum: 0, maximum: 50 }
+        pageQuota: { type: integer, minimum: 0, maximum: 500, description: "Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur" }
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
     Dashboard:
       type: object

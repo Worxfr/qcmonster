@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     csp(loadEnv(mode, process.cwd(), 'VITE_')),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt', // bandeau « Nouvelle version » (components/UpdateBanner.tsx): pas de rechargement force en plein envoi de photo
       manifest: {
         name: 'QCMonster',
         short_name: 'QCMonster',
