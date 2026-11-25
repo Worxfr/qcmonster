@@ -17,8 +17,8 @@ export class FetchRefused extends Error {
  * `client/version (contact) bibliotheque/version`. Le contact vient de QCM_UA_CONTACT (adresse de l'equipe).
  */
 export const userAgent = (contact = process.env.QCM_UA_CONTACT): string => {
-  // Repli (adresse de l'equipe du depot) hors production seulement: en prod le contact est obligatoire (handler.ts).
-  const c = contact ?? (process.env.QCM_ENV === 'prod' ? undefined : 'worx@pouf.org');
+  // A3: aucune adresse reelle en repli dans le code. Hors production, une adresse factice (.invalid); en prod le contact est obligatoire.
+  const c = contact ?? (process.env.QCM_ENV === 'prod' ? undefined : 'dev@example.invalid');
   if (!c) throw new Error('QCM_UA_CONTACT obligatoire en production');
   return `QCMonsterVerifyBot/1.0 (${c}) node-fetch`;
 };

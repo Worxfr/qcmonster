@@ -5,7 +5,7 @@
 Pages lues: « API:Etiquette » (mediawiki.org) et la politique de User-Agent de la Fondation Wikimedia.
 - Pas de limite dure en lecture; demander en série plutôt qu'en parallèle; User-Agent descriptif avec contact obligatoire sous peine de blocage; préférer GET; mettre en cache.
 - **Conséquence retenue**: requêtes sérialisées par instance, espacées de 500 ms (`api/src/verify/limits.ts`), `ReservedConcurrentExecutions = 2` (total ≤ 4 requêtes/s, sous la limite de 5 du design), cache `CLAIMCACHE#` 30 jours.
-- **User-Agent fixé**: `QCMonsterVerifyBot/1.0 (<contact>) node-fetch`, le contact vient de `QCM_UA_CONTACT` (défaut: adresse de l'équipe du dépôt).
+- **User-Agent fixé**: `QCMonsterVerifyBot/1.0 (<contact>) node-fetch`, le contact vient de `QCM_UA_CONTACT` (obligatoire en prod; hors prod, repli factice `dev@example.invalid`).
 - Non lu: les pages de limites propres à chaque wiki frère (Wikibooks, Wikiversité, Vikidia). Elles ne sont interrogées que si Wikipédia fr ne renvoie rien, et **leur API n'est pas vérifiée en réel** (design 4.3).
 
 ## Mesures en CI (modèle simulé, aucun appel Bedrock)

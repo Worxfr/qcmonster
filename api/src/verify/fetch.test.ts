@@ -65,6 +65,7 @@ describe('lecture sortante gardee', () => {
       delete process.env.QCM_UA_CONTACT;
       process.env.QCM_ENV = 'dev';
       expect(userAgent()).toMatch(/^QCMonsterVerifyBot\/1\.0 \(.+\) /);
+      expect(userAgent()).toContain('example.invalid'); // A3: jamais l'adresse reelle du proprietaire
     } finally {
       process.env = env;
     }

@@ -17,7 +17,7 @@ import { extract, generate, quotaConsume } from './steps-doc.js';
 
 const need = (name: string): string => process.env[name] ?? (() => { throw new Error(`variable ${name} absente`); })();
 
-async function s3Store(bucket: string): Promise<ScanStore> {
+export async function s3Store(bucket: string): Promise<ScanStore> {
   const { S3Client, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = await import('@aws-sdk/client-s3');
   const { createPresignedPost } = await import('@aws-sdk/s3-presigned-post');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
@@ -28,10 +28,10 @@ async function s3Store(bucket: string): Promise<ScanStore> {
   };
   return {
     async presignPost(o): Promise<PresignedPost> {
-      // Cle `<prefix>${filename}`: la politique impose seulement le prefixe, l'eleve envoie <prefix>0, <prefix>1...
+      // B4: cle EXACTE choisie par le serveur (`eq $key`): un seul objet possible, nom non choisi par le client, 1 octet a `maxBytes`, type fige.
       const p = await createPresignedPost(s3, {
         Bucket: bucket,
-        Key: `${o.prefix}\${filename}`,
+        Key: o.firstKey,
         Expires: o.expiresSec,
         Fields: { 'Content-Type': o.contentType },
         Conditions: [['content-length-range', 1, o.maxBytes], ['eq', '$Content-Type', o.contentType]],
