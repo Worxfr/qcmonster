@@ -59,6 +59,13 @@ describe('stack eval: role OIDC et droits', () => {
     const text = JSON.stringify(pols.map((p) => p.Properties?.PolicyDocument));
     expect(text).toContain('COST#dev');
     for (const bad of ['s3:', 'states:', 'cognito', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:Scan']) expect(text).not.toContain(bad);
+    // N8: ForAllValues seul laisse passer une requete sans cle de partition: la clause Null est obligatoire.
+    const ddb = pols.flatMap((p) => (p.Properties?.PolicyDocument as { Statement: { Action: unknown; Condition?: Record<string, Record<string, unknown>> }[] }).Statement).filter((st) => JSON.stringify(st.Action).includes('dynamodb:'));
+    expect(ddb.length).toBeGreaterThan(0);
+    for (const st of ddb) {
+      expect(st.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']).toEqual(['COST#dev']);
+      expect(st.Condition?.Null).toEqual({ 'dynamodb:LeadingKeys': 'false' });
+    }
     expect(named(evalRunRoleName('dev')).Properties?.ManagedPolicyArns).toBeUndefined(); // aucune politique geree
   });
   it('la fonction n\'a pas d\'adresse publique ni de permission d\'invocation tierce', () => {

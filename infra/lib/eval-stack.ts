@@ -47,7 +47,7 @@ export class EvalStack extends Stack {
     const logGroup = new logs.LogGroup(this, 'Logs', { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
     logGroup.grantWrite(role);
     // Compteur de cout seulement (lecture + ajout), pas de partition de famille, d'eleve ni de fiche.
-    role.addToPolicy(new iam.PolicyStatement({ sid: 'CostCounterOnly', actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem'], resources: [tableArn], conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': [`COST#${envName}`] } } }));
+    role.addToPolicy(new iam.PolicyStatement({ sid: 'CostCounterOnly', actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem'], resources: [tableArn], conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': [`COST#${envName}`] }, Null: { 'dynamodb:LeadingKeys': 'false' } } })); // Null: sans cette clause, ForAllValues laisse passer une requete sans cle (N8)
     // Bedrock: pour chaque modele, le profil d'application (ARN lu dans SSM), et le profil systeme / modele de base seulement a travers ce profil.
     for (const model of ['haiku', 'sonnet'] as const) {
       const systemId = SYSTEM_PROFILES[model];
