@@ -6,6 +6,7 @@ import { signOut } from '../../auth';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
 const sent: unknown[] = [];
+const FILL = 'mot '.repeat(45).trim();
 let jobAfter: Record<string, unknown> | null = null;
 let confirmStatus = 200;
 let trFails = 0;
@@ -15,6 +16,7 @@ function tr(pages: string[][]) {
     jobId: 'J1',
     docType: 'cours',
     pages: pages.map((ss, p) => ({ page: p + 1, sentences: ss.map((text, i) => ({ id: `p${p + 1}-s${i + 1}`, text })) })),
+    suggestedSubject: 'svt',
     photoUrls: pages.map((_, p) => `https://photos.example/p${p + 1}.jpg`),
     photoUrlsExpireAt: '2026-12-01T10:05:00Z',
   };
@@ -93,7 +95,7 @@ describe('écran de relecture', () => {
   });
 
   it('les corrections survivent à un rechargement (sessionStorage) et sont effacées après l\'envoi', async () => {
-    stub(tr([['Une phrase.']]));
+    stub(tr([['Une phrase.', FILL]]));
     const first = await open();
     await userEvent.type(await screen.findByLabelText('Phrase 1'), ' Corrigée.');
     expect(JSON.parse(sessionStorage.getItem('qcm.confirm.J1') ?? '{}')).toEqual({ 'p1-s1': 'Une phrase. Corrigée.' });
@@ -101,7 +103,7 @@ describe('écran de relecture', () => {
     await open();
     expect(await screen.findByLabelText('Phrase 1')).toHaveValue('Une phrase. Corrigée.');
     await userEvent.click(screen.getByRole('button', { name: /vérifie/i }));
-    await vi.waitFor(() => expect(sent).toEqual([{ corrections: [{ id: 'p1-s1', text: 'Une phrase. Corrigée.' }] }]));
+    await vi.waitFor(() => expect(sent).toEqual([{ corrections: [{ id: 'p1-s1', text: 'Une phrase. Corrigée.' }], subject: 'svt' }]));
     expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull();
     expect(localStorage.length).toBe(0);
   });
@@ -137,7 +139,7 @@ describe('écran de relecture', () => {
   });
 
   it('job plus a_confirmer au clic: on affiche son état réel, sans erreur brute', async () => {
-    stub(tr([['Une phrase.']]));
+    stub(tr([['Une phrase.', FILL]]));
     confirmStatus = 409;
     await open();
     await screen.findByLabelText('Phrase 1');
@@ -147,7 +149,7 @@ describe('écran de relecture', () => {
   });
 
   it('erreur d\'envoi lisible, saisies conservées, bouton de nouveau actif', async () => {
-    stub(tr([['Une phrase.']]));
+    stub(tr([['Une phrase.', FILL]]));
     confirmStatus = 500;
     await open();
     await userEvent.type(await screen.findByLabelText('Phrase 1'), '!');

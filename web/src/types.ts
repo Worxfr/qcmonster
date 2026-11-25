@@ -24,3 +24,17 @@ export type Leaderboard = S['Leaderboard'];
 export type ScanCreateResponse = S['ScanCreateResponse'];
 export type Sentence = S['Sentence'];
 export type ReadResult = S['ReadResult'];
+export type ScanList = S['ScanList'];
+export type ScanSummary = S['ScanSummary'];
+export type ScanStatus = S['ScanStatus'];
+export type Cours = S['Cours'];
+export type Folder = S['Folder'];
+export type ConfirmSection = S['ConfirmSection'];
+export type SuggestedSection = S['SuggestedSection'];
+export type Subject = S['Subject'];
+export type ScanQuery = {
+  studentId?: string; subject?: Subject | 'none'; topic?: string; folderId?: string;
+  status?: 'en_cours' | 'a_confirmer' | 'termine' | 'echec'; sort?: 'date' | 'subject' | 'topic' | 'status'; order?: 'asc' | 'desc';
+  limit?: number; cursor?: string;
+};
+export type ScanStage = S['ScanStage'];

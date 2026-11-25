@@ -57,6 +57,7 @@ export function Parent() {
                   <h3>{s.pseudo} {s.status === 'suspendu' && <span className="pill pill-warn">Suspendu</span>}</h3>
                   <p className="muted">Niveau {p.level} · {p.xp} XP · série {p.streakDays} j</p>
                   <p>Pages restantes ce mois-ci : {p.pagesRemaining} sur {p.pagesLimit} (quota de l'élève : {s.pageQuota})</p>
+                  <p><a className="btn btn-small btn-ghost" href={`#/eleve/${encodeURIComponent(s.studentId)}`}>📚 Les cours de {s.pseudo}</a></p>
                   {(p.badges?.length ?? 0) > 0 && (
                     <ul className="badges" aria-label={`Badges de ${s.pseudo}`}>
                       {p.badges!.map((b) => <li key={b} className="got"><span aria-hidden="true">🏅</span> {badgeLabel(b)}</li>)}

@@ -11,3 +11,8 @@ afterEach(() => {
   window.history.replaceState(null, '', '/');
   window.location.hash = '';
 });
+
+if (!URL.createObjectURL) {
+  URL.createObjectURL = () => 'blob:test';
+  URL.revokeObjectURL = () => undefined;
+}
