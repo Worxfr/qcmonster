@@ -88,14 +88,14 @@ export function JobView({ id }: { id: string }) {
   const idx = JOB_STEPS.findIndex((s) => s.state === job.state);
   const failed = ['rejete', 'echec', 'expire'].includes(job.state);
   return (
-    <Card title="Ton cours est en route">
-      <ol className="steps" aria-label="Étapes du traitement">
+    <Card title={failed ? 'Ton cours n\'a pas pu être traité' : 'Ton cours est en route'}>
+      {!failed && <ol className="steps" aria-label="Étapes du traitement">
         {JOB_STEPS.map((s, i) => (
           <li key={s.state} aria-current={i === idx ? 'step' : undefined} className={i < idx ? 'done' : i === idx ? 'now' : ''}>
             <span aria-hidden="true">{i < idx ? '✓' : i === idx ? '⏳' : '○'}</span> {s.label}
           </li>
         ))}
-      </ol>
+      </ol>}
       <div role="status">
         {failed && <p className="error">{job.message ?? (job.state === 'expire' ? 'Le délai est dépassé.' : 'Ce cours n\'a pas pu être traité.')}</p>}
         {job.state === 'termine' && job.docId && <p>🎉 Ta fiche est prête !{job.durationSeconds !== undefined && <span className="muted"> Traitée en {fmtDuration(job.durationSeconds)}.</span>}</p>}

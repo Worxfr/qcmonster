@@ -114,7 +114,14 @@ const http = (name: string, h: Http) => async (e: APIGatewayProxyEventV2): Promi
   }
 };
 /** Etape du workflow: l'erreur remonte a Step Functions (Catch -> fail). */
-const step = <I, O>(f: (ctx: Ctx, i: I) => Promise<O>) => async (i: I): Promise<O> => f(await context(), i);
+const step = <I, O>(f: (ctx: Ctx, i: I) => Promise<O>) => async (i: I): Promise<O> => {
+  try {
+    return await f(await context(), i);
+  } catch (e) {
+    log({ step: process.env.AWS_LAMBDA_FUNCTION_NAME ?? 'step', status: 'error', errorCode: (e as { name?: string })?.name }); // nom de la classe d'erreur seulement, jamais le message ni un contenu
+    throw e;
+  }
+};
 
 export const scansCreateHandler = http('scans-create', scansCreate);
 export const jobsGetHandler = http('jobs-get', jobsGet);

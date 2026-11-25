@@ -22,15 +22,15 @@ export const UPLOAD_TIMEOUT_S = 20 * 60;
 const TRANSCRIBE_CONCURRENCY = 3;
 
 export const MSG = {
-  badFile: 'Fichier non reconnu: envoie une photo JPEG ou PNG',
-  notCourse: 'Ce document ne ressemble pas a un cours: rien ne sera lu',
+  badFile: 'Fichier non reconnu : envoie une photo JPEG ou PNG',
+  notCourse: 'Ce document ne ressemble pas à un cours : rien ne sera lu',
   tooShort: 'Le texte est trop court pour faire une fiche',
   dailyLimit: 'Limite de 10 transcriptions par jour atteinte, reviens demain',
   noClaims: 'Aucune affirmation exploitable dans ce cours',
-  expiredUpload: 'Aucune photo recue, le traitement est annule',
-  expiredConfirm: 'Pas de confirmation apres 30 minutes, la photo est supprimee',
-  budget: 'Le service est en pause pour le moment, reessaie plus tard',
-  failed: 'Le traitement a echoue, reessaie',
+  expiredUpload: 'Aucune photo reçue, le traitement est annulé',
+  expiredConfirm: 'Pas de confirmation après 30 minutes, la photo est supprimée',
+  budget: 'Le service est en pause pour le moment, réessaie plus tard',
+  failed: 'Le traitement a échoué, réessaie',
 } as const;
 
 // ---------------------------------------------------------------- 1. attente d'envoi
