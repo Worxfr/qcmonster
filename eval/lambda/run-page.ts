@@ -52,6 +52,8 @@ export interface PageResult {
   uncounted: number;
   /** Nom de la classe de l'erreur si le pipeline s'est arrete sur une erreur (jamais son message). */
   errorClass?: string;
+  /** Message d'une erreur de SERVICE AWS (Bedrock, DynamoDB...), 300 caracteres au plus, pour diagnostiquer l'acces au modele. Jamais le message d'une autre erreur. */
+  errorDetail?: string;
 }
 
 export const bytesFromBase64 = (b64: string): Uint8Array => {
@@ -145,6 +147,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
   const wf = { sid, jobId };
 
   let errorClass: string | undefined;
+  let errorDetail: string | undefined;
   const finish = async (): Promise<PageResult> => {
     const job = await db.get(jobKey(sid, jobId));
     const part = job && typeof job.docId === 'string' ? await db.query(`DOC#${job.docId}`) : [];
@@ -169,6 +172,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
       costAfter,
       uncounted,
       ...(errorClass ? { errorClass } : {}),
+      ...(errorDetail ? { errorDetail } : {}),
     };
   };
 
@@ -189,6 +193,8 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
     await generate(ctx, wf);
   } catch (e) {
     errorClass = e instanceof Error ? e.constructor.name : 'Erreur';
+    // Seules les erreurs du SDK AWS (elles portent `$metadata`) exposent leur message: il decrit la requete refusee, pas le cours.
+    if (e instanceof Error && '$metadata' in e) errorDetail = `${e.name}: ${e.message}`.slice(0, 300);
   }
   return finish();
 }

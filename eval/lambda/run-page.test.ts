@@ -52,6 +52,12 @@ describe('runPage (pipeline reel, base en memoire)', () => {
     expect(r.errorClass).toBe('Error');
     expect(JSON.stringify(r)).not.toContain('secret');
   });
+  it('erreur de service AWS: son message est rendu (diagnostic), pas celui d\'une erreur ordinaire', async () => {
+    const aws = Object.assign(new Error('The provided model identifier is invalid.'), { name: 'ValidationException', $metadata: { httpStatusCode: 400 } });
+    const failing: ModelPort = { converse: async () => { throw aws; } };
+    const r = await runPage({ models: { haiku: ARN, sonnet: SONNET }, port: failing, costStore: memoryCost(), search }, { pageId: 'synth-svt-01', image: JPEG });
+    expect(r.errorDetail).toBe('ValidationException: The provided model identifier is invalid.');
+  });
   it('plafond de dev atteint: le modele n\'est pas appele', async () => {
     let called = 0;
     const counting: ModelPort = { converse: async (q) => { called++; return port().converse(q); } };
