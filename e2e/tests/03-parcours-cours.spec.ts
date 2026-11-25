@@ -203,6 +203,7 @@ test.describe('Suppression du cours avec ses fiches', () => {
     await fake.reset();
     await login(page, 'eleve');
     await sendPhotos(page, 3);
+    await waitForReview(page);
     await reviewTwoSections(page);
     await waitForFiches(page);
     await page.goto('/#/docs');
@@ -212,5 +213,24 @@ test.describe('Suppression du cours avec ses fiches', () => {
     await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
     await expect(page.getByText('Scanne ton premier cours')).toBeVisible();
     expect((await fake.state()).docs).toBe(0);
+  });
+});
+
+// Cas d'un vrai scan: la lecture propose déjà 2 fiches (coupe avant la page 2), donc la page 1 n'en montre qu'une.
+// L'aide de relecture ne doit ni cliquer « Couper ici » ni attendre: elle garde les 2 fiches proposées.
+test.describe('Relecture avec 2 fiches déjà proposées', () => {
+  test.skip(!isMock, 'Mode mock seulement');
+  test('les 2 fiches proposées sont gardées, réglées et confirmées sans nouvelle coupe', async ({ page }) => {
+    test.setTimeout(45_000);
+    await fake.reset();
+    await fake.suggestTwo();
+    await login(page, 'eleve');
+    await sendPhotos(page, 3);
+    await waitForReview(page);
+    await expect(page.getByText("J'ai proposé 2 fiches")).toBeVisible();
+    await expect(page.getByRole('button', { name: /Couper ici, entre deux pages/ })).toHaveCount(0);
+    await reviewTwoSections(page);
+    await waitForFiches(page);
+    expect((await fake.state()).docs).toBe(2);
   });
 });

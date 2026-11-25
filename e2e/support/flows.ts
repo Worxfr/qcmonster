@@ -21,34 +21,59 @@ export async function waitForReview(page: Page) {
   await expect(page.getByRole('heading', { name: "Vérifie ce que j'ai lu" })).toBeVisible({ timeout: SLOW });
 }
 
+/** Délai maximal de chaque attente à l'intérieur de la relecture (la lecture du scan, elle, s'attend avec waitForReview). */
+const STEP = 30_000;
+
+/** Nombre de fiches proposées pour TOUT le texte: le résumé de l'écran compte toutes les pages, pas seulement celle qui est affichée. */
+async function countFiches(page: Page): Promise<number> {
+  const summary = page.locator('.cf-summary');
+  await expect(summary, "Relecture: le résumé (nombre de phrases et de fiches) n'apparaît pas").toBeVisible({ timeout: STEP });
+  const m = /(\d+) fiches?\s*$/.exec((await summary.innerText()).trim());
+  return m ? Number(m[1]) : 1; // pas de « N fiches » dans le résumé: une seule fiche
+}
+
 /**
- * Relecture: corrige une phrase (la 2e du texte), coupe en 2 fiches entre les pages 1 et 2, règle matière et sujet de chaque fiche.
+ * Relecture: corrige une phrase (la 2e du texte), obtient 2 fiches, règle matière et sujet de chaque fiche, confirme.
+ * Si la lecture propose déjà 2 fiches (cas courant avec un vrai scan), on les garde: aucune coupe n'est ajoutée.
+ * Sinon on coupe entre les pages 1 et 2. Chaque attente dure 30 s au plus. Appeler waitForReview avant.
  * Renvoie le texte corrigé de la phrase, à retrouver dans le cours complet.
  */
 export async function reviewTwoSections(page: Page): Promise<string> {
-  await waitForReview(page);
+  await expect(page.getByRole('heading', { name: "Vérifie ce que j'ai lu" }), "Relecture: l'écran n'est pas affiché (appeler waitForReview avant)").toBeVisible({ timeout: STEP });
   // 1. corriger une phrase (en mock, la 2e phrase contient la faute « chloropastes »)
   const box = page.locator('textarea.cf-text').nth(1);
   const before = await box.inputValue();
   const after = before.includes('chloropastes') ? before.replace('chloropastes', 'chloroplastes') : `${before} (relu)`;
   await box.fill(after);
   await expect(page.getByText('Modifiée')).toHaveCount(1);
-  // 2. couper entre la page 1 et la page 2 (si la lecture n'a pas déjà proposé 2 fiches)
-  if ((await page.getByRole('listitem', { name: /^Fiche \d/ }).count()) < 2) {
-    await page.getByRole('button', { name: /Couper ici, entre deux pages/ }).first().click();
+  // 2. deux fiches: celles proposées par la lecture, sinon une coupe entre la page 1 et la page 2
+  let n = await countFiches(page);
+  if (n < 2) {
+    const cut = page.getByRole('button', { name: /Couper ici, entre deux pages/ }).first();
+    await expect(cut, "Relecture: ni 2 fiches proposées, ni bouton « Couper ici, entre deux pages » sur la page affichée").toBeVisible({ timeout: STEP });
+    await cut.click({ timeout: STEP });
+    n = await countFiches(page);
   }
-  await expect(page.getByRole('listitem', { name: 'Fiche 2' })).toBeVisible();
-  // 3. matière et sujet de chaque fiche (la fiche 1 se règle sur la page 1)
-  const fill = async (n: number, subject: string, topic: string) => {
-    const band = page.getByRole('listitem', { name: `Fiche ${n}` });
-    await band.getByLabel('Matière').selectOption(subject);
-    await band.getByLabel('Sujet').fill(topic);
-  };
-  await fill(2, 'histoire_geo', 'La Révolution française');
-  await page.getByRole('tab', { name: /^Page 1/ }).click();
-  await fill(1, 'svt', 'La photosynthèse');
-  await expect(page.getByRole('button', { name: "C'est bon, fais 2 fiches" })).toBeEnabled();
-  await page.getByRole('button', { name: "C'est bon, fais 2 fiches" }).click();
+  expect(n, `Relecture: ${n} fiches au lieu de 2, le test attend exactement 2 fiches`).toBe(2);
+  // 3. matière et sujet de chaque fiche. Chaque fiche se règle sur la page où elle commence: on parcourt les pages.
+  const subjects: Record<number, [string, string]> = { 1: ['svt', 'La photosynthèse'], 2: ['histoire_geo', 'La Révolution française'] };
+  const done = new Set<number>();
+  const tabs = page.getByRole('tab');
+  const pageCount = (await tabs.count()) || 1;
+  for (let i = 0; i < pageCount && done.size < 2; i++) {
+    if ((await tabs.count()) > 0) await tabs.nth(i).click({ timeout: STEP });
+    for (const k of [1, 2]) {
+      const band = page.getByRole('listitem', { name: `Fiche ${k}`, exact: true });
+      if (done.has(k) || (await band.count()) === 0) continue;
+      await band.getByLabel('Matière').selectOption(subjects[k][0], { timeout: STEP });
+      await band.getByLabel('Sujet').fill(subjects[k][1], { timeout: STEP });
+      done.add(k);
+    }
+  }
+  expect([...done].sort(), 'Relecture: la fiche 1 ou la fiche 2 est introuvable sur les pages').toEqual([1, 2]);
+  const confirm = page.getByRole('button', { name: "C'est bon, fais 2 fiches" });
+  await expect(confirm).toBeEnabled({ timeout: STEP });
+  await confirm.click({ timeout: STEP });
   return after;
 }
 

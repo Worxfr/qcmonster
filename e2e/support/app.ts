@@ -15,6 +15,10 @@ export const fake = {
   async role(role: Role) {
     if (isMock) await post('/__test/role', { role });
   },
+  /** La lecture propose déjà 2 fiches (coupe avant la page 2), comme avec un vrai scan. Remis à zéro par reset(). */
+  async suggestTwo() {
+    if (isMock) await post('/__test/suggest', { on: true });
+  },
   async fail(mode: 's3' | null) {
     if (isMock) await post('/__test/fail', { mode });
   },

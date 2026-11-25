@@ -24,6 +24,8 @@ export default defineConfig({
   reporter: mode === 'dev' ? 'list' : [['list'], ['html', { outputFolder: './.artifacts/report', open: 'never' }]],
   use: {
     baseURL,
+    actionTimeout: 30_000, // sans plafond, un clic sur un bouton absent attend jusqu'a la fin du test
+    navigationTimeout: 60_000,
     viewport: { width: 1280, height: 900 },
     locale: 'fr-FR',
     // Mode dev: ni capture, ni video, ni trace (elles pourraient montrer l'identifiant tape). Activables avec E2E_CAPTURES=1.
