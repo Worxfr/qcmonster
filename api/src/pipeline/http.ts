@@ -54,14 +54,18 @@ export async function callerOf(ctx: Ctx, event: APIGatewayProxyEventV2): Promise
   const c = claimsOf(event);
   const sub = typeof c.sub === 'string' ? c.sub : '';
   const familyId = typeof c['custom:famille_id'] === 'string' ? (c['custom:famille_id'] as string) : '';
-  if (!sub || !ID_RE.test(familyId)) return fail('interdit', 'Compte sans famille');
+  // Un seul message pour tous les refus: il ne dit pas si le compte existe, s'il est suspendu ou quel groupe manque.
+  const refuse = (): never => fail('interdit', 'Acces refuse');
+  if (!sub || !ID_RE.test(familyId)) return refuse();
   const groups = c['cognito:groups'];
-  if (hasGroup(groups, 'parent')) return { sub, familyId, role: 'parent' };
-  if (!hasGroup(groups, 'eleve')) return fail('interdit', 'Role inconnu');
+  const isParent = hasGroup(groups, 'parent');
+  const isStudent = hasGroup(groups, 'eleve');
+  if (isParent && isStudent) return refuse(); // deux groupes = aucun role (comme authOf)
+  if (isParent) return { sub, familyId, role: 'parent' };
+  if (!isStudent) return refuse();
   const students = await ctx.db.query(`FAMILY#${familyId}`, 'STUDENT#');
   const me = students.find((s) => s.cognitoSub === sub);
-  if (!me) return fail('interdit', 'Eleve inconnu');
-  if (me.statut === 'suspendu') return fail('interdit', 'Compte suspendu');
+  if (!me || me.statut === 'suspendu') return refuse();
   return { sub, familyId, role: 'eleve', studentId: me.SK.slice('STUDENT#'.length) };
 }
 

@@ -325,6 +325,19 @@ describe('securite des routes', () => {
     expect((await scansCreate(k.ctx, event({ sub: 'inconnu', body: body1 }))).statusCode).toBe(403);
   });
 
+  it('403 uniforme (I-1) et jeton parent + eleve refuse (I-2)', async () => {
+    const k = await makeCtx(goodScript());
+    const body1 = { pages: 1, contentType: 'image/jpeg' };
+    const msgs = new Set<string>();
+    for (const e of [event({ sub: 'sub-s2', body: body1 }), event({ sub: 'inconnu', body: body1 }), event({ groups: '[]', body: body1 }), event({ family: '', body: body1 })]) {
+      const r = await scansCreate(k.ctx, e);
+      expect(r.statusCode).toBe(403);
+      msgs.add(JSON.parse(r.body as string).message);
+    }
+    expect(msgs.size).toBe(1);
+    expect((await scansCreate(k.ctx, event({ sub: 'sub-p', groups: '[parent eleve]', body: body1 }))).statusCode).toBe(403);
+  });
+
   it('le job d un autre eleve est introuvable', async () => {
     const k = await makeCtx(goodScript());
     const u = await upload(k);

@@ -224,26 +224,29 @@ describe('adaptateur DynamoDB', () => {
 });
 
 describe('photos', () => {
-  it('liste puis supprime par prefixe scans/<jobId>/, pagination, ignore un identifiant invalide, echec = erreur', async () => {
+  it('liste puis supprime par prefixe scans/<eleveId>/ (vraie forme scans/<eleve>/<job>/<n>), pagination, ignore un identifiant invalide, echec = erreur', async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     let page = 0;
     const state: { errors?: unknown[] } = {};
     const client = {
       send: async (c: { constructor: { name: string }; input: Record<string, unknown> }) => {
         calls.push({ name: c.constructor.name, input: c.input });
-        if (c.constructor.name === 'ListObjectsV2Command') return page++ === 0 ? { Contents: [{ Key: 'scans/job1/0' }, {}], NextContinuationToken: 't' } : {};
+        if (c.constructor.name === 'ListObjectsV2Command') return page++ === 0 ? { Contents: [{ Key: 'scans/stu1/job1/0' }, {}], NextContinuationToken: 't' } : {};
         return { Errors: state.errors };
       },
     };
-    await s3Photos('bucket-1', client as never).deleteForJobs(['job1', '../x']);
+    await s3Photos('bucket-1', client as never).deleteForStudent('stu1');
     expect(calls.map((c) => c.name)).toEqual(['ListObjectsV2Command', 'DeleteObjectsCommand', 'ListObjectsV2Command']);
-    expect(calls[0].input.Prefix).toBe('scans/job1/');
-    expect((calls[1].input.Delete as { Objects: unknown[] }).Objects).toEqual([{ Key: 'scans/job1/0' }]);
+    expect(calls[0].input.Prefix).toBe('scans/stu1/');
+    expect((calls[1].input.Delete as { Objects: unknown[] }).Objects).toEqual([{ Key: 'scans/stu1/job1/0' }]);
+    calls.length = 0;
+    await s3Photos('bucket-1', client as never).deleteForStudent('../x');
+    expect(calls).toEqual([]);
     page = 0;
     state.errors = [{ Code: 'AccessDenied' }];
-    await expect(s3Photos('bucket-1', client as never).deleteForJobs(['job1'])).rejects.toThrow('incomplete');
+    await expect(s3Photos('bucket-1', client as never).deleteForStudent('stu1')).rejects.toThrow('incomplete');
     const m = memoryPhotos();
-    await m.deleteForJobs(['a']);
+    await m.deleteForStudent('a');
     expect(m.deleted).toEqual(['a']);
   });
 });
