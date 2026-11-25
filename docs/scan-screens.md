@@ -27,6 +27,16 @@ Libelles des matieres: `maths` Maths, `physique` Physique-chimie, `svt` SVT, `hi
 - « Annuler et recuperer mes pages » reste visible a `envoi` et `a_confirmer` seulement (le serveur refuse ailleurs: 409).
 - Texte permanent: « Tu peux quitter cette page, on garde ta place ». Le suivi est aussi dans la liste (ecran 3).
 
+### Une phrase peut porter plusieurs pages (ecran de relecture, FEAT-E et lot F)
+
+Le scan est lu comme un seul document: une phrase coupee par un saut de page est **une** phrase, `Sentence.pages: [2, 3]`, identifiant `p2-s<n>`, listee sous la page 2 seulement (la page 3 ne la repete pas). Obligations pour `web/src/screens/confirm/*`:
+- Dans l'onglet de la page de depart, la carte porte une etiquette « Suite page 3 » (ou « Pages 2 a 4 ») et une zone de texte unique: l'eleve corrige la phrase entiere, `corrections` garde `{ id, text }` (rien d'autre n'est envoye).
+- Dans l'onglet de la page suivante, afficher en tete une ligne grisee, non modifiable: « La premiere phrase continue la page 2 », avec un bouton « Voir la phrase » qui ouvre la page 2 et met la carte en evidence. Ne pas dupliquer la zone de texte (deux champs pour un id donneraient deux versions). Le compteur « N phrases » compte la phrase une fois; la pastille de corrections de l'onglet de depart la compte; l'onglet suivant n'a pas de pastille pour elle.
+- La photo suit la page de l'onglet; sur une carte a plusieurs pages, un lien « Voir la page 3 » change d'onglet. Pas de zone sur la photo (le contrat n'a pas de coordonnees).
+- Pages dans l'ordre numerique (`pages` du contrat est deja trie; ne pas retrier en texte). Une page peut avoir `sentences: []` (tout son texte continue la phrase precedente): afficher « Cette page prolonge la phrase de la page 2 » et non « Je n'ai rien lu sur cette page ».
+- Sauvegarde locale (`sessionStorage`): cle par `id` de phrase, inchangee. Phrase absente de `pages` (ancien scan) : comportement actuel.
+- Tests front: phrase `pages: [1, 2]` listee une fois, corrigee une fois, envoyee une fois; page 2 vide hors phrase a cheval (message dedie); lien entre onglets; 10 pages (onglets 1 a 10 dans l'ordre, pas 1, 10, 2).
+
 ## 2 bis. Scans a relire: reprise, echeance, accueil
 
 Un scan `a_confirmer` n'est plus perdu quand l'eleve quitte la page: il vit cote serveur (`jobId` = `scanId`) et reste ouvert jusqu'a `status.expiresAt` (12 h apres la fin de la lecture, au lieu de 30 min). Le front ne retient rien (ni `localStorage` ni URL): tout vient de `GET /scans`.

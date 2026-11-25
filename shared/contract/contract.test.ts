@@ -142,4 +142,18 @@ describe('contrat OpenAPI', () => {
     expect(names.find((p) => p.name === 'order')!.description).toMatch(/asc.*subject/);
     expect(names.find((p) => p.name === 'cursor')!.description).toMatch(/memes filtres/);
   });
+  it('contrat 1.3: phrase a cheval sur plusieurs pages (Sentence.pages), additif', () => {
+    const z = zodSchemas.SentenceSchema;
+    expect(z.safeParse({ id: 'p1-s1', text: 'x' }).success).toBe(true); // 1.2 inchange
+    expect(z.safeParse({ id: 'p1-s2', text: 'x', pages: [1, 2] }).success).toBe(true);
+    expect(z.safeParse({ id: 'p1-s2', text: 'x', pages: [] }).success).toBe(false);
+    expect(z.safeParse({ id: 'p1-s2', text: 'x', pages: [0] }).success).toBe(false);
+    expect(z.safeParse({ id: 'p1-s2', text: 'x', pages: [1, 2, 3, 4, 5] }).success).toBe(false);
+    expect(spec.components.schemas.Sentence.required).toEqual(['id', 'text']);
+    expect(spec.components.schemas.Transcription.description).toMatch(/UN document/);
+    const ex = spec.paths['/jobs/{jobId}/transcription'].get.responses['200'].content['application/json'].example;
+    expect(ex.pages[0].sentences.some((x: { pages?: number[] }) => x.pages?.length === 2)).toBe(true);
+    expect(ex.pages.map((p: { page: number }) => p.page)).toEqual([1, 2]);
+    expect(zodSchemas.TranscriptionSchema.safeParse(ex).success).toBe(true);
+  });
 });

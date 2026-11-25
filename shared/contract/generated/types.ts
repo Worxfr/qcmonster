@@ -651,12 +651,19 @@ export interface components {
             pagesRemaining: number;
         };
         Sentence: {
+            /** @description `p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin. */
             id: string;
             text: string;
+            /** @description Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent). */
+            pages?: number[];
         };
+        /** @description Le scan est lu comme UN document (v1.3): pages lues dans l'ordre, avec le contexte des pages voisines; `docType`, `suggestedSubject` et `suggestedTopic` sont decides une seule fois sur l'ensemble; les phrases coupees entre deux pages sont recollees (`Sentence.pages`). `pages` est trie par numero de page croissant (numerique, jamais lexical) et contient une entree par page, meme sans phrase. */
         Transcription: {
             jobId: string;
-            /** @enum {string} */
+            /**
+             * @description Un seul type pour tout le scan
+             * @enum {string}
+             */
             docType: "cours" | "exercice" | "autre";
             pages: {
                 page: number;
@@ -1281,6 +1288,23 @@ export interface operations {
                      *             {
                      *               "id": "p1-s1",
                      *               "text": "La photosynthese produit du dioxygene."
+                     *             },
+                     *             {
+                     *               "id": "p1-s2",
+                     *               "text": "Les plantes vertes utilisent la lumiere du soleil pour fabriquer leur matiere a partir du gaz carbonique de l'air.",
+                     *               "pages": [
+                     *                 1,
+                     *                 2
+                     *               ]
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "page": 2,
+                     *           "sentences": [
+                     *             {
+                     *               "id": "p2-s2",
+                     *               "text": "Ce phenomene a lieu dans les chloroplastes."
                      *             }
                      *           ]
                      *         }

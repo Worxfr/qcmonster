@@ -167,6 +167,10 @@ paths:
                   - page: 1
                     sentences:
                       - { id: p1-s1, text: La photosynthese produit du dioxygene. }
+                      - { id: p1-s2, text: 'Les plantes vertes utilisent la lumiere du soleil pour fabriquer leur matiere a partir du gaz carbonique de l''air.', pages: [1, 2] }
+                  - page: 2
+                    sentences:
+                      - { id: p2-s2, text: Ce phenomene a lieu dans les chloroplastes. }
                 suggestedSubject: svt
                 suggestedTopic: La photosynthese
                 photoUrls: ['https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/0?X-Amz-Signature=example']
@@ -912,14 +916,21 @@ components:
       type: object
       required: [id, text]
       properties:
-        id: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+        id: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "`p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin." }
         text: { type: string, maxLength: 2000 }
+        pages:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { type: integer, minimum: 1, maximum: 10 }
+          description: "Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent)."
     Transcription:
       type: object
       required: [jobId, docType, pages, photoUrls, photoUrlsExpireAt]
+      description: "Le scan est lu comme UN document (v1.3): pages lues dans l'ordre, avec le contexte des pages voisines; `docType`, `suggestedSubject` et `suggestedTopic` sont decides une seule fois sur l'ensemble; les phrases coupees entre deux pages sont recollees (`Sentence.pages`). `pages` est trie par numero de page croissant (numerique, jamais lexical) et contient une entree par page, meme sans phrase."
       properties:
         jobId: { type: string }
-        docType: { type: string, enum: [cours, exercice, autre] }
+        docType: { type: string, enum: [cours, exercice, autre], description: "Un seul type pour tout le scan" }
         pages:
           type: array
           items:

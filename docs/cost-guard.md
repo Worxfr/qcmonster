@@ -58,3 +58,7 @@ Constat (`FEAT-D-report.md` section 4): l'alarme `qcm-<env>-cout-mensuel-10` (st
 ### Risque accepte: plafond proportionnel
 
 Decision du 2026-11-25. Avant, un scan coutait au plus 0,25 EUR quel que soit son nombre de pages (environ 0,025 EUR par page a 10 pages, au prix de fiches « non verifiables »). Apres, il peut coûter jusqu'a 1,50 EUR a 10 pages: la consommation des essais dev peut donc etre plus rapide (jusqu'a 6 fois par scan de 10 pages). Ce qui protege: le plafond dur d'essais de 50 EUR (`DEV_TRIAL_CAP_EUR`, cumul `COST#dev / TOTAL`, arret avant l'appel) et la limite de 10 transcriptions par jour et par eleve; le depassement possible est borne par ce qui est en vol au moment du blocage (voir « La garde n'est pas atomique »). Un scan de 10 pages pesant au plus 3 % du plafond d'essais, le risque est accepte.
+
+### Lecture du scan comme un seul document (FEAT-A)
+
+La transcription passe de N appels d'une image a un appel de 4 images au plus (ou des fenetres de 3 pages plus une page de contexte), suivi d'un appel de texte seul qui decide type, matiere et sujet. Estimation (a mesurer, voir `docs/feat-a-lots.md`): environ 0,002 EUR pour 3 pages, moins de 3 % du plafond `max(0,25 ; 0,15 x pages)`, qui ne change pas. Les bornes de requete (`LIMITS`: 8 192 jetons de sortie, 10 images) restent, avec 4 images au plus par appel; la limite de taille d'image de Bedrock (a verifier, peut-etre 3,75 Mo) est a controler par un appel reel avant la fusion de B1. Une fenetre dont la sortie est tronquee est rejouee page par page (cout d'avant).

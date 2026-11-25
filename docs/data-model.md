@@ -103,3 +103,7 @@ Les nouvelles fonctions n'utilisent que `STUDENT#*` et `FAMILY#*` (deja autorise
 ### Delai de confirmation: 12 h (etait 30 min)
 
 `CONFIRM_TIMEOUT_S = 12 * 3600` dans `shared/scans.ts` est la source unique. Promesse tenue: photo supprimee au plus tard 1 jour apres l'envoi (`docs/decisions.md` D10) = 20 min d'attente d'envoi, 5 min de lecture au plus, 12 h de confirmation (environ 12,5 h); le cycle de vie S3 (1 a 2 jours) reste le filet. Les elements `TEXT#` (7 jours) et le job (7 jours) couvrent deja ce delai; aucun TTL a changer. Une execution deja en cours au deploiement garde ses 30 min (definition figee a son demarrage): son job n'a pas `confirmExpiresAt`, donc aucune echeance n'est affichee pour lui.
+
+### Lecture comme un seul document (contrat 1.3)
+
+`TEXT#<page>` (une entree par page, y compris vide) porte les phrases dans `sentences: [{ id, text, pages? }]`. Une phrase recollee est ecrite **une seule fois**, sous la page de depart, avec `pages` (2 a 4 pages consecutives); un element `TEXT#` d'avant 1.3 n'a pas de `pages`. `docs-read`, `extract` et la numerotation des phrases lisent les phrases une par une: une phrase recollee compte pour une. Les pages sont triees par `Number(page)` (cle `TEXT#<page>` non zero-remplie: le tri lexical de la cle serait faux a partir de 10 pages). Aucun nouvel element ni index; l'etat Step Functions ne contient toujours aucun texte.
