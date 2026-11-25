@@ -16,7 +16,7 @@ import { memoryDb, memoryScanStore, memorySfn } from '../../api/src/pipeline/por
 import { imageFormat, scanCheck, transcribe } from '../../api/src/pipeline/steps.js';
 import { claimStatus, extract, generate } from '../../api/src/pipeline/steps-doc.js';
 import { scansPrefix, transition } from '../../api/src/pipeline/job.js';
-import { verifyRun } from '../../api/src/verify/run.js';
+import { verifyRun, type JudgeTrace } from '../../api/src/verify/run.js';
 import type { SearchPort, Passage } from '../../api/src/verify/search.js';
 import type { CacheEntry, VerdictBody, VerifyStore } from '../../api/src/verify/store.js';
 import { ClaimItemSchema } from '../../shared/items.js';
@@ -41,13 +41,16 @@ export interface PageResult {
   state: string;
   message?: string;
   transcript: string;
-  claims: { text: string; status: 'verifiee' | 'erreur' | 'non_verifiable' | 'non_factuelle' }[];
+  /** `excerpt`: extrait copie de la transcription (controle d'ancrage du pipeline, etape 6). */
+  claims: { text: string; excerpt?: string; status: 'verifiee' | 'erreur' | 'non_verifiable' | 'non_factuelle' }[];
   outputText: string;
   steps: StepStat[];
   costEur: number;
   durationSec: number;
   costBefore: CostTotals;
   costAfter: CostTotals;
+  /** Un enregistrement par appel de jugement (V2): nombres seulement, aucun contenu. */
+  judge: JudgeTrace[];
   /** Appels dont le cout n'a pas pu etre ajoute au compteur (a rattraper). */
   uncounted: number;
   /** Nom de la classe de l'erreur si le pipeline s'est arrete sur une erreur (jamais son message). */
@@ -102,6 +105,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
   const steps = new Map<StepName, StepStat>();
   let phase: StepName = 'transcription';
   let uncounted = 0;
+  const judge: JudgeTrace[] = [];
   const stepOf = (req: ModelRequest): StepName => (req.images?.length ? 'transcription' : req.prompt.includes('<cours>') ? 'extraction' : req.prompt.includes('<affirmations>') ? 'generation' : req.prompt.includes('<questions>') ? 'controle-qcm' : phase);
   // Mesure par etape: le cout est recalcule avec les memes prix que le compteur (shared/pricing.ts).
   const port: ModelPort = {
@@ -152,7 +156,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
     const job = await db.get(jobKey(sid, jobId));
     const part = job && typeof job.docId === 'string' ? await db.query(`DOC#${job.docId}`) : [];
     const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
-    const claims = part.filter((x) => x.SK.startsWith('CLAIM#')).map((c) => ({ text: String(c.texte), status: claimStatus(c, verdicts.get(c.SK.slice('CLAIM#'.length))) }));
+    const claims = part.filter((x) => x.SK.startsWith('CLAIM#')).map((c) => ({ text: String(c.texte), excerpt: typeof (c.origine as { extrait?: unknown } | undefined)?.extrait === 'string' ? (c.origine as { extrait: string }).extrait : undefined, status: claimStatus(c, verdicts.get(c.SK.slice('CLAIM#'.length))) }));
     const fiche = (await db.query(`STUDENT#${sid}`, 'DOC#'))[0];
     const texts = (await db.query(`JOB#${jobId}`, 'TEXT#')).sort((a, b) => Number(a.page) - Number(b.page));
     const transcript = texts.flatMap((t) => (t.sentences as { text: string }[]).map((s) => s.text)).join('\n');
@@ -170,6 +174,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
       durationSec: (Date.now() - t0) / 1000,
       costBefore,
       costAfter,
+      judge,
       uncounted,
       ...(errorClass ? { errorClass } : {}),
       ...(errorDetail ? { errorDetail } : {}),
@@ -186,7 +191,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
     const ex = await extract(ctx, wf);
     if (!ex.ok || !ex.docId) return await finish();
     phase = 'verification';
-    await verifyRun({ store: evalVerifyStore(db), search: deps.search, model: { port, costStore, arn: deps.models.sonnet } }, { jobId, docId: ex.docId, budgetRestantCentimes: ex.budgetRestantCentimes ?? 0 });
+    await verifyRun({ store: evalVerifyStore(db), search: deps.search, model: { port, costStore, arn: deps.models.sonnet }, onTrace: (t) => judge.push(t) }, { jobId, docId: ex.docId, budgetRestantCentimes: ex.budgetRestantCentimes ?? 0 });
     const verifyEur = steps.get('verification')?.costEur ?? 0;
     await db.update(jobKey(sid, jobId), { set: { state: 'generation', verifyCostAdded: true }, add: { coutMicros: toMicros(verifyEur) }, cond: { exists: true, in: { state: ['verification'] } } });
     phase = 'generation';

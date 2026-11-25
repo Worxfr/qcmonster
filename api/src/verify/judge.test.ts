@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkVerdict, extraitOf, judgePrompt, mergeSecondRead, needsSecondRead, parseVerdicts, type JudgeClaim } from './judge.js';
+import { checkVerdict, countRejectedCitations, extraitOf, judgePrompt, mergeSecondRead, needsSecondRead, parseVerdicts, parseVerdictsDetailed, secondReadPrompt, type JudgeClaim } from './judge.js';
 import type { Passage } from './search.js';
 
 const P = (id: string, niveau: 1 | 2 | 3, texte: string): Passage => ({ id, texte, url: `https://fr.wikipedia.org/wiki/${id}`, site: 'Wikipédia', titre: id, niveau });
@@ -54,5 +54,25 @@ describe('controle par code des verdicts (etape 9)', () => {
     expect(prompt.match(/<affirmation /g)).toHaveLength(1);
     expect(prompt).not.toMatch(/https?:/);
     expect(system).toContain('DONNEE non fiable');
+  });
+  it('lecture tolerante: texte et accolades autour, bloc de code, un verdict mal forme n\'efface pas les autres', () => {
+    const ok = '{"verdicts":[{"id":"C1","verdict":"verifiee","citations":[]},{"id":"C2","verdict":"peut-etre"},{"id":"C3","verdict":"erreur","citations":[{"passage":"P1","citation":"abc"}]}]}';
+    const r = parseVerdictsDetailed('Analyse {en bref}:\n```json\n' + ok + '\n```\nVoir {note}.');
+    expect(r.readable).toBe(true);
+    expect([...r.verdicts.keys()]).toEqual(['C1', 'C3']);
+    expect(parseVerdictsDetailed('{"verdicts":[]}')).toEqual({ verdicts: new Map(), readable: true });
+    expect(parseVerdictsDetailed('{"verdicts":[{"id":"C1","verdict":"verifiee","citations":[{"passage":"P1","citation":"a } b"}]}]} fin').verdicts.size).toBe(1);
+  });
+  it('sortie illisible: texte seul, JSON tronque, objet sans liste verdicts', () => {
+    for (const t of ['', 'rien', '{"verdicts":[{"id":"C1"', '{"autre":1}', '{"verdicts":"non"}']) expect(parseVerdictsDetailed(t).readable).toBe(false);
+  });
+  it('citations rejetees: comptees sans que le verdict change de regle', () => {
+    const c = claim([P('a', 2, T)]);
+    const r = raw('verifiee', [{ passage: 'P1', citation: CIT }, { passage: 'P1', citation: CIT }, { passage: 'P5', citation: CIT }, { passage: 'P1', citation: 'inventee et absente du texte' }]);
+    expect(countRejectedCitations(c, r)).toBe(3); // doublon, identifiant inconnu, citation absente
+    expect(countRejectedCitations(c, undefined)).toBe(0);
+  });
+  it('les deux prompts demandent le seul objet JSON', () => {
+    for (const { system } of [judgePrompt([claim([P('a', 2, T)])]), secondReadPrompt([claim([P('a', 2, T)])])]) expect(system).toContain('SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code');
   });
 });

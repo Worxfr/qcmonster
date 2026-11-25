@@ -38,6 +38,9 @@ describe('runPage (pipeline reel, base en memoire)', () => {
     expect(r.claims.some((c) => c.status === 'verifiee')).toBe(true);
     expect(r.transcript).toContain('photosynthese');
     expect(r.uncounted).toBe(0);
+    expect(r.judge.length).toBeGreaterThan(0); // une trace par appel de jugement, nombres seulement
+    expect(r.judge[0]).toMatchObject({ step: 'verify-judge', readable: true, retried: false });
+    expect(r.claims.every((c) => typeof c.excerpt === 'string' && r.transcript.includes(c.excerpt.slice(0, 20)))).toBe(true);
   });
   it('page refusee (document non scolaire): refused, aucune fiche', async () => {
     const script = goodScript({ transcription: () => JSON.stringify({ docType: 'autre', text: 'Bulletin de notes de quelqu un.' }) });

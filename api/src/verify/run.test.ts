@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VerifyInputSchema } from '../../../shared/items.js';
-import { createRateLimiter, minIntervalMs, perInstanceRps, MEDIAWIKI_MAX_RPS_TOTAL, VERIFY_RESERVED_CONCURRENCY } from './limits.js';
+import { CLAIMS_PER_CALL, createRateLimiter, minIntervalMs, perInstanceRps, MEDIAWIKI_MAX_RPS_TOTAL, VERIFY_RESERVED_CONCURRENCY } from './limits.js';
 import { cleanPassage } from './text.js';
 import { createSearchTool, passageId, type Passage, type SearchPort } from './search.js';
 import { fingerprint } from './store.js';
@@ -130,12 +130,12 @@ describe('verify-run', () => {
     const out = await verifyRun(deps, input);
     expect(model.calls.length).toBeGreaterThan(0);
     expect(model.calls.length).toBeLessThan(3);
-    expect(out.nbVerifiees).toBe(25 * model.calls.length);
+    expect(out.nbVerifiees).toBe(CLAIMS_PER_CALL * model.calls.length);
     expect(out.nbNonVerifiables).toBe(60 - out.nbVerifiees);
   });
   it("plafond: l'estimation d'un lot plein refuse l'appel qui depasserait le reste du budget (5 centimes)", async () => {
     const claims = Array.from({ length: 25 }, (_, i) => claim('doc1', i + 1, `Fait numero ${i + 1} du cours de maths.`));
-    const long = (n: number) => mkPassage(`Fait numero ${n} du cours de maths. ` + 'Un long passage de dictionnaire. '.repeat(35), 2, `p${n}`);
+    const long = (n: number) => mkPassage(`Fait numero ${n} du cours de maths. ` + 'Un long passage de dictionnaire. '.repeat(120), 2, `p${n}`);
     const map = Object.fromEntries(claims.map((c) => [c.claim.texte, [long(c.nn), long(c.nn + 100), long(c.nn + 200), long(c.nn + 300)]]));
     const { deps, model } = setup(claims, fixed(map));
     const out = await verifyRun(deps, { ...input, budgetRestantCentimes: 5 });
@@ -154,14 +154,14 @@ describe('verify-run', () => {
       return { ...res, usage: { inputTokens: 20_000, outputTokens: 1_000 } }; // ~0,05 EUR par appel
     };
     await expect(verifyRun(deps, input)).rejects.toThrow('throttling');
-    expect(store.verdicts.size).toBe(25); // 1er lot ecrit
-    expect(store.cache.size).toBe(25);
-    expect(store.passages.size).toBe(25);
+    expect(store.verdicts.size).toBe(CLAIMS_PER_CALL); // 1er lot ecrit
+    expect(store.cache.size).toBe(CLAIMS_PER_CALL);
+    expect(store.passages.size).toBe(CLAIMS_PER_CALL);
     const carried = [...store.verdicts.values()].reduce((a, v) => a + (v.coutMicros ?? 0), 0);
     expect(carried).toBeGreaterThan(40_000);
     // Reprise: seul le 2e lot est rejoue; le cout rendu cumule la tentative perdue (le Job de L2a n'a recu aucune sortie).
     const out = await verifyRun(deps, input);
-    expect(model.calls).toHaveLength(2); // lot 1 (1er essai) + lot 2 (reprise); l'appel en panne n'est pas compte
+    expect(model.calls).toHaveLength(3); // lot 1 (1er essai) + lots 2 et 3 (reprise); l'appel en panne n'est pas compte
     expect(out.nbVerifiees).toBe(30);
     expect(out.coutCentimes).toBeGreaterThanOrEqual(Math.ceil(carried / 10_000));
   });
@@ -196,7 +196,7 @@ describe('verify-run', () => {
   });
   it('estimation: un lot plein de passages ordinaires n est pas refuse a tort (3,5 car/token)', async () => {
     const claims = Array.from({ length: 25 }, (_, i) => claim('doc1', i + 1, `Fait numero ${i + 1} du cours de maths.`));
-    const long = (n: number) => mkPassage(`Fait numero ${n} du cours de maths. ` + 'Un long passage de dictionnaire. '.repeat(35), 2, `p${n}`);
+    const long = (n: number) => mkPassage(`Fait numero ${n} du cours de maths. ` + 'Un long passage de dictionnaire. '.repeat(120), 2, `p${n}`);
     const map = Object.fromEntries(claims.map((c) => [c.claim.texte, [long(c.nn), long(c.nn + 100), long(c.nn + 200), long(c.nn + 300)]]));
     const { deps, model } = setup(claims, fixed(map));
     await verifyRun(deps, input);
@@ -284,11 +284,66 @@ describe('debit MediaWiki (revue C7)', () => {
       const done = Promise.all(Array.from({ length: VERIFY_RESERVED_CONCURRENCY }, worker));
       await vi.runAllTimersAsync();
       await done;
-      expect(times).toHaveLength(36);
+      expect(times).toHaveLength(72); // 2 requetes par recherche: introduction de 3 pages, puis article entier de la premiere
       const max = Math.max(...times.map((t) => times.filter((u) => u >= t && u < t + 1000).length));
       expect(max).toBeLessThanOrEqual(MEDIAWIKI_MAX_RPS_TOTAL);
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('V2: observabilite et relance du juge', () => {
+  const claims = [claim('doc1', 1, 'Molière est mort en 1673 à Paris.'), claim('doc1', 2, 'Le Cid a été écrit par Corneille en 1637.')];
+  const ps = fixed({
+    [claims[0].claim.texte]: [mkPassage('Molière est mort en 1673 à Paris.', 2, 'm')],
+    [claims[1].claim.texte]: [mkPassage('Le Cid a été écrit par Corneille en 1637.', 2, 'c')],
+  });
+  const verdictsJson = (req: { prompt: string }) => JSON.stringify({ verdicts: [...req.prompt.matchAll(/<affirmation id="(C\d+)">/g)].map((m) => ({ id: m[1], verdict: 'non_verifiable', citations: [] })) });
+
+  it('sortie illisible: une relance, puis le verdict est lu; la trace le dit, sans contenu', async () => {
+    const { deps, model } = setup(claims, ps);
+    const base = model.converse.bind(model);
+    let n = 0;
+    model.converse = async (r) => (++n === 1 ? { text: 'Voici mon analyse: tout est correct.', usage: { inputTokens: 100, outputTokens: 10 } } : base(r));
+    const traces: unknown[] = [];
+    const out = await verifyRun({ ...deps, onTrace: (t) => traces.push(t) }, input);
+    expect(model.calls).toHaveLength(1); // le 1er appel est remplace, la relance passe par heuristicModel
+    expect(out.nbVerifiees).toBe(2);
+    expect(traces).toEqual([{ step: 'verify-judge', expected: 2, received: 2, readable: true, retried: true, skipped: false, rejectedCitations: 0 }]);
+  });
+  it("sortie illisible deux fois: non_verifiable, une seule relance (pas de boucle)", async () => {
+    const { deps, model } = setup(claims, ps);
+    let n = 0;
+    model.converse = async () => ({ text: `pas de json ${++n}`, usage: { inputTokens: 100, outputTokens: 10 } });
+    const traces: { readable: boolean; retried: boolean; received: number }[] = [];
+    const out = await verifyRun({ ...deps, onTrace: (t) => traces.push(t) }, input);
+    expect(n).toBe(2);
+    expect(out.nbNonVerifiables).toBe(2);
+    expect(traces[0]).toMatchObject({ readable: false, retried: true, received: 0 });
+  });
+  it('citation inventee: comptee comme rejetee, verdict non_verifiable', async () => {
+    const { deps, model } = setup([claims[0]], ps);
+    model.converse = async () => ({ text: JSON.stringify({ verdicts: [{ id: 'C1', verdict: 'verifiee', citations: [{ passage: 'P1', citation: 'Molière est mort en 1700 à Lyon' }, { passage: 'P7', citation: 'x' }] }] }), usage: { inputTokens: 100, outputTokens: 10 } });
+    const traces: { rejectedCitations: number }[] = [];
+    const out = await verifyRun({ ...deps, onTrace: (t) => traces.push(t) }, input);
+    expect(out.nbNonVerifiables).toBe(1);
+    expect(traces[0].rejectedCitations).toBe(2);
+  });
+  it('sortie lisible mais vide: pas de relance (seule une sortie illisible en declenche une)', async () => {
+    const { deps, model } = setup(claims, ps);
+    model.converse = async (r) => ({ text: '{"verdicts":[]}', usage: { inputTokens: r.prompt.length / 4, outputTokens: 5 } });
+    const traces: { readable: boolean; retried: boolean; received: number }[] = [];
+    await verifyRun({ ...deps, onTrace: (t) => traces.push(t) }, input);
+    expect(traces).toEqual([expect.objectContaining({ readable: true, retried: false, received: 0 })]);
+  });
+  it('lots de CLAIMS_PER_CALL affirmations au plus, une trace par appel', async () => {
+    const many = Array.from({ length: CLAIMS_PER_CALL + 1 }, (_, i) => claim('doc1', i + 1, `Fait numero ${i + 1} du cours de maths.`));
+    const map = Object.fromEntries(many.map((c) => [c.claim.texte, [mkPassage(c.claim.texte, 2, `p${c.nn}`)]]));
+    const { deps, model } = setup(many, fixed(map));
+    model.converse = async (r) => ({ text: verdictsJson(r), usage: { inputTokens: 10, outputTokens: 10 } });
+    const traces: { expected: number }[] = [];
+    await verifyRun({ ...deps, onTrace: (t) => traces.push(t) }, input);
+    expect(traces.map((t) => t.expected)).toEqual([CLAIMS_PER_CALL, 1]);
   });
 });

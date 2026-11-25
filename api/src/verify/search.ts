@@ -4,8 +4,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { guardedGetJson, FetchRefused, type FetchOptions } from './fetch.js';
-import { MAX_PASSAGES_PER_CLAIM } from './limits.js';
-import { buildQuery, cleanPassage, normalize } from './text.js';
+import { EXCERPT_CHARS, FULL_ARTICLE_MAX_BYTES, MAX_PASSAGES_PER_CLAIM } from './limits.js';
+import { buildQuery, cleanPassage, normalize, relevantExcerpt } from './text.js';
 import eduscol from '../../../data/indexes/eduscol.json' with { type: 'json' };
 import nist from '../../../data/indexes/nist.json' with { type: 'json' };
 
@@ -57,18 +57,51 @@ export function mediaWikiUrl(host: string, query: string): string {
   return u.toString();
 }
 
+const FullResponse = z.object({ query: z.object({ pages: z.array(z.object({ extract: z.string().max(2_000_000).optional() })).max(2) }).optional() });
+
+/** URL de lecture d'UN article entier en texte brut (titre venu de la reponse de recherche, encode par URLSearchParams). */
+export function fullArticleUrl(host: string, title: string): string {
+  const u = new URL(`https://${host}/w/api.php`);
+  for (const [k, v] of Object.entries({ action: 'query', format: 'json', formatversion: '2', prop: 'extracts', explaintext: '1', titles: title })) u.searchParams.set(k, v);
+  return u.toString();
+}
+
 const pageUrl = (host: string, title: string): string => `https://${host}/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 
-async function searchWiki(src: WikiSource, query: string, o: FetchOptions): Promise<Passage[]> {
+/**
+ * V2: l'introduction seule ne contient pas toujours le fait (dates et chiffres absents dans 26 a 37 % des cas, E1). Pour l'article le mieux
+ * classe, on lit l'article entier et on garde les phrases les plus proches de l'affirmation (relevantExcerpt). Echec (taille, reseau): on garde l'introduction.
+ */
+async function topArticleExcerpt(src: WikiSource, title: string, query: string, o: FetchOptions, note: (e: unknown) => void): Promise<string | undefined> {
+  try {
+    const parsed = FullResponse.safeParse(await guardedGetJson(fullArticleUrl(src.host, title), { ...o, maxBytes: FULL_ARTICLE_MAX_BYTES }));
+    const article = parsed.success ? parsed.data.query?.pages[0]?.extract : undefined;
+    if (!article) return undefined;
+    const text = cleanPassage(relevantExcerpt(article, query, EXCERPT_CHARS), EXCERPT_CHARS).text;
+    return text.length >= 40 ? text : undefined;
+  } catch (e) {
+    note(e);
+    return undefined;
+  }
+}
+
+async function searchWiki(src: WikiSource, query: string, o: FetchOptions, note: (e: unknown) => void): Promise<Passage[]> {
   const raw = await guardedGetJson(mediaWikiUrl(src.host, query), o);
   const parsed = WikiResponse.safeParse(raw);
   if (!parsed.success) return [];
   const out: Passage[] = [];
+  let topTitle: string | undefined;
   for (const p of [...(parsed.data.query?.pages ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))) {
     const texte = cleanPassage(p.extract ?? '').text;
     if (texte.length < 40) continue;
     const url = pageUrl(src.host, p.title);
+    if (!out.length) topTitle = p.title;
     out.push({ id: passageId(url, texte), texte, url, site: src.site, titre: cleanPassage(p.title).text.slice(0, 200), niveau: src.niveau });
+  }
+  if (src === PRIMARY && out.length && topTitle) {
+    const top = out[0];
+    const ex = await topArticleExcerpt(src, topTitle, query, o, note);
+    if (ex) out[0] = { ...top, texte: ex, id: passageId(top.url, ex) };
   }
   return out;
 }
@@ -120,7 +153,7 @@ export function createSearchTool(o: SearchToolOptions = {}): SearchPort & { refu
       for (const src of [PRIMARY, ...SECONDARY]) {
         if (wiki.length) break; // sources secondaires seulement si la principale ne donne rien
         try {
-          wiki.push(...(await searchWiki(src, query, o)));
+          wiki.push(...(await searchWiki(src, query, o, note)));
         } catch (e) {
           note(e);
         }

@@ -15,8 +15,14 @@ export const FETCH_TIMEOUT_MS = 5000;
 export const FETCH_MAX_BYTES = 64 * 1024;
 /** Passages gardes par affirmation (le modele de jugement en recoit au plus ce nombre). */
 export const MAX_PASSAGES_PER_CLAIM = 4;
-/** Affirmations par appel de jugement (design 4.1: deux appels au-dela de 25). */
-export const CLAIMS_PER_CALL = 25;
+/** Affirmations par appel de jugement. V2: lots plus petits (une sortie illisible ne coute plus que 10 affirmations, et la relance est moins chere). */
+export const CLAIMS_PER_CALL = 10;
+/** Relances d'un appel dont la sortie est illisible, avant de classer les affirmations en non_verifiable. */
+export const JUDGE_RETRIES = 1;
+/** Passage de l'article le mieux classe: phrases les plus proches de l'affirmation, prises dans tout l'article (V2). */
+export const EXCERPT_CHARS = 2000;
+/** Taille maximale de la reponse pour lire un article entier (la limite de 64 Ko reste la regle pour toute autre requete). */
+export const FULL_ARTICLE_MAX_BYTES = 256 * 1024;
 export const CACHE_TTL_DAYS = 30;
 
 /** Espace de temps entre deux requetes sortantes d'une instance, serialisees (MediaWiki recommande des requetes en serie). */

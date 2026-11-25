@@ -20,12 +20,12 @@ Pour chaque affirmation, choisis:
 - "erreur": un passage la contredit explicitement;
 - "non_verifiable": sinon (passage absent, hors sujet, ambigu).
 Pour verifiee et erreur, donne dans "citations" l'identifiant du passage et la citation EXACTE copiee du passage (une phrase, sans la modifier). N'invente aucun identifiant. Pas d'URL.
-Reponds par un seul objet JSON: {"verdicts":[{"id":"C1","verdict":"verifiee","citations":[{"passage":"P1","citation":"..."}]}]}`;
+Reponds par le SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code, sans commentaire. Un verdict par affirmation, dans l'ordre: {"verdicts":[{"id":"C1","verdict":"verifiee","citations":[{"passage":"P1","citation":"..."}]}]}`;
 
 const SECOND_SYSTEM = `Seconde lecture independante. ${DATA_NOTICE}
 Pour chaque affirmation, dis seulement si les passages la CONTREDISENT explicitement ("erreur"), la SOUTIENNENT clairement ("verifiee"), ou ni l'un ni l'autre ("non_verifiable"). Sois strict: un doute vaut "non_verifiable".
 Recopie la phrase exacte du passage qui justifie ta reponse dans "citations". Pas d'URL.
-Reponds par un seul objet JSON: {"verdicts":[{"id":"C1","verdict":"erreur","citations":[{"passage":"P2","citation":"..."}]}]}`;
+Reponds par le SEUL objet JSON, sans aucun texte avant ni apres, sans bloc de code, sans commentaire. Un verdict par affirmation, dans l'ordre: {"verdicts":[{"id":"C1","verdict":"erreur","citations":[{"passage":"P2","citation":"..."}]}]}`;
 
 function render(claims: JudgeClaim[]): string {
   return claims
@@ -35,26 +35,75 @@ function render(claims: JudgeClaim[]): string {
 export const judgePrompt = (claims: JudgeClaim[]) => ({ system: JUDGE_SYSTEM, prompt: render(claims) });
 export const secondReadPrompt = (claims: JudgeClaim[]) => ({ system: SECOND_SYSTEM, prompt: render(claims) });
 
-const Verdicts = z.object({
-  verdicts: z
-    .array(z.object({ id: z.string().max(10), verdict: z.enum(['verifiee', 'erreur', 'non_verifiable']), citations: z.array(z.object({ passage: z.string().max(10), citation: z.string().max(600) })).max(8).default([]) }))
-    .max(100),
-});
-export type RawVerdict = z.infer<typeof Verdicts>['verdicts'][number];
+const Verdict = z.object({ id: z.string().max(10), verdict: z.enum(['verifiee', 'erreur', 'non_verifiable']), citations: z.array(z.object({ passage: z.string().max(10), citation: z.string().max(600) })).max(8).default([]) });
+export type RawVerdict = z.infer<typeof Verdict>;
 
-/** Lit la sortie du modele. Tout ce qui n'est pas du JSON conforme donne une liste vide (donc non_verifiable). */
-export function parseVerdicts(text: string): Map<string, RawVerdict> {
-  const out = new Map<string, RawVerdict>();
-  const a = text.indexOf('{');
-  const b = text.lastIndexOf('}');
-  if (a < 0 || b <= a) return out;
-  try {
-    const r = Verdicts.safeParse(JSON.parse(text.slice(a, b + 1)));
-    if (r.success) for (const v of r.data.verdicts) if (!out.has(v.id)) out.set(v.id, v);
-  } catch {
-    /* sortie illisible: aucun verdict */
+/** Objet JSON qui commence a l'indice `a`, par comptage des accolades (tient compte des chaines): du texte ou une autre accolade apres ne le casse pas. */
+function jsonObjectFrom(text: string, a: number): string | null {
+  let depth = 0;
+  let inStr = false;
+  for (let i = a; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return text.slice(a, i + 1);
   }
-  return out;
+  return null;
+}
+
+export interface ParsedVerdicts {
+  verdicts: Map<string, RawVerdict>;
+  /** Vrai si la sortie contient un objet JSON avec une liste `verdicts` (meme vide ou partielle). */
+  readable: boolean;
+}
+
+/**
+ * Lit la sortie du modele. Un verdict mal forme est ignore SEUL (il ne fait plus perdre les autres). Sortie sans objet JSON exploitable:
+ * `readable` faux, ce qui declenche une relance (run.ts).
+ */
+export function parseVerdictsDetailed(text: string): ParsedVerdicts {
+  const verdicts = new Map<string, RawVerdict>();
+  // Chaque `{` est essaye comme debut (du texte libre peut contenir des accolades avant l'objet), 20 au plus.
+  const starts: number[] = [];
+  for (let i = text.indexOf('{'); i >= 0 && starts.length < 20; i = text.indexOf('{', i + 1)) starts.push(i);
+  for (const a of starts) {
+    const c = jsonObjectFrom(text, a);
+    if (!c) continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(c);
+    } catch {
+      continue;
+    }
+    const list = (json as { verdicts?: unknown } | null)?.verdicts;
+    if (!Array.isArray(list)) continue;
+    for (const item of list.slice(0, 100)) {
+      const r = Verdict.safeParse(item);
+      if (r.success && !verdicts.has(r.data.id)) verdicts.set(r.data.id, r.data);
+    }
+    return { verdicts, readable: true };
+  }
+  return { verdicts, readable: false };
+}
+
+/** Compatibilite: seulement les verdicts. */
+export const parseVerdicts = (text: string): Map<string, RawVerdict> => parseVerdictsDetailed(text).verdicts;
+
+/** Nombre de citations d'un verdict que le controle par code ecarte (identifiant inconnu, citation absente du passage, passage deja cite). Sans contenu. */
+export function countRejectedCitations(claim: JudgeClaim, raw: RawVerdict | undefined): number {
+  if (!raw) return 0;
+  const byAlias = new Map(claim.passages.map((p) => [p.alias, p.passage]));
+  const seen = new Set<string>();
+  let n = 0;
+  for (const c of raw.citations) {
+    const p = byAlias.get(c.passage);
+    if (!p || !isCitationOf(c.citation, p.texte) || seen.has(p.id)) n++;
+    else seen.add(p.id);
+  }
+  return n;
 }
 
 export interface Source {

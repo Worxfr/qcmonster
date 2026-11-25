@@ -104,3 +104,33 @@ describe('tirage de relecture', () => {
     expect(drawSample(items, 50, 1)).not.toEqual(a);
   });
 });
+
+describe("ancrage: l'extrait copié, pas le texte réécrit (V2)", () => {
+  const m = loadManifest();
+  const page = m.pages.find((p) => p.image)!;
+  const ann = loadAnnotation({ manifest: m }, page);
+  const run = (claims: PageRun['claims']): PageInput => ({ page, ann, run: { refused: false, transcript: 'Molière est mort en 1673.\nIl est né à Paris.', claims } });
+  it("une affirmation réécrite dont l'extrait est dans la transcription est ancrée; l'ancienne mesure la compte comme non ancrée", () => {
+    const r = computeReport([run([{ text: "L'auteur du Tartuffe est mort en 1673.", excerpt: 'Molière est mort en 1673', status: 'verifiee' }, { text: 'Il est né à Paris.', excerpt: 'Il est né à Paris', status: 'verifiee' }])], []);
+    expect(r.anchoring.rate).toBe(1);
+    expect(r.anchoringBasis.anchoringOfRewrittenText.rate).toBe(0.5);
+    expect(r.anchoringBasis.claimsWithExcerpt).toBe(2);
+  });
+  it("un extrait absent de la transcription n'est pas ancré; sans extrait on retombe sur le texte", () => {
+    const r = computeReport([run([{ text: 'x', excerpt: 'Racine est mort en 1699', status: 'verifiee' }, { text: 'Il est né à Paris', status: 'verifiee' }])], []);
+    expect(r.anchoring.k).toBe(1);
+    expect(r.anchoringBasis.claimsWithExcerpt).toBe(1);
+  });
+  it('compteurs des appels de jugement: illisibles, relances, verdicts reçus sur attendus, citations rejetées', () => {
+    const i = run([]);
+    i.run.judge = [
+      { step: 'verify-judge', expected: 10, received: 0, readable: false, retried: true, skipped: false, rejectedCitations: 0 },
+      { step: 'verify-judge', expected: 10, received: 9, readable: true, retried: false, skipped: false, rejectedCitations: 3 },
+      { step: 'verify-second', expected: 2, received: 2, readable: true, retried: false, skipped: false, rejectedCitations: 1 },
+    ];
+    const j = computeReport([i], []).judgeCalls;
+    expect(j.judge).toEqual({ calls: 2, unreadable: 1, retried: 1, skipped: 0, claimsExpected: 20, verdictsReceived: 9, citationsRejected: 3 });
+    expect(j.total.citationsRejected).toBe(4);
+    expect(j.second.calls).toBe(1);
+  });
+});
