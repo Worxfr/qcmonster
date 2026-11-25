@@ -13,6 +13,14 @@ export const MAX_FOLDER_SCANS_PER_CALL = 50;
 export const LIST_DEFAULT_LIMIT = 50;
 export const LIST_MAX_LIMIT = 100;
 export const TOPIC_FACETS_MAX = 100;
+/**
+ * Delai de confirmation de l'eleve (photo gardee pendant ce temps): 12 h. Promesse a tenir: photo supprimee au plus tard 1 jour apres l'envoi
+ * (docs/decisions.md D10) = 20 min d'attente d'envoi + lecture (5 min au plus) + 12 h << 24 h. Source unique, lue par la machine d'etats
+ * (infra/lib/pipeline-stack.ts, lot I) et par l'etape `awaitConfirm` (lot B1). Ne pas depasser 20 h.
+ */
+export const CONFIRM_TIMEOUT_S = 12 * 3600;
+/** « Expire bientot »: il reste 2 h ou moins avant l'expiration. */
+export const EXPIRES_SOON_S = 2 * 3600;
 
 export const STAGES = ['envoi', 'lecture', 'a_confirmer', 'fiche', 'verification', 'qcm', 'termine', 'echec'] as const;
 export type Stage = (typeof STAGES)[number];
@@ -75,7 +83,7 @@ export const isFinalStage = (s: Stage): boolean => s === 'termine' || s === 'ech
 const FAIL_MESSAGE = 'Le traitement a échoué, réessaie';
 
 /** Statut detaille d'un job (Job.status et ScanSummary.status). */
-export function statusOfJob(job: ScanItem): components['schemas']['ScanStatus'] {
+export function statusOfJob(job: ScanItem, now: Date = new Date()): components['schemas']['ScanStatus'] {
   const total = Math.min(MAX_PAGES_PER_SCAN, Math.max(1, num(job.pages) ?? 1));
   const stage = stageOf(job);
   const uploaded = Array.isArray(job.uploadedKeys) ? job.uploadedKeys.length : 0;
@@ -88,7 +96,15 @@ export function statusOfJob(job: ScanItem): components['schemas']['ScanStatus'] 
     startedAt: createdAt,
     ...(isFinalStage(stage) && str(job.finishedAt) ? { finishedAt: str(job.finishedAt)! } : {}),
     ...(stage === 'echec' ? { message: str(job.message) ?? FAIL_MESSAGE } : {}),
+    ...expiryOf(job, stage, now),
   };
+}
+
+/** Echeance de la confirmation. Seulement a l'etape a_confirmer et si le job porte `confirmExpiresAt` (ecrit par `awaitConfirm`): un job d'avant 1.3 n'a pas d'echeance affichee (sa machine garde l'ancien delai de 30 min). */
+function expiryOf(job: ScanItem, stage: Stage, now: Date): { expiresAt?: string; expiresSoon?: boolean } {
+  const at = str(job.confirmExpiresAt);
+  if (stage !== 'a_confirmer' || !at || Number.isNaN(Date.parse(at))) return {};
+  return { expiresAt: at, expiresSoon: Date.parse(at) - now.getTime() <= EXPIRES_SOON_S * 1000 };
 }
 
 export type ScanQuery = {
@@ -113,6 +129,8 @@ export interface ListInput {
   /** Dossiers des eleves visibles (jamais ceux d'un autre eleve: le handler ne lit que les partitions autorisees). */
   folders: { studentId: string; folderId: string }[];
   query: ScanQuery;
+  /** Heure du serveur (calcul de `expiresSoon`); injectee pour les tests. */
+  now?: Date;
 }
 
 const sidOf = (it: ScanItem): string => it.PK.replace(/^STUDENT#/, '');
@@ -136,7 +154,7 @@ export function listScans(input: ListInput): ScanList {
     const jobId = job.SK.slice('JOB#'.length);
     const docId = str(job.docId);
     const doc = docId ? docsById.get(docId) : undefined;
-    const status = statusOfJob(job);
+    const status = statusOfJob(job, input.now);
     // Job termine dont la fiche a ete supprimee: on ne montre pas un fantome.
     if (status.stage === 'termine' && !doc) continue;
     if (doc) usedDocs.add(docId!);
@@ -197,6 +215,7 @@ export function listScans(input: ListInput): ScanList {
     topics: [...topicCount.values()].sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic, 'fr')).slice(0, TOPIC_FACETS_MAX),
   };
   const inProgress = entries.filter((e) => !isFinalStage(e.status.stage)).length;
+  const toReview = entries.filter((e) => e.status.stage === 'a_confirmer').length;
 
   const wantTopic = q.topic ? labelKey(q.topic) : undefined;
   const kept = entries.filter((e) => {
@@ -241,6 +260,7 @@ export function listScans(input: ListInput): ScanList {
     items: page.map(({ _topicKey, ...e }) => (void _topicKey, e)),
     ...(next ? { nextCursor: next } : {}),
     inProgress,
+    toReview,
     facets,
   };
 }

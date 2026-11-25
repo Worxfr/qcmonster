@@ -117,4 +117,15 @@ describe('contrat OpenAPI', () => {
     expect(z.ScanCreateRequestSchema.safeParse({ pages: 11, contentType: 'image/jpeg' }).success).toBe(false);
     expect(z.ScanCreateRequestSchema.safeParse({ pages: 2, contentType: 'image/jpeg', contentTypes: ['application/pdf', 'image/png'] }).success).toBe(false);
   });
+  it('contrat 1.3: scans a relire (echeance, expire bientot, compteur)', () => {
+    const st = spec.components.schemas.ScanStatus.properties;
+    expect(st.expiresAt.format).toBe('date-time');
+    expect(st.expiresSoon.type).toBe('boolean');
+    expect(spec.components.schemas.ScanStatus.required).not.toContain('expiresAt'); // facultatif: absent hors a_confirmer et avant 1.3
+    expect(spec.components.schemas.ScanList.required).toContain('toReview');
+    expect(spec.paths['/scans'].get.description).toMatch(/Scans a relire/);
+    expect(spec.paths['/jobs/{jobId}/transcription'].get.description).toMatch(/autant de fois/);
+    const ex = spec.paths['/scans'].get.responses['200'].content['application/json'].example;
+    expect(ex.items.some((i: { status: { stage: string; expiresSoon?: boolean } }) => i.status.stage === 'a_confirmer' && i.status.expiresSoon === false)).toBe(true);
+  });
 });

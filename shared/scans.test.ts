@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BadCursorError, cleanFolderName, cleanTopic, labelKey, listScans, statusOfJob, stageOf, UnknownFolderError, type ScanItem, type ScanQuery } from './scans.js';
+import { CONFIRM_TIMEOUT_S, EXPIRES_SOON_S, BadCursorError, cleanFolderName, cleanTopic, labelKey, listScans, statusOfJob, stageOf, UnknownFolderError, type ScanItem, type ScanQuery } from './scans.js';
 import { FicheItemSchema, FolderItemSchema, JobItemSchema } from './items.js';
 import { keys } from './ddb/keys.js';
 import { deleteStudentTree, type TreeDb, type TreeKey } from './delete-tree.js';
@@ -158,5 +158,41 @@ describe('elements DynamoDB 1.3', () => {
     };
     await deleteStudentTree(db, 'fam', 's1');
     expect(store).toEqual([{ PK: 'STUDENT#s2', SK: 'FOLDER#f9' }]);
+  });
+});
+
+describe('scans a relire: echeance de confirmation', () => {
+  const NOW = new Date('2026-12-01T12:00:00Z');
+  const at = (h: number) => new Date(NOW.getTime() + h * 3600_000).toISOString();
+  const waiting = (id: string, exp?: string, o: Record<string, unknown> = {}) => job(id, { state: 'a_confirmer', ...(exp ? { confirmExpiresAt: exp } : {}), ...o });
+  it('delai de 12 h: dans la promesse « 1 jour au plus » avec 20 min d\'envoi et 5 min de lecture', () => {
+    expect(CONFIRM_TIMEOUT_S).toBe(12 * 3600);
+    expect(20 * 60 + 5 * 60 + CONFIRM_TIMEOUT_S).toBeLessThan(24 * 3600);
+    expect(EXPIRES_SOON_S).toBe(2 * 3600);
+  });
+  it('expiresAt et expiresSoon seulement a a_confirmer', () => {
+    expect(statusOfJob(waiting('a', at(10)), NOW)).toMatchObject({ stage: 'a_confirmer', expiresAt: at(10), expiresSoon: false });
+    expect(statusOfJob(waiting('a', at(2)), NOW).expiresSoon).toBe(true); // pile 2 h: bientot
+    expect(statusOfJob(waiting('a', at(-1)), NOW).expiresSoon).toBe(true); // echeance passee, l'etat n'a pas encore change
+    const other = statusOfJob(job('b', { state: 'transcription', confirmExpiresAt: at(1) }), NOW);
+    expect(other.expiresAt).toBeUndefined();
+    expect(other.expiresSoon).toBeUndefined();
+  });
+  it('scan a_confirmer d\'avant 1.3 (sans confirmExpiresAt): listé, sans echeance affichee', () => {
+    expect(statusOfJob(waiting('old'), NOW).expiresAt).toBeUndefined();
+  });
+  it('liste: toReview compte les a_confirmer, le plus ancien en premier avec status + order=asc', () => {
+    const jobs = [waiting('j2', at(5), { createdAt: '2026-12-01T09:00:00Z' }), waiting('j1', at(1), { createdAt: '2026-12-01T01:00:00Z' }), job('j3', { state: 'transcription' }), job('j4', { state: 'echec' })];
+    const r = listScans({ jobs, docs: [], folders: [], query: { status: 'a_confirmer', sort: 'date', order: 'asc' }, now: NOW });
+    expect(r.items.map((i) => i.scanId)).toEqual(['j1', 'j2']);
+    expect(r.items[0].status.expiresSoon).toBe(true);
+    expect(r.items[1].status.expiresSoon).toBe(false);
+    expect(r.toReview).toBe(2);
+    expect(r.inProgress).toBe(3);
+  });
+  it('apres expiration: echec avec message, plus a relire', () => {
+    const r = listScans({ jobs: [job('j', { state: 'expire', message: 'Pas de confirmation apres 12 heures, la photo est supprimee' })], docs: [], folders: [], query: {}, now: NOW });
+    expect(r.toReview).toBe(0);
+    expect(r.items[0].status).toMatchObject({ stage: 'echec', message: expect.stringMatching(/12 heures/) });
   });
 });

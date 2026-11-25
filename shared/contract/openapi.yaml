@@ -73,6 +73,7 @@ paths:
         Un scan = un job (`scanId` = `jobId`). La liste reunit les jobs encore presents (7 jours) et les fiches (sans limite de duree): un scan termine dont le job a expire reste liste, avec `status.stage: termine`.
         **Eleve**: voit uniquement ses scans. **Parent**: voit ceux de ses eleves (tous, ou un seul avec `studentId`; un eleve d'une autre famille repond 404). Lecture seule pour le parent.
         Les filtres se combinent (ET). `facets` et `inProgress` portent sur tous les scans visibles, sans les filtres, pour construire les menus.
+        **Scans a relire**: un scan `a_confirmer` reste ouvert jusqu'a `status.expiresAt` (12 h apres la fin de la lecture). L'eleve le reprend par `scanId` (= `jobId`) avec `GET /jobs/{jobId}/transcription` puis `POST /jobs/{jobId}/confirm`, depuis n'importe quel appareil connecte au meme compte, apres rechargement ou changement d'ecran: le front n'a rien a retenir. `toReview` compte ces scans, `status=a_confirmer` les liste, `sort=date&order=asc` donne en premier le plus ancien (le plus proche de l'expiration). Passe l'echeance, le scan devient `echec` (`Job.state: expire`) avec un message lisible, visible 7 jours.
         Le front interroge cette route toutes les 3 s tant qu'un scan est `en_cours` (voir docs/scan-screens.md), sans nouvelle ressource AWS.
         Aucun texte de cours dans la reponse, sauf le titre et le sujet (courts).
       parameters:
@@ -108,7 +109,15 @@ paths:
                     pages: 3
                     createdAt: '2026-12-01T11:00:00Z'
                     status: { stage: lecture, pagesDone: 1, pagesTotal: 3, startedAt: '2026-12-01T11:00:00Z' }
-                inProgress: 1
+                  - scanId: 01JEXAMPLE0JOB0000000000AC
+                    studentId: 01JEXAMPLE0STU0000000000AA
+                    subject: svt
+                    topic: La photosynthese
+                    pages: 1
+                    createdAt: '2026-12-01T09:00:00Z'
+                    status: { stage: a_confirmer, pagesDone: 1, pagesTotal: 1, startedAt: '2026-12-01T09:00:00Z', expiresAt: '2026-12-01T21:00:00Z', expiresSoon: false }
+                inProgress: 2
+                toReview: 1
                 facets:
                   subjects: [{ subject: histoire_geo, count: 1 }]
                   topics: [{ topic: La Revolution francaise, count: 1 }]
@@ -139,6 +148,7 @@ paths:
       operationId: getTranscription
       tags: [scans]
       summary: Texte numerote et URL pre-signee de lecture de la photo, 5 min (handler jobs-transcription, L2a)
+      description: "Appelable autant de fois que voulu, depuis n'importe quel appareil de l'eleve, tant que le job est `a_confirmer` (jusqu'a `status.expiresAt`). Les URL de photo sont re-signees a chaque appel. Apres l'echeance: 409 `etat_invalide`."
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       responses:
         '200':
@@ -765,6 +775,8 @@ components:
         pagesTotal: { type: integer, minimum: 1, maximum: 10 }
         startedAt: { type: string, format: date-time, description: Creation du scan }
         finishedAt: { type: string, format: date-time, description: Present aux etapes termine et echec }
+        expiresAt: { type: string, format: date-time, description: "A l'etape a_confirmer seulement: heure ou le scan expire (photo supprimee, pages rendues) si l'eleve ne confirme pas. Absent pour un scan cree avant 1.3." }
+        expiresSoon: { type: boolean, description: "Vrai quand il reste 2 h ou moins avant `expiresAt` (calcule par le serveur). Present avec `expiresAt`." }
         message: { type: string, maxLength: 500, description: "Message lisible pour l'eleve, present a l'etape echec (ex. Le texte est trop court pour faire une fiche)" }
     ScanSummary:
       type: object
@@ -782,11 +794,12 @@ components:
         status: { $ref: '#/components/schemas/ScanStatus' }
     ScanList:
       type: object
-      required: [items, inProgress, facets]
+      required: [items, inProgress, toReview, facets]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/ScanSummary' } }
         nextCursor: { type: string, maxLength: 200 }
         inProgress: { type: integer, minimum: 0, description: "Scans non termines ni en echec (tous, sans filtre): sert a savoir s'il faut continuer d'interroger" }
+        toReview: { type: integer, minimum: 0, description: "Scans a l'etape a_confirmer (tous, sans filtre): « a relire », pour l'accueil" }
         facets:
           type: object
           required: [subjects, topics]

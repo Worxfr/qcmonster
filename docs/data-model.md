@@ -72,6 +72,7 @@ Aucune donnee existante n'est modifiee ni migree: tous les attributs ci-dessous 
 | Job | `folderId` | dossier choisi a la creation ou a la confirmation (copie sur la fiche a la generation) | `scans-create`, `jobs-confirm` |
 | Job | `suggestedSubject`, `suggestedTopic` | proposes par l'appel de transcription (meme appel, quelques tokens en plus, pas d'appel de plus) | `transcribe` |
 | Job | `subjectChoice`, `topicChoice` | choix de l'eleve a la confirmation; priment sur la suggestion et sur `draftSubject` | `jobs-confirm` |
+| Job | `confirmExpiresAt` | echeance de la confirmation (ISO), `awaitingSince` + `CONFIRM_TIMEOUT_S` (12 h, `shared/scans.ts`). Absent: pas d'echeance affichee | `awaitConfirm` |
 | Job | `pagesRead` | pages lues (compteur, `ADD 1` par page transcrite) | `transcribe` |
 | Job | `stage` | `fiche` (extraction) puis `verification`; `generation` vient de l'etat. Absent: deduit de l'etat | `extract` |
 | Fiche | `sujet`, `dossierId`, `pages` | sujet (80 car. max), dossier, nombre de pages. `pages` absent: `max(1, pagesConsommees)` | `generate` (copie du job), `docs-patch`, `folders-api` |
@@ -98,3 +99,7 @@ Seuils de reprise: au-dela de 1000 fiches par eleve ou 300 ms de liste, passer a
 ### Droits IAM necessaires (resume, detail dans docs/feat-a-lots.md)
 
 Les nouvelles fonctions n'utilisent que `STUDENT#*` et `FAMILY#*` (deja autorises par `dynamodb:LeadingKeys`). Seul `folders-api` demande un role neuf (`GetItem`, `Query`, `PutItem`, `UpdateItem`, `DeleteItem` sur ces deux partitions): `writeRole` n'a pas `DeleteItem`, `deleteRole` n'a pas `PutItem` ni `UpdateItem`. Aucun acces S3, Bedrock ni Step Functions de plus.
+
+### Delai de confirmation: 12 h (etait 30 min)
+
+`CONFIRM_TIMEOUT_S = 12 * 3600` dans `shared/scans.ts` est la source unique. Promesse tenue: photo supprimee au plus tard 1 jour apres l'envoi (`docs/decisions.md` D10) = 20 min d'attente d'envoi, 5 min de lecture au plus, 12 h de confirmation (environ 12,5 h); le cycle de vie S3 (1 a 2 jours) reste le filet. Les elements `TEXT#` (7 jours) et le job (7 jours) couvrent deja ce delai; aucun TTL a changer. Une execution deja en cours au deploiement garde ses 30 min (definition figee a son demarrage): son job n'a pas `confirmExpiresAt`, donc aucune echeance n'est affichee pour lui.
