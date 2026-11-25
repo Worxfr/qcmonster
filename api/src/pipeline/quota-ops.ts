@@ -56,8 +56,9 @@ export async function returnQuotaOnce(ctx: Ctx, sid: string, jobId: string): Pro
   const job = await ctx.db.get(jobKey(sid, jobId));
   if (!job || (job.quotaState !== 'reserved' && job.quotaState !== 'consumed')) return;
   if (await ctx.db.get(marker(job, 'consume'))) {
-    await applyQuotaOnce(ctx, job, 'refund');
-    await ctx.db.update(jobKey(sid, jobId), { set: { quotaState: 'refunded' } });
+    // `false` = refus (marqueur `release`) ou deja fait. Le drapeau `refunded` n'est pose que si le rendu a eu lieu ou si son marqueur existe deja.
+    const done = (await applyQuotaOnce(ctx, job, 'refund')) || !!(await ctx.db.get(marker(job, 'refund')));
+    if (done) await ctx.db.update(jobKey(sid, jobId), { set: { quotaState: 'refunded' } });
   } else if (job.quotaState === 'reserved') {
     await releaseQuotaOnce(ctx, sid, jobId);
   }

@@ -118,4 +118,34 @@ describe('rendu des pages apres consommation', () => {
     await failJob(k.ctx, u.i);
     expect(await quota(k)).toMatchObject({ utilise: 1, restant: 199 });
   });
+  it('transaction du rendu en echec: le cours est quand meme supprime, puis la relance rend les pages une fois', async () => {
+    for (const relance of [false, true]) {
+      const k = await makeCtx(goodScript());
+      const u = await verified(k);
+      await quotaConsume(k.ctx, u.i);
+      expect((await k.db.query('STUDENT#s1', `COURS#${u.jobId}#T`)).length).toBeGreaterThan(0);
+      const transact = k.ctx.db.transact.bind(k.ctx.db);
+      k.ctx.db.transact = async () => { throw new Error('DynamoDB indisponible'); };
+      if (relance) await k.db.update(jobKey('s1', u.jobId), { set: { state: 'echec' } });
+      await expect(failJob(k.ctx, u.i)).rejects.toThrow('DynamoDB indisponible');
+      expect(await k.db.query('STUDENT#s1', `COURS#${u.jobId}#T`)).toHaveLength(0);
+      expect(await k.db.query('STUDENT#s1', 'DOC#')).toHaveLength(0);
+      expect(k.s3.objects.size).toBe(0);
+      k.ctx.db.transact = transact;
+      await failJob(k.ctx, u.i);
+      await failJob(k.ctx, u.i);
+      expect(await quota(k)).toMatchObject(settled);
+    }
+  });
+  it('le drapeau refunded suit le rendu, et un release refuse ne change pas le drapeau', async () => {
+    const k = await makeCtx(goodScript());
+    const u = await verified(k);
+    await quotaConsume(k.ctx, u.i);
+    await returnQuotaOnce(k.ctx, 's1', u.jobId);
+    expect((await job(k, u.jobId)).quotaState).toBe('refunded');
+    await k.db.update(jobKey('s1', u.jobId), { set: { quotaState: 'consumed' } });
+    await k.db.remove([{ PK: 'FAMILY#f1', SK: `QUOTAOP#${u.jobId}#refund` }]);
+    await applyQuotaOnce(k.ctx, await job(k, u.jobId), 'release'); // refus: marqueur consume
+    expect((await job(k, u.jobId)).quotaState).toBe('consumed');
+  });
 });

@@ -22,7 +22,7 @@ Etat: `jobId`, `sid` et des booleens/compteurs seulement. Journal niveau ERROR s
 
 Delai global de la machine: 2 h. Chaque tache a son `TimeoutSeconds` (controle 60 s, transcription 360 s, extraction 180 s, verification 960 s, quota 60 s, generation 240 s, filet 60 s); attentes de 20 et 30 min. Un test verifie que le delai global depasse la somme de tous les delais. Pas de Retry automatique sur les appels de modele, les attentes ni `verify-run`; seuls `scan-check`, `quota-consume`, `expire` et `pipeline-fail` en ont un (reprenables). `scan-check`, `transcribe`, `extract`, `await-confirm` et `generate` sont reprenables a la main: une relance continue au lieu de renvoyer un echec.
 
-Quota: `QUOTAOP#<job>#<release|consume>` ecrit dans la meme transaction que les compteurs (une relance ne double rien et n'oublie rien).
+Quota: `QUOTAOP#<job>#<release|consume|refund>` ecrit dans la meme transaction que les compteurs (une relance ne double rien et n'oublie rien).
 
 ## Ecritures (un type, un ecrivain)
 
