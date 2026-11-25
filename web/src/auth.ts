@@ -1,5 +1,5 @@
-import { AuthenticationDetails, CognitoUser, CognitoUserPool, type CognitoRefreshToken } from 'amazon-cognito-identity-js';
-import { CONFIG_ERROR, COGNITO_CLIENT_ID, COGNITO_POOL_ID, MOCK_AUTH } from './env';
+import { AuthenticationDetails, CognitoUser, CognitoUserAttribute, CognitoUserPool, type CognitoRefreshToken } from 'amazon-cognito-identity-js';
+import { CONFIG_ERROR, COGNITO_CLIENT_ID, COGNITO_SIGNUP_CLIENT_ID, COGNITO_POOL_ID, MOCK_AUTH } from './env';
 
 export type MockRole = 'parent' | 'eleve';
 export type SignInResult = { kind: 'ok' } | { kind: 'mfa'; confirm: (code: string) => Promise<void> };
@@ -83,4 +83,104 @@ export function signOut(): void {
   if (MOCK_AUTH) sessionStorage.removeItem(ROLE_KEY);
   else getPool().getCurrentUser()?.signOut();
   SIGNED_OUT.dispatchEvent(new Event('out'));
+}
+
+// --- Inscription du parent et mot de passe oublie (client -signup, sans secret, sans flux de connexion) ---
+// Les messages ne disent jamais si un compte existe, ni pourquoi un code d'invitation est refuse (« invalide ou expire »).
+export class AuthFlowError extends Error {}
+const fail = (m: string) => new AuthFlowError(m);
+const codeOf = (e: unknown) => (e as { code?: string; name?: string } | null)?.code ?? (e as { name?: string } | null)?.name ?? '';
+const GENERIC = "Ça n'a pas marché. Vérifie ce que tu as écrit et réessaie dans un instant.";
+const WAIT = 'Trop d\'essais. Attends quelques minutes avant de réessayer.';
+const BAD_CODE = 'Code incorrect ou expiré.';
+const BAD_PASSWORD = 'Mot de passe refusé : 12 caractères ou plus, avec une majuscule, une minuscule et un chiffre.';
+const MOCK_CODE = '123456';
+const MOCK_BAD_INVITE = 'invalide'; // mock: tout code commencant ainsi est refuse
+
+let signupPool: CognitoUserPool | undefined;
+const getSignupPool = () => (signupPool ??= new CognitoUserPool({ UserPoolId: COGNITO_POOL_ID, ClientId: COGNITO_SIGNUP_CLIENT_ID, Storage: window.sessionStorage }));
+const signupUser = (username: string) => new CognitoUser({ Username: username, Pool: getSignupPool(), Storage: window.sessionStorage });
+
+const PENDING_KEY = 'qcm.pendingSignup';
+/** Identifiant technique du compte en attente de confirmation (pas un secret, ni l'e-mail): permet de reprendre apres un rechargement. */
+export const pendingSignup = (): string | null => sessionStorage.getItem(PENDING_KEY);
+export const clearPendingSignup = () => sessionStorage.removeItem(PENDING_KEY);
+
+/** Identifiant interne aleatoire: l'e-mail sert a se connecter (alias), le pool interdit un identifiant au format e-mail. */
+function newUsername(): string {
+  const b = crypto.getRandomValues(new Uint8Array(10));
+  return 'p' + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+/** Cree le compte parent. Renvoie l'identifiant interne a garder pour la confirmation. */
+export async function signUpParent(email: string, password: string, inviteCode: string): Promise<string> {
+  const username = newUsername();
+  if (MOCK_AUTH) {
+    if (inviteCode.startsWith(MOCK_BAD_INVITE)) throw fail("Code d'invitation invalide ou expiré.");
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      getSignupPool().signUp(username, password, [new CognitoUserAttribute({ Name: 'email', Value: email })], [], (err) => (err ? reject(err) : resolve()), { inviteCode });
+    }).catch((e) => {
+      const c = codeOf(e);
+      if (c === 'UserLambdaValidationException' || c === 'UnexpectedLambdaException') throw fail("Code d'invitation invalide ou expiré.");
+      if (c === 'InvalidPasswordException') throw fail(BAD_PASSWORD);
+      if (c === 'TooManyRequestsException' || c === 'LimitExceededException') throw fail(WAIT);
+      throw fail(GENERIC);
+    });
+  }
+  sessionStorage.setItem(PENDING_KEY, username);
+  return username;
+}
+
+export async function confirmSignUpParent(username: string, code: string): Promise<void> {
+  if (MOCK_AUTH) {
+    if (code !== MOCK_CODE) throw fail(BAD_CODE);
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      signupUser(username).confirmRegistration(code, false, (err) => (err ? reject(err) : resolve()));
+    }).catch((e) => {
+      const c = codeOf(e);
+      if (c === 'CodeMismatchException' || c === 'ExpiredCodeException') throw fail(BAD_CODE);
+      if (c === 'TooManyRequestsException' || c === 'LimitExceededException' || c === 'TooManyFailedAttemptsException') throw fail(WAIT);
+      throw fail(GENERIC);
+    });
+  }
+  clearPendingSignup();
+}
+
+export async function resendSignUpCode(username: string): Promise<void> {
+  if (MOCK_AUTH) return;
+  await new Promise<void>((resolve, reject) => {
+    signupUser(username).resendConfirmationCode((err) => (err ? reject(err) : resolve()));
+  }).catch((e) => {
+    const c = codeOf(e);
+    throw fail(c === 'TooManyRequestsException' || c === 'LimitExceededException' ? WAIT : GENERIC);
+  });
+}
+
+/** Demande un code par e-mail. Reussit toujours en apparence (compte inconnu, e-mail non verifie): seule la limite d'essais est dite. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  if (MOCK_AUTH) return;
+  await new Promise<void>((resolve, reject) => {
+    signupUser(email).forgotPassword({ onSuccess: () => resolve(), onFailure: reject, inputVerificationCode: () => resolve() });
+  }).catch((e) => {
+    const c = codeOf(e);
+    if (c === 'TooManyRequestsException' || c === 'LimitExceededException') throw fail(WAIT);
+    // tout le reste (compte inconnu, e-mail non verifie, eleve sans e-mail): meme reponse qu'un succes
+  });
+}
+
+export async function resetPassword(email: string, code: string, password: string): Promise<void> {
+  if (MOCK_AUTH) {
+    if (code !== MOCK_CODE) throw fail(BAD_CODE);
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    signupUser(email).confirmPassword(code, password, { onSuccess: () => resolve(), onFailure: reject });
+  }).catch((e) => {
+    const c = codeOf(e);
+    if (c === 'InvalidPasswordException') throw fail(BAD_PASSWORD);
+    if (c === 'TooManyRequestsException' || c === 'LimitExceededException' || c === 'TooManyFailedAttemptsException') throw fail(WAIT);
+    throw fail(BAD_CODE); // code faux, expire ou compte inconnu: meme message
+  });
 }

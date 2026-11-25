@@ -4,17 +4,19 @@ import { isActivationRoute } from './activation';
 import { AppContext } from './app-context';
 import { isSignedIn, mockRole, onSignedOut, signOut } from './auth';
 import { ErrorBox, Loading } from './components/ui';
-import { MOCK_AUTH } from './env';
+import { MOCK_AUTH, SIGNUP_ENABLED } from './env';
 import { errMsg } from './hooks';
 import { useRoute } from './router';
 import { Activate } from './screens/Activate';
 import { CreateFamily } from './screens/CreateFamily';
 import { DocView as Doc } from './screens/Doc';
+import { ForgotPassword } from './screens/ForgotPassword';
 import { Game } from './screens/Game';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { Parent } from './screens/Parent';
 import { Policy } from './screens/Policy';
+import { Signup } from './screens/Signup';
 import { JobView, Scan } from './screens/Scan';
 import { Quiz } from './screens/Quiz';
 import type { Me, Progress } from './types';
@@ -26,6 +28,8 @@ export function App() {
   const route = useRoute();
   if (route === '/politique') return <Policy />; // lisible sans connexion
   if (activating) return <Activate onDone={() => setActivating(false)} />;
+  if (!signed && SIGNUP_ENABLED && route === '/inscription') return <Signup onDone={() => setSigned(true)} />;
+  if (!signed && SIGNUP_ENABLED && route === '/mot-de-passe-oublie') return <ForgotPassword />;
   if (!signed) return <Login onDone={() => setSigned(true)} />;
   return <Shell />;
 }

@@ -17,4 +17,5 @@ const get = (stack, key) => {
 process.stdout.write(`VITE_API_URL=${get('api', 'ApiUrl')}` + '\n');
 process.stdout.write(`VITE_COGNITO_POOL_ID=${get('auth', 'UserPoolId')}` + '\n');
 process.stdout.write(`VITE_COGNITO_CLIENT_ID=${get('auth', 'WebClientId')}` + '\n');
+process.stdout.write(`VITE_COGNITO_SIGNUP_CLIENT_ID=${get('auth', 'SignupClientId')}` + '\n');
 process.stdout.write(`SITE_URL=${get('web', 'SiteUrl')}` + '\n');
