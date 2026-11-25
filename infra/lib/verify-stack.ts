@@ -6,7 +6,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
-import { fn, ssmParam, stackName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
+import { fn, METRIC_NAMESPACE, ssmParam, stackName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
 import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { VERIFY_RESERVED_CONCURRENCY } from '../../api/src/verify/limits.js';
 
@@ -50,6 +50,9 @@ export class VerifyStack extends Stack {
     // ce role POURRAIT ecrire CLAIM#. « Jamais CLAIM# » repose sur le code (store.ts, teste), pas sur IAM. A revoir si une table dediee aux verdicts est creee.
     role.addToPolicy(new iam.PolicyStatement({ sid: 'WriteVerdictsPassagesCache', actions: ['dynamodb:PutItem'], resources: [tableArn], conditions: leading('DOC#*', 'PASSAGE#*', 'CLAIMCACHE#*') }));
     role.addToPolicy(new iam.PolicyStatement({ sid: 'AddCost', actions: ['dynamodb:UpdateItem'], resources: [tableArn], conditions: leading(`COST#${envName}`) }));
+
+    // Alarme de cout de 10 EUR: publie le total du mois apres chaque ecriture du compteur. L'action n'accepte pas de ressource; la condition fixe l'espace de noms.
+    role.addToPolicy(new iam.PolicyStatement({ sid: 'PublishCostMetric', actions: ['cloudwatch:PutMetricData'], resources: ['*'], conditions: { StringEquals: { 'cloudwatch:namespace': METRIC_NAMESPACE } } }));
 
     // Bedrock: le profil d'application (ARN exact lu dans SSM) et le profil systeme / modele de base qu'il copie, uniquement via ce profil.
     const systemId = SYSTEM_PROFILES.sonnet;

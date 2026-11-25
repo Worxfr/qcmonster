@@ -144,3 +144,23 @@ describe.each(ENVS)('M2: seuls les roles de traitement appellent Bedrock (%s)', 
     expect(grantsBedrockInvoke({ Effect: 'Allow', Action: 'bedrock:GetInferenceProfile' })).toBe(false);
   });
 });
+
+// FEAT-A (lot I), alarme de 10 EUR: les deux roles qui ecrivent le compteur de cout publient la metrique, aucun autre role n'a cloudwatch:*.
+describe.each(ENVS)('Metrique de cout (%s)', (env) => {
+  it("PutMetricData limite a l'espace de noms QCMonster, sur pipeline-role et verify-role seulement", () => {
+    const holders: string[] = [];
+    for (const { t } of templates(env)) {
+      const names = new Map(Object.entries(t.findResources('AWS::IAM::Role')).map(([id, r]) => [id, (r as { Properties: { RoleName?: string } }).Properties.RoleName ?? id]));
+      for (const p of Object.values(t.findResources('AWS::IAM::Policy')) as { Properties: { Roles: { Ref: string }[]; PolicyDocument: { Statement: Stmt[] } } }[]) {
+        for (const st of statementsOf(p.Properties)) {
+          if (!actions(st).some((a) => /^cloudwatch:/i.test(a))) continue;
+          expect(actions(st)).toEqual(['cloudwatch:PutMetricData']);
+          expect(st.Resource).toBe('*');
+          expect(JSON.stringify(st.Condition)).toBe(JSON.stringify({ StringEquals: { 'cloudwatch:namespace': 'QCMonster' } }));
+          holders.push(...p.Properties.Roles.map((r) => names.get(r.Ref)!));
+        }
+      }
+    }
+    expect(holders.sort()).toEqual([`qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`]);
+  });
+});
