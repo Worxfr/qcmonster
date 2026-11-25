@@ -37,6 +37,8 @@ export const keys = {
   costTotal: (env: Env): Key => ({ PK: `COST#${env}`, SK: 'TOTAL' }),
   /** code = code d'invitation en clair; seul son hache est stocke. */
   invite: (code: string): Key => ({ PK: `INVITE#${sha256(code)}`, SK: 'META' }),
+  /** Compteur et audit des codes crees par un administrateur: un element par code et par jour (n = 1..limite). actor = hache du `sub`, jamais le code. */
+  inviteAudit: (actor: string, date: string, n: number): Key => ({ PK: `INVITE#AUDIT#${actor}#${date}`, SK: `N#${String(n).padStart(2, '0')}` }),
   /** token = jeton d'activation en clair; seul son hache est stocke. */
   activation: (token: string): Key => ({ PK: `ACTIVATION#${sha256(token)}`, SK: 'META' }),
 };

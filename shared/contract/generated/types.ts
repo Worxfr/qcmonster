@@ -381,6 +381,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cree un code d'invitation parent a usage unique (handler admin-invitations, A1). Reserve aux comptes du groupe Cognito `admin`.
+         * @description Autorisation cote serveur: le jeton doit porter le groupe `admin` (`cognito:groups`), sinon **403 `interdit`** (meme reponse pour un parent, un eleve ou un jeton sans groupe).
+         *     Le code (128 bits, 32 caracteres hexadecimaux) n'est renvoye **qu'une fois**, dans cette reponse: seul son hache est stocke et il n'est jamais journalise.
+         *     Limite: 20 codes par jour (UTC) et par administrateur, au-dela **429 `quota_epuise`**. Pas de corps de requete.
+         */
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -583,6 +605,14 @@ export interface components {
             /** @constant */
             consent: true;
             policyVersion: components["schemas"]["PolicyVersion"];
+        };
+        InvitationCreated: {
+            /** @description Code d'invitation en clair */
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Codes restants aujourd'hui pour cet administrateur. */
+            remainingToday: number;
         };
         ActivationLink: {
             /** Format: uri */
@@ -1713,6 +1743,49 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Code cree (a transmettre au parent, non reaffichable) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "0123456789abcdef0123456789abcdef",
+                     *       "createdAt": "2026-12-01T09:00:00.000Z",
+                     *       "remainingToday": 19
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InvitationCreated"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description Limite quotidienne de codes atteinte */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "quota_epuise",
+                     *       "message": "Limite de 20 codes par jour atteinte"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }

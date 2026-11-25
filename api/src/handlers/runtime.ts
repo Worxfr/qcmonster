@@ -1,7 +1,8 @@
 // Assemblage des dependances reelles des Lambda L3. Lu a la premiere invocation (pas a l'import) pour que les tests importent sans environnement.
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import type { InviteDeps } from '../admin/invitations.js';
 import { dynamoTreeDb } from '../../../shared/delete-tree.js';
 import { ENVS, type Env } from '../../../shared/names.js';
 import { dynamoQuotaDb } from '../../../shared/quota.js';
@@ -35,5 +36,24 @@ export function familyDeps(): FamilyDeps {
     photos: process.env.SCANS_BUCKET ? s3Photos(process.env.SCANS_BUCKET) : { deleteForJobs: () => Promise.reject(new Error('SCANS_BUCKET manquant')) },
     tree: dynamoTreeDb(client(), need('TABLE_NAME')),
     webOrigin: process.env.WEB_ORIGIN ?? '',
+  };
+}
+
+/** Invitations (administrateur): PutItem conditionnel seulement, le role IAM n'a pas d'autre droit. */
+export function inviteDeps(): InviteDeps {
+  const table = need('TABLE_NAME');
+  return {
+    now: () => new Date(),
+    db: {
+      async putNew(item) {
+        try {
+          await client().send(new PutCommand({ TableName: table, Item: item, ConditionExpression: 'attribute_not_exists(PK)' }));
+          return true;
+        } catch (e) {
+          if ((e as { name?: string }).name === 'ConditionalCheckFailedException') return false;
+          throw e;
+        }
+      },
+    },
   };
 }

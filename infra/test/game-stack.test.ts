@@ -60,7 +60,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 
   it('moindre privilege: ressources nommees, jamais de joker, rien sur Bedrock, roles distincts du traitement', () => {
     const byRole = statementsByRole(t);
-    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'manage', 'play', 'read'].map((k) => `qcm-${env}-game-${k}-role`).sort());
+    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'invite', 'manage', 'play', 'read'].map((k) => `qcm-${env}-game-${k}-role`).sort());
     for (const [role, stmts] of Object.entries(byRole)) {
       expect(processingRoleNames(env)).not.toContain(role);
       for (const s of stmts) {
@@ -78,7 +78,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
   it('DynamoDB: chaque instruction est limitee a des partitions (dynamodb:LeadingKeys)', () => {
     const byRole = statementsByRole(t);
     const leading = (k: string) => (byRole[`qcm-${env}-game-${k}-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('dynamodb:'))).map((s) => (s as unknown as { Condition?: Record<string, Record<string, string[]>> }).Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']);
-    for (const k of ['read', 'play', 'account', 'manage', 'admin', 'activation']) for (const l of leading(k)) expect(l, k).toBeDefined();
+    for (const k of ['read', 'play', 'account', 'manage', 'admin', 'activation', 'invite']) for (const l of leading(k)) expect(l, k).toBeDefined();
     // La route publique n'atteint que les liens d'activation et la famille (lecture de l'eleve).
     expect(leading('activation').flat().sort()).toEqual(['ACTIVATION#*', 'FAMILY#*']);
     expect(leading('read').flat()).not.toContain('ACTIVATION#*');
@@ -109,6 +109,17 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
     for (const k of ['read', 'play', 'account', 'manage', 'activation']) expect(ddb(k)).not.toContain('dynamodb:BatchWriteItem');
   });
 
+  it('A1: le role des invitations n\'a que dynamodb:PutItem sur INVITE#*, ni Cognito, ni lecture, ni autre partition', () => {
+    const st = statementsByRole(t)[`qcm-${env}-game-invite-role`] ?? [];
+    const ddb = st.filter((s) => actions(s).some((a) => a.startsWith('dynamodb:')));
+    expect(ddb).toHaveLength(1);
+    expect(actions(ddb[0])).toEqual(['dynamodb:PutItem']);
+    expect((ddb[0] as unknown as { Condition: Record<string, Record<string, string[]>> }).Condition['ForAllValues:StringLike']['dynamodb:LeadingKeys']).toEqual(['INVITE#*']);
+    expect(st.flatMap(actions).filter((a) => !a.startsWith('dynamodb:') && !a.startsWith('logs:'))).toEqual([]);
+    const fn = (Object.values(t.findResources('AWS::Lambda::Function')) as { Properties: { FunctionName: string; Environment: { Variables: Record<string, unknown> } } }[]).find((f) => f.Properties.FunctionName === `qcm-${env}-admin-invitations`);
+    expect(Object.keys(fn?.Properties.Environment.Variables ?? {}).sort()).toEqual(['QCM_ENV', 'TABLE_NAME']);
+  });
+
   it('photos: le role de suppression ne liste et n\'efface que sous scans/', () => {
     const s3 = (statementsByRole(t)[`qcm-${env}-game-admin-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('s3:')));
     expect(s3.flatMap(actions).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket']);
@@ -123,7 +134,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 });
 
 describe('Api: les routes du lot L3 pointent vers les fonctions de la stack Game', () => {
-  it('13 handlers en owner game: aucun squelette, une integration par handler, route d\'activation sans JWT', () => {
+  it('les handlers en owner game: aucun squelette, une integration par handler, route d\'activation sans JWT', () => {
     const api = Template.fromStack(buildApp('dev', 'test@example.invalid').node.findChild(stackName('dev', 'api')) as never);
     const mine = new Set(GAME_HANDLERS.map((h) => h.name));
     expect(ROUTES.filter((r) => mine.has(r.handler)).every((r) => r.owner === 'game')).toBe(true);

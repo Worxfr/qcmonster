@@ -76,6 +76,17 @@ export function requireStudent(a: Auth): StudentCtx {
   return { sub: a.sub, studentId: a.username, familyId: a.familyId };
 }
 
+/**
+ * Administrateur du site: le jeton porte le groupe `admin` (lu cote serveur, jamais depuis le corps). Un compte eleve ne l'est jamais.
+ * Refus: 403 generique, identique pour parent, eleve et jeton sans groupe.
+ */
+export function requireAdmin(event: APIGatewayProxyEventV2WithJWTAuthorizer): { sub: string } {
+  const c = (event.requestContext.authorizer?.jwt?.claims ?? {}) as Record<string, unknown>;
+  const groups = parseGroups(c['cognito:groups']);
+  if (typeof c.sub !== 'string' || !c.sub || !groups.includes('admin') || groups.includes('eleve')) throw forbidden();
+  return { sub: c.sub };
+}
+
 /** Parametre de chemin valide (meme forme que les identifiants du contrat). */
 export function pathId(event: APIGatewayProxyEventV2WithJWTAuthorizer | { pathParameters?: Record<string, string | undefined> }, name: string): string {
   const v = event.pathParameters?.[name];

@@ -2,7 +2,7 @@ import { API_URL } from './env';
 import { getToken, signOut } from './auth';
 import type {
   AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
-  Student, FamilyCreateRequest, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
+  Student, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
 } from './types';
 
 export class ApiError extends Error {
@@ -52,6 +52,8 @@ export const api = {
   exportFamily: () => call<unknown>('GET', '/family/export'),
   /** Route publique (sans JWT). Le jeton et le mot de passe ne sont ni journalises ni repris dans une erreur. */
   activate: (token: string, password: string) => call<void>('POST', '/activation', { token, password }, false),
+  /** Administrateur seulement (403 sinon). Le code n'est renvoye qu'une fois. */
+  createInvitation: () => call<InvitationCreated>('POST', '/admin/invitations'),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),
 };
 

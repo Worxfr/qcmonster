@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.1.0
+  version: 1.2.0
   description: |
-    Contrat d'API QCMonster (contract-v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -16,6 +16,7 @@ tags:
   - { name: docs }
   - { name: game }
   - { name: family }
+  - { name: admin }
 paths:
   /scans:
     post:
@@ -484,6 +485,26 @@ paths:
       responses:
         '204': { description: Famille supprimee }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/invitations:
+    post:
+      operationId: createInvitation
+      tags: [admin]
+      summary: Cree un code d'invitation parent a usage unique (handler admin-invitations, A1). Reserve aux comptes du groupe Cognito `admin`.
+      description: |
+        Autorisation cote serveur: le jeton doit porter le groupe `admin` (`cognito:groups`), sinon **403 `interdit`** (meme reponse pour un parent, un eleve ou un jeton sans groupe).
+        Le code (128 bits, 32 caracteres hexadecimaux) n'est renvoye **qu'une fois**, dans cette reponse: seul son hache est stocke et il n'est jamais journalise.
+        Limite: 20 codes par jour (UTC) et par administrateur, au-dela **429 `quota_epuise`**. Pas de corps de requete.
+      responses:
+        '201':
+          description: Code cree (a transmettre au parent, non reaffichable)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationCreated' }
+              example: { code: 0123456789abcdef0123456789abcdef, createdAt: '2026-12-01T09:00:00.000Z', remainingToday: 19 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429':
+          description: Limite quotidienne de codes atteinte
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: Limite de 20 codes par jour atteinte } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -729,6 +750,13 @@ components:
       properties:
         consent: { type: boolean, const: true }
         policyVersion: { $ref: '#/components/schemas/PolicyVersion' }
+    InvitationCreated:
+      type: object
+      required: [code, createdAt, remainingToday]
+      properties:
+        code: { type: string, pattern: '^[0-9a-f]{32}$', description: Code d'invitation en clair, affiche une seule fois. }
+        createdAt: { type: string, format: date-time }
+        remainingToday: { type: integer, minimum: 0, maximum: 20, description: Codes restants aujourd'hui pour cet administrateur. }
     ActivationLink:
       type: object
       required: [url, expiresAt]

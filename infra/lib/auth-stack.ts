@@ -78,6 +78,8 @@ export class AuthStack extends Stack {
     });
 
     new cognito.CfnUserPoolGroup(this, 'GroupParent', { userPoolId: this.userPool.userPoolId, groupName: 'parent' });
+    // A1: groupe des administrateurs du site (codes d'invitation). AUCUN utilisateur n'y est ajoute par le code: le proprietaire s'y ajoute (docs/ops/admin.md).
+    new cognito.CfnUserPoolGroup(this, 'GroupAdmin', { userPoolId: this.userPool.userPoolId, groupName: 'admin', description: 'Administrateurs du site' });
     new cognito.CfnUserPoolGroup(this, 'GroupEleve', { userPoolId: this.userPool.userPoolId, groupName: 'eleve' });
 
     // famille_id n'est jamais modifiable par le client: seul le serveur l'ecrit.
