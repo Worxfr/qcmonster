@@ -1,6 +1,7 @@
 // Elements DynamoDB partages entre lots (docs/data-model.md). UN ecrivain par type: voir le tableau du modele.
 // Les schemas Zod valident ce qu'un lot lit d'un autre lot. Aucun contenu de cours dans les journaux (design 4.9).
 import { z } from 'zod';
+import { SUBJECTS } from './scans.js';
 
 /** Identifiant de question: <docId>:<qcm|gap>:<nn>. Unique entre fiches (cle de tentative ATT#<questionId>#<date>). */
 export const questionId = (docId: string, kind: 'qcm' | 'gap', nn: number): string => `${docId}:${kind}:${String(nn).padStart(2, '0')}`;
@@ -24,6 +25,15 @@ export const JobItemSchema = z.object({
   createdAt: z.string(),
   docId: z.string().optional(),
   ttl: z.number().int(),
+  // Contrat 1.3 (FEAT-A), tous facultatifs: un job cree avant 1.3 reste valide.
+  stage: z.enum(['fiche', 'verification']).optional(),
+  pagesRead: z.number().int().min(0).max(10).optional(),
+  contentTypes: z.array(z.enum(['image/jpeg', 'image/png'])).min(1).max(10).optional(),
+  folderId: z.string().optional(),
+  suggestedSubject: z.enum(SUBJECTS).optional(),
+  suggestedTopic: z.string().max(80).optional(),
+  subjectChoice: z.enum(SUBJECTS).optional(),
+  topicChoice: z.string().max(80).optional(),
 });
 
 /** Fiche (ecrit par L2a). `empreinteMinHash` = 64 entiers (Jaccard sur groupes de 5 mots, seuil 0,85, meme famille). */
@@ -31,10 +41,23 @@ export const FicheItemSchema = z.object({
   PK: z.string(),
   SK: z.string(),
   titre: z.string(),
-  matiere: z.enum(['maths', 'physique', 'svt', 'histoire_geo', 'francais', 'autre']),
+  matiere: z.enum(SUBJECTS),
   empreinteMinHash: z.array(z.number().int()).length(64),
   pagesConsommees: z.number().int().min(0),
   doublon: z.boolean().default(false),
+  createdAt: z.string(),
+  // Contrat 1.3 (FEAT-A), facultatifs: une fiche ancienne n'a ni sujet, ni dossier, ni nombre de pages.
+  sujet: z.string().max(80).optional(),
+  dossierId: z.string().optional(),
+  pages: z.number().int().min(1).max(10).optional(),
+});
+
+/** Dossier de l'eleve (contrat 1.3). `nomCle` = `labelKey(nom)`: unicite sans casse ni accents. Pas de liste de fiches: l'appartenance est portee par la fiche (`dossierId`). */
+export const FolderItemSchema = z.object({
+  PK: z.string(),
+  SK: z.string().startsWith('FOLDER#'),
+  nom: z.string().min(1).max(60),
+  nomCle: z.string().min(1),
   createdAt: z.string(),
 });
 

@@ -26,6 +26,9 @@ const EXPECTED = [
   'POST /activation', 'POST /docs/{docId}/read', 'POST /family',
   // contract-v1.2 (A1)
   'POST /admin/invitations',
+  // contract-v1.3 (FEAT-A)
+  'GET /scans', 'PATCH /docs/{docId}', 'GET /folders', 'POST /folders', 'PATCH /folders/{folderId}', 'DELETE /folders/{folderId}',
+  'POST /folders/{folderId}/scans', 'DELETE /folders/{folderId}/scans/{docId}',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -74,5 +77,44 @@ describe('contrat OpenAPI', () => {
     expect(r400.description).toMatch(/PDF refuse en v1/);
     expect(JSON.stringify(r400.content['application/json'].examples.pdf.value)).toContain('requete_invalide');
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
+  });
+  it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
+    expect(spec.info.version).toBe('1.3.0');
+    // Requetes 1.2 inchangees
+    expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
+    expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
+    // Aucun champ requis nouveau dans une requete: seules des reponses gagnent des champs requis
+    expect(spec.components.schemas.ScanCreateRequest.required).toEqual(['pages', 'contentType']);
+    expect(spec.components.schemas.ConfirmRequest.required).toEqual(['corrections']);
+    expect(spec.components.schemas.DocSummary.required).toEqual(['docId', 'title', 'subject', 'createdAt']);
+    expect(spec.components.schemas.Job.required).toEqual(['jobId', 'state', 'pages', 'createdAt']);
+    // Multi-pages: une URL par page, `upload` garde pour la 1.2
+    expect(spec.components.schemas.ScanCreateResponse.required).toEqual(['jobId', 'upload', 'expiresAt', 'pagesRemaining']);
+    expect(Object.keys(spec.components.schemas.ScanCreateResponse.properties)).toContain('uploads');
+    expect(spec.components.schemas.ScanCreateRequest.properties.contentTypes.maxItems).toBe(10);
+    expect(spec.components.schemas.ScanCreateRequest.properties.pages.maximum).toBe(10);
+  });
+  it('contrat 1.3: etapes, matieres et filtres de GET /scans', () => {
+    expect(spec.components.schemas.ScanStage.enum).toEqual(['envoi', 'lecture', 'a_confirmer', 'fiche', 'verification', 'qcm', 'termine', 'echec']);
+    expect(spec.components.schemas.Subject.enum).toEqual(['maths', 'physique', 'svt', 'histoire_geo', 'francais', 'autre']);
+    const names = (spec.paths['/scans'].get.parameters as { name: string }[]).map((p) => p.name);
+    expect(names).toEqual(expect.arrayContaining(['studentId', 'subject', 'topic', 'folderId', 'status', 'sort', 'order', 'limit', 'cursor']));
+    expect(spec.components.schemas.ScanStatus.required).toEqual(['stage', 'pagesDone', 'pagesTotal', 'startedAt']);
+  });
+  it('schemas Zod 1.3: dossiers, mise a jour matiere/sujet, selection multiple', () => {
+    const z = zodSchemas;
+    expect(z.FolderNameRequestSchema.safeParse({ name: '' }).success).toBe(false);
+    expect(z.FolderNameRequestSchema.safeParse({ name: 'x'.repeat(61) }).success).toBe(false);
+    expect(z.FolderNameRequestSchema.safeParse({ name: 'Brevet' }).success).toBe(true);
+    // minProperties n'est pas traduit en Zod: le handler refuse {} (400), voir docs/feat-a-lots.md
+    expect(spec.components.schemas.DocUpdateRequest.minProperties).toBe(1);
+    expect(z.DocUpdateRequestSchema.safeParse({ subject: 'latin' }).success).toBe(false);
+    expect(z.DocUpdateRequestSchema.safeParse({ topic: null }).success).toBe(true);
+    expect(z.DocUpdateRequestSchema.safeParse({ subject: 'svt', topic: 'La cellule' }).success).toBe(true);
+    expect(z.FolderScansRequestSchema.safeParse({ docIds: [] }).success).toBe(false);
+    expect(z.FolderScansRequestSchema.safeParse({ docIds: ['a', 'a'] }).success).toBe(false);
+    expect(z.FolderScansRequestSchema.safeParse({ docIds: Array.from({ length: 51 }, (_, i) => `d${i}`) }).success).toBe(false);
+    expect(z.ScanCreateRequestSchema.safeParse({ pages: 11, contentType: 'image/jpeg' }).success).toBe(false);
+    expect(z.ScanCreateRequestSchema.safeParse({ pages: 2, contentType: 'image/jpeg', contentTypes: ['application/pdf', 'image/png'] }).success).toBe(false);
   });
 });

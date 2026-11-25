@@ -17,6 +17,8 @@ export const keys = {
   job: (sid: string, jobId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `JOB#${jobId}` }),
   text: (jobId: string, page: number): Key => ({ PK: `JOB#${jobId}`, SK: `TEXT#${page}` }),
   doc: (sid: string, docId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `DOC#${docId}` }),
+  /** Dossier de l'eleve (contrat 1.3). Ecrit par le lot back FEAT-A (folders-api) seul. */
+  folder: (sid: string, folderId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `FOLDER#${folderId}` }),
   claim: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `CLAIM#${String(nn).padStart(2, '0')}` }),
   qcm: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `QCM#${String(nn).padStart(2, '0')}` }),
   gap: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `GAP#${String(nn).padStart(2, '0')}` }),

@@ -10,9 +10,10 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | pseudo, niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub`, `quotaPages` (L2a le lit pour `reservePages`; defaut `quotaDefaults(env)`) | L3 |
 | Quota mensuel (eleve) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#<sid>` | `limite`, `utilise`, `reserve`, `bonus`, `restant` | `shared/quota.ts` (L1); lu par L2a, L3 |
 | Quota mensuel (famille) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#FAMILY` | memes attributs, `limite` = plafond famille | `shared/quota.ts` (L1) |
-| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |
+| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, `stage` fin (`fiche`, `verification`), `pagesRead`, `contentTypes`, `folderId`, choix et suggestions de matiere/sujet (voir FEAT-A), nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |
 | Transcription | `JOB#<jobId>` | `TEXT#<page>` | phrases numerotees. TTL 7 jours | L2a |
-| Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, `empreinteMinHash` (64 entiers), `pagesConsommees`, `doublon`, date, GSI1 | L2a |
+| Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, `sujet`, `dossierId`, `pages` (FEAT-A), `empreinteMinHash` (64 entiers), `pagesConsommees`, `doublon`, date, GSI1 | L2a |
+| Dossier (FEAT-A) | `STUDENT#<sid>` | `FOLDER#<folderId>` | `nom`, `nomCle` (`labelKey(nom)`), `createdAt`. Aucune liste de fiches: l'appartenance est portee par `DOC#.dossierId` | `api/src/folders/` (lot back B2) seul |
 | Affirmation | `DOC#<docId>` | `CLAIM#<nn>` | texte, origine (page, `phrase_id`, extrait), type, `a_risque`. Jamais modifiee ensuite | L2a (seul) |
 | QCM | `DOC#<docId>` | `QCM#<nn>` | `questionId` (`<docId>:qcm:<nn>`), enonce, 4 choix, `claimId`, cle (reservee au serveur) | L2a |
 | Trou | `DOC#<docId>` | `GAP#<nn>` | `questionId` (`<docId>:gap:<nn>`), phrase a trous, mot attendu, `claimId` | L2a |
@@ -58,3 +59,42 @@ Noms generes par CDK, publies dans SSM: `/qcm/<env>/data/scansBucket`, `/qcm/<en
 - **Couts**: tout appel Bedrock passe par `shared/bedrock.ts` (garde de cout, plafond du job, compteur). Voir `docs/cost-guard.md`.
 - **Evenement de depot**: le bucket des scans envoie ses evenements a EventBridge; la regle qui demarre le workflow (prefixe `scans/`) est creee par `pipeline-stack.ts` (L2a).
 - **Nommage**: le contrat expose `Job.costCents`; l'element DynamoDB porte `coutCentimes`. Le handler L2a fait le mapping explicitement (`costCents = coutCentimes`). Le compteur applicatif est en micro-euros (`micros`), le job en centimes.
+
+## FEAT-A: scans multi-pages, matiere et sujet, dossiers, statut (contrat 1.3)
+
+Aucune donnee existante n'est modifiee ni migree: tous les attributs ci-dessous sont **facultatifs** et les schemas Zod (`shared/items.ts`) acceptent les elements d'avant. Logique de liste, de filtre et de tri: `shared/scans.ts` (`listScans`, pure, testee).
+
+### Attributs ajoutes
+
+| Element | Attribut | Sens | Ecrit par |
+|---|---|---|---|
+| Job | `contentTypes` | type de chaque page (jpeg ou png), dans l'ordre. Absent = `contentType` pour toutes | `scans-create` |
+| Job | `folderId` | dossier choisi a la creation ou a la confirmation (copie sur la fiche a la generation) | `scans-create`, `jobs-confirm` |
+| Job | `suggestedSubject`, `suggestedTopic` | proposes par l'appel de transcription (meme appel, quelques tokens en plus, pas d'appel de plus) | `transcribe` |
+| Job | `subjectChoice`, `topicChoice` | choix de l'eleve a la confirmation; priment sur la suggestion et sur `draftSubject` | `jobs-confirm` |
+| Job | `pagesRead` | pages lues (compteur, `ADD 1` par page transcrite) | `transcribe` |
+| Job | `stage` | `fiche` (extraction) puis `verification`; `generation` vient de l'etat. Absent: deduit de l'etat | `extract` |
+| Fiche | `sujet`, `dossierId`, `pages` | sujet (80 car. max), dossier, nombre de pages. `pages` absent: `max(1, pagesConsommees)` | `generate` (copie du job), `docs-patch`, `folders-api` |
+| Dossier | `nom`, `nomCle`, `createdAt` | voir tableau | `folders-api` |
+
+Regles:
+- **Un scan = un job** (`scanId` = `jobId`). Le job vit 7 jours (TTL), la fiche sans limite: la liste fusionne les deux (`shared/scans.ts`); un scan termine dont le job a expire reste liste, un job termine dont la fiche a ete supprimee est masque; un echec ou un rejet disparait de la liste avec son job, apres 7 jours.
+- **0 ou 1 dossier par fiche**: `DOC#.dossierId` est la seule source. Supprimer un dossier retire `dossierId` des fiches concernees (une ecriture par fiche; interrompu, une fiche qui cite un dossier absent est vue hors dossier: la liste ignore les dossiers inconnus). Les fiches ne sont jamais supprimees avec le dossier.
+- **Dossier par eleve**: la cle contient `<sid>` pris dans le jeton, jamais dans la requete. Un `folderId` ou `docId` d'un autre eleve n'existe pas dans la partition lue: 404. Un parent lit les partitions de ses eleves (verifiees dans `FAMILY#<fid>`), sans rien ecrire.
+- **Unicite du nom**: `nomCle` compare a ceux de l'eleve (50 au plus) avant l'ecriture. shortcut: deux creations simultanees du meme nom peuvent passer; sans consequence (deux dossiers homonymes), a corriger par un element `FOLDERNAME#` conditionnel si cela gene.
+- **Quota par page**: `scans-create` reserve `pages` en une transaction (`reservePages`, regles existantes), la rend si le job echoue, est annule ou expire (`releaseQuotaOnce`). Inchange.
+- **Suppression** (`shared/delete-tree.ts`): `deleteStudentTree` supprime deja tout ce qui n'est pas `DOC#` dans `STUDENT#<sid>`, donc `FOLDER#` est couvert (test dans `shared/scans.test.ts`). `deleteDocTree` n'a rien a nettoyer (pas de liste dans le dossier).
+- **Export** (`GET /family/export`): `StudentExport.folders` (nom, date) et `DocExport.topic`, `folderId`. Le lot back B2 les ajoute.
+
+### Index: aucun nouveau
+
+La liste d'un eleve fait deux `Query` sur sa partition (`SK begins_with JOB#` et `DOC#`), sans index. Filtre, tri et pagination se font en memoire (`listScans`): aucun des filtres (matiere, sujet, dossier, statut) ne fait un acces par cle utile avec moins de 1000 fiches par eleve. Parent: une paire de `Query` par eleve (cinq eleves au plus), `GSI1` n'est pas utilise (il ne porte que les fiches, pas les jobs en cours).
+
+Cout (DynamoDB a la demande, lecture eventuellement coherente, 0,5 unite par 4 Ko): une fiche pese environ 2,5 Ko (empreinte de 64 entiers et resume), une liste de 200 fiches lit environ 500 Ko, soit 63 unites de lecture, de l'ordre de 0,00001 EUR. Un polling toutes les 3 s pendant 3 minutes avec 5 scans en cours et 200 fiches: 60 listes, environ 0,0006 EUR.
+shortcut: le polling relit les fiches a chaque tour. Si le cout ou la latence gene (plus de 500 fiches), le front interroge `GET /jobs/{jobId}` (une lecture d'element) tant qu'un scan est en cours et ne relit la liste qu'a la fin.
+
+Seuils de reprise: au-dela de 1000 fiches par eleve ou 300 ms de liste, passer a un index local `LSI` (matiere, date) ou a un `GSI` `STUDENT#<sid>` / `SUBJECT#<matiere>#<date>`; ce serait une decision d'infra separee.
+
+### Droits IAM necessaires (resume, detail dans docs/feat-a-lots.md)
+
+Les nouvelles fonctions n'utilisent que `STUDENT#*` et `FAMILY#*` (deja autorises par `dynamodb:LeadingKeys`). Seul `folders-api` demande un role neuf (`GetItem`, `Query`, `PutItem`, `UpdateItem`, `DeleteItem` sur ces deux partitions): `writeRole` n'a pas `DeleteItem`, `deleteRole` n'a pas `PutItem` ni `UpdateItem`. Aucun acces S3, Bedrock ni Step Functions de plus.
