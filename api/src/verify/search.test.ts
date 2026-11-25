@@ -78,4 +78,25 @@ describe('outil de recherche', () => {
     expect(ps[0].texte).toBe('Molière est mort en 1673 à Paris, sur scène ou presque.');
     expect(tool.refusals.size).toBe(1);
   });
+  it("V3: la requete Wikipédia n'a pas de nombre (un nombre faux oriente la recherche), 2 requetes distinctes, articles lus une fois", async () => {
+    const queries: string[] = [];
+    const titlesRead: string[] = [];
+    const f = vi.fn(async (url: string) => {
+      const u = new URL(url);
+      if (u.searchParams.has('titles')) {
+        titlesRead.push(u.searchParams.get('titles')!);
+        return jsonResponse({ query: { pages: [{ title: 'Verdun', extract: 'La bataille de Verdun a eu lieu en 1916.' }] } });
+      }
+      queries.push(u.searchParams.get('gsrsearch')!);
+      return jsonResponse(wikiPages([{ title: 'Verdun', extract: 'Verdun est une commune française située dans le département de la Meuse.' }]));
+    });
+    const tool = createSearchTool({ fetchImpl: f as never, indexes: [] });
+    const ps = await tool.search('La bataille de Verdun a eu lieu en 1914 pendant la guerre');
+    expect(queries.some((q) => /\d/.test(q))).toBe(false);
+    expect(new Set(queries).size).toBe(2);
+    expect(ps).toHaveLength(1); // meme page des deux requetes: un seul passage
+    expect(ps[0].texte).toContain('1916');
+    await tool.search('La bataille de Verdun a eu lieu en 1914 pendant la guerre');
+    expect(titlesRead).toEqual(['Verdun']); // cache d'articles de l'outil
+  });
 });

@@ -284,7 +284,7 @@ describe('debit MediaWiki (revue C7)', () => {
       const done = Promise.all(Array.from({ length: VERIFY_RESERVED_CONCURRENCY }, worker));
       await vi.runAllTimersAsync();
       await done;
-      expect(times).toHaveLength(72); // 2 requetes par recherche: introduction de 3 pages, puis article entier de la premiere
+      expect(times).toHaveLength(75); // par outil: 2 recherches par affirmation (V3: deux requetes) + 1 lecture d'article entier (la meme page est reprise du cache ensuite)
       const max = Math.max(...times.map((t) => times.filter((u) => u >= t && u < t + 1000).length));
       expect(max).toBeLessThanOrEqual(MEDIAWIKI_MAX_RPS_TOTAL);
     } finally {
