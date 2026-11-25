@@ -386,7 +386,7 @@ export interface paths {
          * Historique des tests de l'eleve connecte, du plus recent au plus ancien, pagine (contract-v1.4, H1; handler tests-read)
          * @description Une entree par passage de test (voir docs/H1-design.md). Reserve a l'eleve: un parent recoit 403. L'eleve ne lit jamais l'historique d'un autre eleve, meme de sa famille (la cle de partition vient du jeton).
          *     Pagination par curseur opaque: renvoyer `nextCursor` tel quel dans `cursor`. Le curseur ne contient qu'une position de tri; la partition est toujours reconstruite depuis le jeton, un curseur ne peut donc pas lire ailleurs. Un curseur invalide donne 400.
-         *     Les entrees plus vieilles que la duree de conservation (12 mois) ne sont jamais renvoyees, meme si la base ne les a pas encore effacees.
+         *     Les passages sont conserves jusqu'a la suppression de la fiche, de l'eleve ou de la famille. Ils se regroupent par **annee scolaire** (1er septembre au 31 aout, fuseau Europe/Paris): `schoolYear` dans chaque passage, filtre `schoolYear` en requete, liste `schoolYears` sur la premiere page.
          */
         get: operations["listMyTests"];
         put?: never;
@@ -407,7 +407,7 @@ export interface paths {
         /**
          * Detail d'un passage de test: resultat de chaque question (contract-v1.4, H1; handler tests-read)
          * @description Reserve a l'eleve proprietaire. `prompt` et `choices` sont relus dans la fiche au moment de la lecture (rien du cours n'est copie dans l'historique). `correctAnswer` n'est present que pour une question terminee (juste, ou 2 essais, ou texte a trous repondu): c'est ce que l'eleve a deja eu le droit de voir.
-         *     Un passage d'un autre eleve, ou expire, donne 404.
+         *     Un passage d'un autre eleve donne 404.
          */
         get: operations["getMyTest"];
         put?: never;
@@ -428,7 +428,7 @@ export interface paths {
         /**
          * Vue parent, lecture seule: avancement d'un eleve de la famille (contract-v1.4, H1; handler family-progress)
          * @description Reserve au parent. L'eleve doit etre de la famille du jeton, sinon **404** (pas 403: on ne revele pas l'existence d'un eleve d'une autre famille). Un eleve qui appelle recoit 403.
-         *     Contenu: progression de jeu, une ligne par fiche (titre, matiere, pages, resultats des tests), tendance par semaine, scores par matiere, derniers tests. Jamais le texte d'un cours, jamais une question, une reponse donnee ou la bonne reponse.
+         *     Contenu: progression de jeu, une ligne par fiche (titre, matiere, pages, resultats des tests), tendance par semaine, scores par matiere, derniers tests. Jamais le texte d'un cours ni d'une question, jamais une reponse donnee ni la bonne reponse. Le resultat (juste ou faux) de chaque question se lit par `GET /students/{sid}/tests/{testId}`.
          */
         get: operations["getStudentProgress"];
         put?: never;
@@ -451,6 +451,27 @@ export interface paths {
          * @description Memes regles d'acces que `GET /students/{sid}/progress` (404 hors famille, 403 pour un eleve). Meme pagination et memes filtres que `GET /me/tests`. Renvoie des resumes `TestSummary` uniquement.
          */
         get: operations["listStudentTests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{sid}/tests/{testId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vue parent, lecture seule: resultat de chaque question d'un passage, sans texte (contract-v1.4, H1; handler family-progress)
+         * @description Memes regles d'acces que `GET /students/{sid}/progress` (404 hors famille ou passage inconnu, 403 pour un eleve).
+         *     Chaque question est identifiee par son `questionId` et son `rank` (position dans la session) avec juste ou faux, essais et XP. **Ni texte de question, ni choix, ni reponse donnee, ni bonne reponse.**
+         */
+        get: operations["getStudentTest"];
         put?: never;
         post?: never;
         delete?: never;
@@ -573,6 +594,29 @@ export interface paths {
         get: operations["exportFamily"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/family/export/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive telechargeable de l'export, avec tout l'historique des tests (contract-v1.4, H1; handler family-export-archive)
+         * @description Reserve au parent. Construit une archive **zip** et renvoie un **lien de telechargement court** (10 minutes). Contenu: `export.json` (meme contenu que `GET /family/export`), et pour chaque eleve `tests/<studentId>.jsonl` (un passage par ligne, schema `TestParentDetail`, toutes les annees scolaires).
+         *     Comme l'export JSON: **aucun texte de cours** et aucun texte de question. Les reponses donnees par l'eleve (`choice`) ne sont **pas** dans l'archive (l'eleve seul les lit dans l'application).
+         *     Le lien ne porte aucune donnee: c'est une URL signee vers un fichier prive, valable 10 minutes. Le fichier est supprime par une regle d'expiration du stockage au plus tard 2 jours apres (et avec la famille).
+         *     Borne: 50 000 passages au plus par archive (un quart de siecle pour 5 eleves a 5 passages par jour); au-dela, les annees scolaires les plus anciennes sont omises et `truncated` vaut vrai.
+         */
+        post: operations["createExportArchive"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1090,10 +1134,8 @@ export interface components {
             };
             /** @description Jours (Paris) ou l'eleve a joue */
             activeDays: string[];
-            /** @description Historique des tests (v1.4), 12 mois au plus, du plus recent au plus ancien */
-            tests?: components["schemas"]["TestExport"][];
-            /** @description Vrai si l'export a ete borne a 3000 passages */
-            testsTruncated?: boolean;
+            /** @description Nombre de passages de test conserves (v1.4). Le detail est dans l'archive `POST /family/export/archive`. */
+            testsCount?: number;
             attempts: {
                 questionId: string;
                 date: string;
@@ -1109,6 +1151,8 @@ export interface components {
             matiere: string;
             /** @description Valeurs connues: `mixte`, `qcm`, `gap`. Un client traite une valeur inconnue comme `autre` (des modes s'ajouteront, par exemple le tirage de l'issue #42). */
             mode: string;
+            /** @description Annee scolaire de `startedAt` (Europe/Paris): du 1er septembre au 31 aout. Septembre a decembre de l'annee Y donne `Y-(Y+1)`, janvier a aout de l'annee Y donne `(Y-1)-Y`. Calculee a l'ecriture, jamais modifiee. */
+            schoolYear: string;
             /**
              * Format: date-time
              * @description Ouverture de la session
@@ -1133,8 +1177,11 @@ export interface components {
              */
             status: "complet" | "incomplet";
         };
-        TestQuestionResult: {
+        /** @description Resultat d'une question dans un passage, sans aucun texte. */
+        TestQuestionStatus: {
             questionId: string;
+            /** @description Position de la question dans la session */
+            rank: number;
             /** @enum {string} */
             kind: "qcm" | "gap";
             correct: boolean;
@@ -1143,7 +1190,9 @@ export interface components {
             xpGained: number;
             /** Format: date-time */
             answeredAt: string;
-            /** @description Derniere reponse donnee par l'eleve */
+        };
+        TestQuestionResult: components["schemas"]["TestQuestionStatus"] & {
+            /** @description Derniere reponse donnee par l'eleve. Visible de l'eleve seul. */
             choice?: string;
         };
         TestDetail: components["schemas"]["TestSummary"] & {
@@ -1159,9 +1208,27 @@ export interface components {
             items: components["schemas"]["TestSummary"][];
             /** @description Absent sur la derniere page */
             nextCursor?: string;
+            /** @description Annees scolaires ayant des passages, la plus recente d'abord. Present sur la premiere page seulement. */
+            schoolYears?: string[];
         };
-        TestExport: components["schemas"]["TestSummary"] & {
-            questions: components["schemas"]["TestQuestionResult"][];
+        /** @description Passage vu par le parent et ecrit dans l'archive: resultat par question, sans texte ni reponse donnee. */
+        TestParentDetail: components["schemas"]["TestSummary"] & {
+            questions: components["schemas"]["TestQuestionStatus"][];
+        };
+        ExportArchive: {
+            /**
+             * Format: uri
+             * @description Lien signe
+             */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            format: "zip";
+            sizeBytes: number;
+            students: number;
+            tests: number;
+            truncated: boolean;
         };
         DocProgress: {
             docId: string;
@@ -1206,6 +1273,8 @@ export interface components {
             /** @description Douze dernieres semaines, la plus recente d'abord */
             weeks: components["schemas"]["WeekStat"][];
             subjects: components["schemas"]["SubjectStat"][];
+            /** @description Annees scolaires ayant des passages, la plus recente d'abord */
+            schoolYears: string[];
             recentTests: components["schemas"]["TestSummary"][];
         };
         ExportQuestion: {
@@ -1334,6 +1403,8 @@ export interface components {
         CoursId: string;
         FolderId: string;
         TestId: string;
+        /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
+        SchoolYear: string;
         TestLimit: number;
         /** @description Curseur opaque renvoye par la page precedente (`nextCursor`) */
         TestCursor: string;
@@ -2538,6 +2609,8 @@ export interface operations {
                 limit?: components["parameters"]["TestLimit"];
                 /** @description Curseur opaque renvoye par la page precedente (`nextCursor`) */
                 cursor?: components["parameters"]["TestCursor"];
+                /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
+                schoolYear?: components["parameters"]["SchoolYear"];
                 /** @description Seulement les passages sur cette fiche */
                 docId?: string;
                 /** @description Premier jour inclus (fuseau Europe/Paris) */
@@ -2566,6 +2639,7 @@ export interface operations {
                      *           "titre": "La photosynthese",
                      *           "matiere": "svt",
                      *           "mode": "mixte",
+                     *           "schoolYear": "2026-2027",
                      *           "startedAt": "2026-12-01T17:02:11Z",
                      *           "endedAt": "2026-12-01T17:06:40Z",
                      *           "total": 10,
@@ -2582,6 +2656,7 @@ export interface operations {
                      *           "titre": "La Revolution francaise",
                      *           "matiere": "histoire_geo",
                      *           "mode": "qcm",
+                     *           "schoolYear": "2026-2027",
                      *           "startedAt": "2026-11-30T18:30:00Z",
                      *           "endedAt": "2026-11-30T18:32:05Z",
                      *           "total": 10,
@@ -2592,6 +2667,10 @@ export interface operations {
                      *           "xpGained": 15,
                      *           "status": "incomplet"
                      *         }
+                     *       ],
+                     *       "schoolYears": [
+                     *         "2026-2027",
+                     *         "2025-2026"
                      *       ],
                      *       "nextCursor": "VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpFWEFNUExFMFRFU1QwMDAwMDAwMDBBQg"
                      *     }
@@ -2627,6 +2706,7 @@ export interface operations {
                      *       "titre": "La photosynthese",
                      *       "matiere": "svt",
                      *       "mode": "mixte",
+                     *       "schoolYear": "2026-2027",
                      *       "startedAt": "2026-12-01T17:02:11Z",
                      *       "endedAt": "2026-12-01T17:06:40Z",
                      *       "total": 2,
@@ -2639,6 +2719,7 @@ export interface operations {
                      *       "questions": [
                      *         {
                      *           "questionId": "qcm-01",
+                     *           "rank": 1,
                      *           "kind": "qcm",
                      *           "correct": true,
                      *           "attempts": 1,
@@ -2657,6 +2738,7 @@ export interface operations {
                      *         },
                      *         {
                      *           "questionId": "gap-01",
+                     *           "rank": 2,
                      *           "kind": "gap",
                      *           "correct": false,
                      *           "attempts": 1,
@@ -2752,6 +2834,9 @@ export interface operations {
                      *           "avgScorePct": 83
                      *         }
                      *       ],
+                     *       "schoolYears": [
+                     *         "2026-2027"
+                     *       ],
                      *       "recentTests": [
                      *         {
                      *           "testId": "01JEXAMPLE0TEST000000000AA",
@@ -2759,6 +2844,7 @@ export interface operations {
                      *           "titre": "La photosynthese",
                      *           "matiere": "svt",
                      *           "mode": "mixte",
+                     *           "schoolYear": "2026-2027",
                      *           "startedAt": "2026-12-01T17:02:11Z",
                      *           "endedAt": "2026-12-01T17:06:40Z",
                      *           "total": 10,
@@ -2785,6 +2871,8 @@ export interface operations {
                 limit?: components["parameters"]["TestLimit"];
                 /** @description Curseur opaque renvoye par la page precedente (`nextCursor`) */
                 cursor?: components["parameters"]["TestCursor"];
+                /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
+                schoolYear?: components["parameters"]["SchoolYear"];
                 docId?: string;
                 from?: string;
                 to?: string;
@@ -2812,6 +2900,7 @@ export interface operations {
                      *           "titre": "La photosynthese",
                      *           "matiere": "svt",
                      *           "mode": "mixte",
+                     *           "schoolYear": "2026-2027",
                      *           "startedAt": "2026-12-01T17:02:11Z",
                      *           "endedAt": "2026-12-01T17:06:40Z",
                      *           "total": 10,
@@ -2829,6 +2918,72 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getStudentTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+                testId: components["parameters"]["TestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Passage, par question */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "testId": "01JEXAMPLE0TEST000000000AA",
+                     *       "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *       "titre": "La photosynthese",
+                     *       "matiere": "svt",
+                     *       "mode": "mixte",
+                     *       "schoolYear": "2026-2027",
+                     *       "startedAt": "2026-12-01T17:02:11Z",
+                     *       "endedAt": "2026-12-01T17:06:40Z",
+                     *       "total": 2,
+                     *       "answered": 2,
+                     *       "correct": 1,
+                     *       "firstTry": 1,
+                     *       "scorePct": 50,
+                     *       "xpGained": 5,
+                     *       "status": "complet",
+                     *       "questions": [
+                     *         {
+                     *           "questionId": "qcm-01",
+                     *           "rank": 1,
+                     *           "kind": "qcm",
+                     *           "correct": true,
+                     *           "attempts": 1,
+                     *           "firstTry": true,
+                     *           "xpGained": 5,
+                     *           "answeredAt": "2026-12-01T17:02:40Z"
+                     *         },
+                     *         {
+                     *           "questionId": "gap-01",
+                     *           "rank": 2,
+                     *           "kind": "gap",
+                     *           "correct": false,
+                     *           "attempts": 1,
+                     *           "firstTry": false,
+                     *           "xpGained": 0,
+                     *           "answeredAt": "2026-12-01T17:06:40Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TestParentDetail"];
+                };
+            };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
@@ -3126,6 +3281,38 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["FamilyExport"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createExportArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archive prete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "url": "https://example.invalid/exports/archive.zip?signature=exemple",
+                     *       "expiresAt": "2026-12-01T10:10:00Z",
+                     *       "format": "zip",
+                     *       "sizeBytes": 482113,
+                     *       "students": 2,
+                     *       "tests": 1840,
+                     *       "truncated": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExportArchive"];
                 };
             };
             403: components["responses"]["Forbidden"];
