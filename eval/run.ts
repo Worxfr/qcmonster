@@ -84,7 +84,7 @@ async function main() {
 
   // Détail sans aucun texte de cours (le rapport est publié en artefact): comptes, coûts, délais, erreurs par page.
   const perPage = inputs.map((i) => ({
-    id: i.page.id, state: i.run.state, refused: i.run.refused, errorClass: i.run.errorClass, costEur: i.run.costEur, durationSec: i.run.durationSec,
+    id: i.page.id, state: i.run.state, refused: i.run.refused, errorClass: i.run.errorClass, errorDetail: i.run.errorDetail, costEur: i.run.costEur, durationSec: i.run.durationSec,
     claims: i.run.claims.length, byStatus: Object.fromEntries(['verifiee', 'erreur', 'non_verifiable', 'non_factuelle'].map((st) => [st, i.run.claims.filter((c) => c.status === st).length])),
     insertedErrors: i.page.errors, steps: i.run.steps,
   }));

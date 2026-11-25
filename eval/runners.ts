@@ -131,12 +131,12 @@ export function lambdaRunner(fnName: string, o: { maxEur: number; stopAtTotalEur
       if (totals && totals.totalEur >= o.stopAtTotalEur) throw new Error(`arrêt: cumul dev ${totals.totalEur.toFixed(2)} EUR >= ${o.stopAtTotalEur} EUR`);
       const r = invoke({ action: 'run', pageId: id, image: image.toString('base64') }) as {
         refused: boolean; state: string; transcript: string; claims: PageRun['claims']; outputText: string; steps: NonNullable<PageRun['steps']>;
-        costEur: number; durationSec: number; costBefore: NonNullable<PageRun['costBefore']>; costAfter: NonNullable<PageRun['costAfter']>; uncounted: number; errorClass?: string;
+        costEur: number; durationSec: number; costBefore: NonNullable<PageRun['costBefore']>; costAfter: NonNullable<PageRun['costAfter']>; uncounted: number; errorClass?: string; errorDetail?: string;
       };
       spent += r.costEur;
       totals = r.costAfter;
-      console.log(`page ${id}: ${r.state}${r.errorClass ? ` (${r.errorClass})` : ''}, ${r.costEur.toFixed(4)} EUR, ${r.durationSec.toFixed(0)} s, cumul dev ${r.costAfter.totalEur.toFixed(4)} EUR`);
-      return { refused: r.refused, transcript: r.transcript, claims: r.claims, outputText: r.outputText, durationSec: r.durationSec, costEur: r.costEur, steps: r.steps, state: r.state, errorClass: r.errorClass, uncounted: r.uncounted, costBefore: r.costBefore, costAfter: r.costAfter };
+      console.log(`page ${id}: ${r.state}${r.errorClass ? ` (${r.errorClass})` : ''}${r.errorDetail ? ` [${r.errorDetail}]` : ''}, ${r.costEur.toFixed(4)} EUR, ${r.durationSec.toFixed(0)} s, cumul dev ${r.costAfter.totalEur.toFixed(4)} EUR`);
+      return { refused: r.refused, transcript: r.transcript, claims: r.claims, outputText: r.outputText, durationSec: r.durationSec, costEur: r.costEur, steps: r.steps, state: r.state, errorClass: r.errorClass, errorDetail: r.errorDetail, uncounted: r.uncounted, costBefore: r.costBefore, costAfter: r.costAfter };
     },
   };
 }

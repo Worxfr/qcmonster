@@ -17,6 +17,7 @@ export interface PageRun {
   /** Voie `lambda`: état final du job, classe de l'erreur éventuelle (jamais son message), appels non comptés, compteurs avant/après. */
   state?: string;
   errorClass?: string;
+  errorDetail?: string;
   uncounted?: number;
   costBefore?: { monthEur: number; totalEur: number };
   costAfter?: { monthEur: number; totalEur: number };
