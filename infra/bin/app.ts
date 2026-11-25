@@ -11,13 +11,20 @@ import { BudgetStack } from '../lib/budget-stack.js';
 import { PipelineStack } from '../lib/pipeline-stack.js';
 import { VerifyStack } from '../lib/verify-stack.js';
 import { GameStack } from '../lib/game-stack.js';
+import { WebContentStack, WebStack } from '../lib/web-stack.js';
 
-export function buildApp(envName: Env, alertEmail: string): App {
-  const app = new App();
+export function buildApp(envName: Env, alertEmail: string, context?: Record<string, string>): App {
+  const app = new App({ context });
   // Le compte vient de l'environnement (CDK_DEFAULT_ACCOUNT, fourni par la CLI CDK): jamais ecrit dans le depot.
   const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: REGION };
   const common = { env, envName };
   const n = (s: string) => stackName(envName, s);
+
+  // Le site est cree EN PREMIER: Data, Api et Game lisent son origine (CORS) et en dependent (voir webOriginFor).
+  const web = new WebStack(app, n('web'), { ...common, stackName: n('web') });
+  // Contenu du site: seulement avec `-c webDist=<dossier du build>` (apres le build du front, voir deploy.yml).
+  const webDist = app.node.tryGetContext('webDist') as string | undefined;
+  if (webDist) new WebContentStack(app, n('web-content'), { ...common, stackName: n('web-content'), site: web, distDir: webDist });
 
   new DataStack(app, n('data'), { ...common, stackName: n('data') });
   new AuthStack(app, n('auth'), { ...common, stackName: n('auth') });

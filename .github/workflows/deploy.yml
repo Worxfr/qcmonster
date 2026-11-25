@@ -50,7 +50,25 @@ jobs:
       - name: cdk deploy dev
         run: |
           cd infra
-          npx cdk deploy --all -c env=dev --require-approval never
+          npx cdk deploy --all -c env=dev --require-approval never --outputs-file ../cdk-outputs.json
+      # Build du front avec l'adresse de l'API et les identifiants PUBLICS du client Cognito, lus dans les sorties CloudFormation
+      # (ni compte ni secret). Mode simule jamais actif: VITE_AUTH_MODE vide, et env.ts l'ignore de toute facon en build de production.
+      - name: Valeurs du front (sorties CDK)
+        run: node scripts/front-env.mjs cdk-outputs.json dev >> "$GITHUB_ENV"
+      # vite build seul: les tests (jobs `checks`) n'aiment pas les VITE_* exportes (ils forcent leur propre environnement).
+      - name: Build du front
+        env:
+          VITE_AUTH_MODE: ''
+        run: |
+          cd web
+          npx vite build
+          node scripts/check-build.mjs
+      - name: Le build ne contient ni mode simule ni adresse locale
+        run: "! grep -rlE 'localhost:4010|127[.]0[.]0[.]1:401' web/dist"
+      - name: Publication du site (S3 + invalidation CloudFront, par CDK)
+        run: |
+          cd infra
+          npx cdk deploy qcm-dev-web-content -c env=dev -c webDist=../web/dist --require-approval never
   deploy-prod:
     needs: deploy-dev
     # Approbation manuelle: reviewers requis sur l'environnement GitHub `prod`, branche main seulement.

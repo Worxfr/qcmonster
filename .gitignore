@@ -14,3 +14,4 @@ golden/hidden/
 infra/cdk.context.json
 eval/report.json
 eval/fidelity-sample.json
+cdk-outputs.json

@@ -4,7 +4,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
-import { DEPLOY_ROLE_NAME, evalRoleName, ssmParam, tableName, type Env } from '../../shared/names.js';
+import { DEPLOY_ROLE_NAME, evalRoleName, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
 
 export interface DataStackProps extends StackProps {
   envName: Env;
@@ -13,10 +13,20 @@ export interface DataStackProps extends StackProps {
 /** Nom de l'attribut TTL DynamoDB (docs/data-model.md). */
 export const TTL_ATTRIBUTE = 'ttl';
 
-/** Origine du front (CORS). Obligatoire en prod (`-c webOrigin=https://...`), localhost par defaut en dev. */
+/**
+ * Origine du front (CORS). Contexte `-c webOrigin=https://...` prioritaire (obligatoire en prod).
+ * Sinon, si l'app contient la stack Web, son adresse CloudFront lue en SSM au deploiement (la stack courante depend alors de la stack Web).
+ * Sinon localhost en dev.
+ */
 export function webOriginFor(scope: Construct, env: Env): string {
   const v = scope.node.tryGetContext('webOrigin') as string | undefined;
   if (v) return v;
+  const web = scope.node.root.node.tryFindChild(stackName(env, 'web'));
+  if (web instanceof Stack) {
+    const self = Stack.of(scope);
+    self.addDependency(web);
+    return ssm.StringParameter.valueForStringParameter(self, ssmParam(env, 'web/origin'));
+  }
   if (env === 'prod') throw new Error('prod: contexte webOrigin obligatoire (cdk ... -c webOrigin=https://<front>)');
   return 'http://localhost:5173';
 }
