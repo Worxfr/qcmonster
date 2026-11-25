@@ -3,9 +3,9 @@ import { CONFIRM_TIMEOUT_S, EXPIRES_SOON_S, BadCursorError, cleanFolderName, cle
 import { FicheItemSchema, FolderItemSchema, JobItemSchema } from './items.js';
 import { keys } from './ddb/keys.js';
 import { jobCapEur } from './names.js';
-import { planSections } from './scans.js';
+import { planSections, maxSectionsFor, machineTimeoutNeededS, MACHINE_TIMEOUT_MIN_S } from './scans.js';
 import { CoursItemSchema, CoursTextItemSchema } from './items.js';
-import { deleteStudentTree, type TreeDb, type TreeKey } from './delete-tree.js';
+import { deleteStudentTree, deleteCoursTree, type TreeDb, type TreeKey } from './delete-tree.js';
 
 const S1 = 's1';
 const job = (id: string, o: Record<string, unknown> = {}): ScanItem => ({ PK: `STUDENT#${S1}`, SK: `JOB#${id}`, state: 'en_attente_envoi', pages: 1, createdAt: '2026-12-01T10:00:00Z', ...o });
@@ -313,6 +313,48 @@ describe('un scan, plusieurs fiches (liste et cours)', () => {
     const old = run([job('j0', { state: 'termine', docId: 'd0' })], [doc('d0', { jobId: 'j0' })]).items[0];
     expect(old.sectionCount).toBeUndefined();
     expect(old.docIds).toBeUndefined();
+  });
+});
+
+describe('relecture 2 de la PR 40', () => {
+  it('sections <= min(6, 2 x pages)', () => {
+    const ids = ['p1-s1', 'p1-s2', 'p1-s3', 'p1-s4', 'p1-s5'];
+    const secs = (n: number) => ids.slice(0, n).map((id) => ({ fromSentenceId: id }));
+    expect(maxSectionsFor(1)).toBe(2);
+    expect(maxSectionsFor(3)).toBe(6);
+    expect(maxSectionsFor(10)).toBe(6);
+    expect(planSections(ids, secs(2), { pages: 1 }).ok).toBe(true);
+    expect(planSections(ids, secs(3), { pages: 1 })).toEqual({ ok: false, error: 'trop' });
+    expect(planSections(ids, secs(5), { pages: 3 }).ok).toBe(true);
+  });
+  it('delai de la machine: 16 h au moins pour 12 h de confirmation et 6 sections', () => {
+    const needed = machineTimeoutNeededS({ uploadS: 20 * 60, transcribeS: 360, confirmS: CONFIRM_TIMEOUT_S, sections: 6, perSectionS: 180 + 960 + 240 });
+    expect(needed).toBeLessThanOrEqual(MACHINE_TIMEOUT_MIN_S);
+    expect(needed).toBeGreaterThan(CONFIRM_TIMEOUT_S);
+    expect(MACHINE_TIMEOUT_MIN_S).toBe(16 * 3600);
+    // l'ancien delai de 2 h ne tenait pas
+    expect(2 * 3600).toBeLessThan(needed);
+  });
+  it('deleteCoursTree: isolation entre eleves, cles exactes, copie de travail du job', async () => {
+    const store: TreeKey[] = [
+      { PK: 'STUDENT#s1', SK: 'COURS#c1' }, { PK: 'STUDENT#s1', SK: 'COURS#c1#T01' }, { PK: 'STUDENT#s1', SK: 'COURS#c1x' }, { PK: 'STUDENT#s1', SK: 'COURS#c1x#T01' },
+      { PK: 'STUDENT#s1', SK: 'DOC#d1' }, { PK: 'STUDENT#s2', SK: 'COURS#c9' }, { PK: 'STUDENT#s2', SK: 'COURS#c9#T01' },
+      { PK: 'JOB#j1', SK: 'TEXT#1' }, { PK: 'JOB#j2', SK: 'TEXT#1' },
+    ];
+    const db: TreeDb = { list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))), remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)) };
+    expect(await deleteCoursTree(db, 's1', 'c9')).toBe(0); // cours d'un autre eleve: rien supprime
+    expect(await deleteCoursTree(db, 's1', 'zzz')).toBe(0);
+    expect(store).toHaveLength(9);
+    expect(await deleteCoursTree(db, 's1', 'c1', { jobId: 'j1' })).toBe(3); // en-tete, 1 texte, TEXT# du job
+    expect(store.map((k) => `${k.PK}/${k.SK}`).sort()).toEqual(['JOB#j2/TEXT#1', 'STUDENT#s1/COURS#c1x', 'STUDENT#s1/COURS#c1x#T01', 'STUDENT#s1/DOC#d1', 'STUDENT#s2/COURS#c9', 'STUDENT#s2/COURS#c9#T01']);
+    await expect(deleteCoursTree(db, 's1', 'c1#T01')).rejects.toThrow(RangeError); // identifiant piege
+  });
+  it('un plan de job donne un en-tete de cours valide (statut ajoute, ignore explicite)', () => {
+    const plan = JobItemSchema.parse({ PK: 'STUDENT#s', SK: 'JOB#j', familyId: 'f', state: 'verification', pages: 2, createdAt: 'x', ttl: 1, sections: [{ fromSentenceId: 'p1-s1', subject: 'svt', docId: 'd1' }, { fromSentenceId: 'p2-s1', subject: 'autre', ignore: true }] }).sections!;
+    const head = { ...keys.cours('s', 'c'), jobId: 'j', pages: 2, createdAt: 'x', nbPhrases: 2, sections: plan.map((p) => ({ ...p, statut: p.ignore ? ('ignoree' as const) : ('fiche' as const) })) };
+    expect(CoursItemSchema.safeParse(head).success).toBe(true);
+    expect(plan[1].ignore).toBe(true);
+    expect(plan[0].ignore).toBe(false);
   });
 });
 

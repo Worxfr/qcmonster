@@ -186,8 +186,8 @@ paths:
       description: |
         `corrections` remplace le texte de phrases existantes. **`sections` (v1.3)** decoupe le texte en sections par sujet: chaque section non ignoree devient UNE fiche (matiere, sujet, titre, dossier propres; extraction, verification et QCM sur son seul texte). Le cours complet corrige est conserve (voir `Cours`); la photo est supprimee a la confirmation comme avant.
         Une section commence a la phrase `fromSentenceId` et va jusqu'a la phrase qui precede la section suivante (ou la fin). Les coupes tombent entre deux phrases, sur une page ou a cheval sur deux (une phrase recollee sur deux pages ne se coupe pas). `ignore: true` garde le texte dans le cours mais ne cree pas de fiche (par exemple la fin d'un autre chapitre).
-        Sans `sections` (client 1.2: `{ corrections: [...] }`, ou avec `subject`, `topic`, `folderId`): une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). `sections` et `subject`/`topic`/`folderId` ensemble: 400.
-        Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections; la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; le texte des sections non ignorees compte moins de 40 mots **au total** (seuil `MIN_WORDS` de la transcription; il s'applique a l'ensemble des sections retenues, jamais a chaque section: une petite section isolee reste acceptee); un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
+        Sans `sections` (client 1.2: `{ corrections: [...] }`, ou avec `subject`, `topic`, `folderId`): une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). **Replis (client 1.2 sans matiere)**: matiere = `suggestedSubject`, sinon `draftSubject` du job, sinon `autre`, jamais un 400. Un `folderId` absent prend celui donne a la creation du scan (`POST /scans`). `sections` et `subject`/`topic`/`folderId` ensemble: 400. **Avec `sections`, une section sans `folderId` herite du `folderId` du job** (creation ou confirmation precedente); `title` et `topic` sont nettoyes (espaces, chevrons, caracteres invisibles) par le serveur.
+        Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections **et au plus 2 par page du scan** (`min(6, 2 x pages)`: 2 pour 1 page, 4 pour 2, 6 des 3 pages); la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; le texte des sections non ignorees compte moins de 40 mots **au total** (seuil `MIN_WORDS` de la transcription; il s'applique a l'ensemble des sections retenues, jamais a chaque section: une petite section isolee reste acceptee); un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       requestBody:
         required: true
@@ -198,8 +198,7 @@ paths:
               corrections: []
               sections:
                 - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese }
-                - { fromSentenceId: p2-s3, subject: histoire_geo, topic: La Revolution francaise, folderId: 01JEXAMPLE0FLD0000000000AA }
-                - { fromSentenceId: p3-s2, subject: autre, ignore: true }
+                - { fromSentenceId: p2-s2, subject: histoire_geo, topic: La Revolution francaise, folderId: 01JEXAMPLE0FLD0000000000AA }
       responses:
         '200':
           description: Job repris
@@ -501,7 +500,7 @@ paths:
     get:
       operationId: getCours
       tags: [cours]
-      summary: "Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent n'y accede que par l'export (403)."
+      summary: "Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent a 403 (l'export parent n'a pas le texte)."
       description: "`coursId` vient de `DocSummary.coursId` ou de `ScanSummary.coursId`. Un lien de section vers une fiche supprimee n'a plus de `docId` (statut `supprimee`)."
       parameters: [{ $ref: '#/components/parameters/CoursId' }]
       responses:
@@ -527,7 +526,7 @@ paths:
     delete:
       operationId: deleteCours
       tags: [cours]
-      summary: "Supprime le texte du cours. Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours) ou `supprimer` (les fiches du cours sont supprimees aussi). Supprimer une fiche ne supprime jamais le cours (handler cours-api)"
+      summary: "Supprime le texte du cours (eleve seulement: 403 pour le parent, qui supprime par le compte de l'eleve). Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours: `coursId`, `sectionIndex` et `sectionCount` retires) ou `supprimer` (les fiches du cours sont supprimees aussi). La copie de travail du texte (7 jours) est supprimee aussi. Supprimer une fiche ne supprime jamais le cours (handler cours-api)"
       parameters:
         - { $ref: '#/components/parameters/CoursId' }
         - { name: fiches, in: query, required: true, description: "Obligatoire, pas de valeur par defaut: l'eleve choisit", schema: { type: string, enum: [garder, supprimer] } }
@@ -733,7 +732,7 @@ paths:
     get:
       operationId: exportFamily
       tags: [family]
-      summary: Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Le texte brut lu sur les photos (7 jours) n'est pas exporte.
+      summary: Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Les cours conserves sont exportes SANS leur texte (structure et liens vers les fiches), l'eleve lit son texte par GET /cours/{coursId} (droit d'acces), le parent ne recoit jamais le texte des cours. Le texte brut lu sur les photos (7 jours) n'est pas exporte.
       responses:
         '200':
           description: Export
@@ -881,7 +880,7 @@ components:
         subject: { $ref: '#/components/schemas/Subject' }
         topic: { $ref: '#/components/schemas/Topic' }
         folderId: { type: string }
-        pages: { type: integer, minimum: 1, maximum: 10 }
+        pages: { type: integer, minimum: 1, maximum: 10, description: "Pages du SCAN (pas de la fiche): un scan decoupe en 3 fiches repete la meme valeur sur chaque fiche; ne pas les additionner (regrouper par scanId)." }
         createdAt: { type: string, format: date-time }
         status: { $ref: '#/components/schemas/ScanStatus' }
         coursId: { type: string, description: "Cours complet conserve (v1.3), present des la confirmation" }
@@ -908,23 +907,14 @@ components:
               description: Sujets distincts (un seul libelle par sujet normalise), du plus frequent au moins frequent, 100 au plus
               maxItems: 100
               items: { type: object, required: [topic, count], properties: { topic: { $ref: '#/components/schemas/Topic' }, count: { type: integer, minimum: 1 } } }
-    Cours:
+    CoursMeta:
       type: object
-      required: [coursId, createdAt, pages, texts, sections]
-      description: "Cours complet corrige, conserve jusqu'a suppression par l'eleve ou le parent (comme les fiches). Contient le texte lu et corrige, jamais la photo."
+      required: [coursId, createdAt, pages, sections]
+      description: "Cours conserve SANS son texte: structure, sections et liens vers les fiches (c'est ce que contient l'export)."
       properties:
         coursId: { type: string }
         createdAt: { type: string, format: date-time }
         pages: { type: integer, minimum: 1, maximum: 10 }
-        texts:
-          type: array
-          description: "Une entree par page, triee numeriquement; meme forme que `Transcription.pages`"
-          items:
-            type: object
-            required: [page, sentences]
-            properties:
-              page: { type: integer, minimum: 1 }
-              sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
         sections:
           type: array
           maxItems: 6
@@ -939,6 +929,22 @@ components:
               folderId: { type: string }
               status: { type: string, enum: [fiche, ignoree, sans_fiche, supprimee], description: "fiche = une fiche existe (`docId`); ignoree = `ignore: true`; sans_fiche = aucune affirmation exploitable dans cette section; supprimee = la fiche a ete supprimee" }
               docId: { type: string, description: "Present si status = fiche" }
+    Cours:
+      description: "Cours complet corrige, conserve jusqu'a suppression par l'eleve (le parent supprime par le compte de l'eleve) et avec le compte, comme les fiches. Contient le texte lu et corrige, jamais la photo. Lu par l'eleve seulement (`GET /cours/{coursId}`); l'export parent n'a que `CoursMeta`."
+      allOf:
+        - $ref: '#/components/schemas/CoursMeta'
+        - type: object
+          required: [texts]
+          properties:
+            texts:
+              type: array
+              description: "Une entree par page, triee numeriquement; meme forme que `Transcription.pages`"
+              items:
+                type: object
+                required: [page, sentences]
+                properties:
+                  page: { type: integer, minimum: 1 }
+                  sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
     Folder:
       type: object
       required: [folderId, name, createdAt, scanCount]
@@ -1317,7 +1323,7 @@ components:
             consentement: { $ref: '#/components/schemas/Consent' }
             createdAt: { type: string }
             folders: { type: array, items: { $ref: '#/components/schemas/Folder' }, description: "Dossiers de l'eleve (v1.3)" }
-            cours: { type: array, items: { $ref: '#/components/schemas/Cours' }, description: "Cours complets conserves (v1.3), texte compris: donnee personnelle exportee comme les fiches" }
+            cours: { type: array, items: { $ref: '#/components/schemas/CoursMeta' }, description: "Cours conserves (v1.3), SANS le texte (structure, sections, liens vers les fiches). Le texte se lit par GET /cours (eleve)." }
             profile:
               type: object
               description: Profil de jeu (XP, serie, badges, signalements valides)

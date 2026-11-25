@@ -237,8 +237,8 @@ export function listScans(input: ListInput): ScanList {
       const count = Math.max(group.length, e._count ?? 0);
       if (count > 1 || e.sectionIndex !== undefined) {
         e.sectionIndex = e.sectionIndex ?? k;
-        e.sectionCount = Math.min(6, count);
-        e.docIds = group.map((g) => g.docId!).slice(0, 6);
+        e.sectionCount = Math.min(MAX_SECTIONS, count);
+        e.docIds = group.map((g) => g.docId!).slice(0, MAX_SECTIONS);
       }
     }
   }
@@ -314,6 +314,8 @@ export function listScans(input: ListInput): ScanList {
 /** Seuil de mots du texte retenu (decision du 2026-11-25, Q6): meme valeur que `MIN_WORDS` de la transcription; il s'applique au TOTAL des sections non ignorees, pas a chaque section. */
 export const MIN_WORDS_RETAINED = 40;
 export type SectionError = 'inconnu' | 'ordre' | 'debut' | 'trop' | 'aucune_fiche' | 'vide' | 'trop_court';
+/** Au plus 2 sections par page du scan (et 6 en tout): 6 fiches pour 1 page depasseraient le plafond de cout du job. */
+export const maxSectionsFor = (pages: number): number => Math.min(MAX_SECTIONS, 2 * Math.max(1, Math.trunc(Number.isFinite(pages) ? pages : 1)));
 export interface SectionInput {
   fromSentenceId: string;
   ignore?: boolean;
@@ -323,11 +325,12 @@ export interface SectionInput {
  * phrases dans l'ordre; une phrase recollee compte une fois). Renvoie, pour chaque section, l'intervalle [start, end[ d'indices.
  * Regles (voir `POST /jobs/{jobId}/confirm`): au plus MAX_SECTIONS; la premiere commence a la premiere phrase; coupes connues,
  * strictement croissantes; au moins une section non ignoree; aucune section vide; si `wordCounts` (mots par phrase, meme ordre que `ids`)
- * est fourni, le total des sections non ignorees atteint `minWords` (40 par defaut).
+ * est fourni, le total des sections non ignorees atteint `minWords` (40 par defaut); si `pages` est fourni, au plus `maxSectionsFor(pages)`
+ * sections (2 par page, 6 au plus).
  */
-export function planSections(ids: string[], sections: SectionInput[], opts: { wordCounts?: number[]; minWords?: number } = {}): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
+export function planSections(ids: string[], sections: SectionInput[], opts: { wordCounts?: number[]; minWords?: number; pages?: number } = {}): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
   if (sections.length === 0) return { ok: false, error: 'aucune_fiche' };
-  if (sections.length > MAX_SECTIONS) return { ok: false, error: 'trop' };
+  if (sections.length > (opts.pages === undefined ? MAX_SECTIONS : maxSectionsFor(opts.pages))) return { ok: false, error: 'trop' };
   const pos = new Map(ids.map((id, k) => [id, k]));
   const starts: number[] = [];
   for (const sec of sections) {
@@ -338,7 +341,7 @@ export function planSections(ids: string[], sections: SectionInput[], opts: { wo
   if (starts[0] !== 0) return { ok: false, error: 'debut' };
   for (let n = 1; n < starts.length; n++) if (starts[n] <= starts[n - 1]) return { ok: false, error: 'ordre' };
   const ranges = starts.map((start, n) => ({ start, end: n + 1 < starts.length ? starts[n + 1] : ids.length, ignore: sections[n].ignore === true }));
-  if (ranges.some((r) => r.end <= r.start)) return { ok: false, error: 'vide' };
+  if (ranges.some((r) => r.end <= r.start)) return { ok: false, error: 'vide' }; // garde de defense: des coupes strictement croissantes ne donnent jamais une section vide
   if (ranges.every((r) => r.ignore)) return { ok: false, error: 'aucune_fiche' };
   // Q6: le total de mots des sections retenues (non ignorees) doit atteindre le seuil; une petite section isolee n'est pas refusee pour autant.
   if (opts.wordCounts) {
@@ -348,3 +351,14 @@ export function planSections(ids: string[], sections: SectionInput[], opts: { wo
   }
   return { ok: true, ranges };
 }
+
+/**
+ * Delai minimal de la machine d'etats pour qu'une execution tienne de l'envoi a la derniere fiche: attente d'envoi, lecture, attente de
+ * confirmation (`CONFIRM_TIMEOUT_S`), puis `sections` x (extraction + verification + generation). Le lot I l'utilise avec ses delais de
+ * taches (`TASK_TIMEOUT_S`) dans un test d'infra: `MACHINE_TIMEOUT >= machineTimeoutNeededS(...)` et au moins `MACHINE_TIMEOUT_MIN_S`.
+ */
+export function machineTimeoutNeededS(o: { uploadS: number; transcribeS: number; confirmS: number; sections: number; perSectionS: number }): number {
+  return o.uploadS + o.transcribeS + o.confirmS + o.sections * o.perSectionS;
+}
+/** Plancher du delai de la machine (16 h): 12 h de confirmation, 20 min d'envoi, lecture et 6 sections, avec de la marge. */
+export const MACHINE_TIMEOUT_MIN_S = 16 * 3600;

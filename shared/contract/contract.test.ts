@@ -169,7 +169,9 @@ describe('contrat OpenAPI', () => {
     expect(z.safeParse({ corrections: [], sections: [{ fromSentenceId: 'p1-s1', subject: 'latin' }] }).success).toBe(false);
     expect(z.safeParse({ corrections: [], sections: Array.from({ length: 7 }, (_, i) => ({ fromSentenceId: `p${i + 1}-s1`, subject: 'svt' })) }).success).toBe(false);
     const op = spec.paths['/jobs/{jobId}/confirm'].post;
-    expect(op.description).toMatch(/au plus 6 sections/);
+    expect(op.description).toMatch(/au plus 6 sections.*au plus 2 par page/s);
+    expect(op.description).toMatch(/draftSubject.*autre/s); // repli de matiere pour un client 1.2
+    expect(op.description).toMatch(/herite du .folderId. du job/);
     expect(op.description).toMatch(/consomme UNE fois/);
     expect(op.description).toMatch(/au total.*jamais a chaque section/s);
     expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'ordre', 'debut', 'rien', 'court']);
@@ -182,14 +184,20 @@ describe('contrat OpenAPI', () => {
     expect(fiches.required).toBe(true);
     expect(fiches.schema.enum).toEqual(['garder', 'supprimer']);
     expect(fiches.schema.default).toBeUndefined(); // option explicite, pas de defaut
-    expect(spec.components.schemas.Cours.properties.sections.items.properties.status.enum).toEqual(['fiche', 'ignoree', 'sans_fiche', 'supprimee']);
+    expect(spec.components.schemas.CoursMeta.properties.sections.items.properties.status.enum).toEqual(['fiche', 'ignoree', 'sans_fiche', 'supprimee']);
     for (const k of ['coursId', 'sectionIndex', 'sectionCount', 'docIds']) expect(spec.components.schemas.ScanSummary.properties[k]).toBeDefined();
     expect(spec.components.schemas.ScanSummary.required).not.toContain('docIds');
     expect(spec.components.schemas.DocSummary.properties.coursId).toBeDefined();
     expect(spec.components.schemas.DocSummary.required).toEqual(['docId', 'title', 'subject', 'createdAt']);
     expect(spec.components.schemas.Job.properties.docIds).toBeDefined();
     expect(spec.components.schemas.Transcription.properties.suggestedSections.maxItems).toBe(6);
-    expect(Object.keys(spec.components.schemas.StudentExport.allOf[1].properties)).toContain('cours');
+    const exp = spec.components.schemas.StudentExport.allOf[1].properties.cours;
+    expect(exp.items.$ref).toBe('#/components/schemas/CoursMeta'); // l'export parent n'a PAS le texte du cours
+    expect(spec.components.schemas.CoursMeta.properties.texts).toBeUndefined();
+    expect(spec.paths['/family/export'].get.summary).toMatch(/SANS leur texte/);
+    expect(spec.paths['/cours/{coursId}'].delete.summary).toMatch(/eleve seulement: 403 pour le parent/);
+    expect(spec.paths['/cours/{coursId}'].delete.summary).toMatch(/sectionCount/);
+    expect(spec.paths['/cours/{coursId}'].get.summary).toMatch(/parent a 403/);
     expect(zodSchemas.CoursSchema.safeParse(spec.paths['/cours/{coursId}'].get.responses['200'].content['application/json'].example).success).toBe(true);
   });
 });

@@ -76,8 +76,8 @@ export interface paths {
          * Texte corrige, decoupage en sections, reprend le workflow (handler jobs-confirm, L2a)
          * @description `corrections` remplace le texte de phrases existantes. **`sections` (v1.3)** decoupe le texte en sections par sujet: chaque section non ignoree devient UNE fiche (matiere, sujet, titre, dossier propres; extraction, verification et QCM sur son seul texte). Le cours complet corrige est conserve (voir `Cours`); la photo est supprimee a la confirmation comme avant.
          *     Une section commence a la phrase `fromSentenceId` et va jusqu'a la phrase qui precede la section suivante (ou la fin). Les coupes tombent entre deux phrases, sur une page ou a cheval sur deux (une phrase recollee sur deux pages ne se coupe pas). `ignore: true` garde le texte dans le cours mais ne cree pas de fiche (par exemple la fin d'un autre chapitre).
-         *     Sans `sections` (client 1.2: `{ corrections: [...] }`, ou avec `subject`, `topic`, `folderId`): une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). `sections` et `subject`/`topic`/`folderId` ensemble: 400.
-         *     Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections; la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; le texte des sections non ignorees compte moins de 40 mots **au total** (seuil `MIN_WORDS` de la transcription; il s'applique a l'ensemble des sections retenues, jamais a chaque section: une petite section isolee reste acceptee); un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
+         *     Sans `sections` (client 1.2: `{ corrections: [...] }`, ou avec `subject`, `topic`, `folderId`): une seule section couvre tout, avec `subject`, `topic` et `folderId` de la requete (ou les propositions de `Transcription`). **Replis (client 1.2 sans matiere)**: matiere = `suggestedSubject`, sinon `draftSubject` du job, sinon `autre`, jamais un 400. Un `folderId` absent prend celui donne a la creation du scan (`POST /scans`). `sections` et `subject`/`topic`/`folderId` ensemble: 400. **Avec `sections`, une section sans `folderId` herite du `folderId` du job** (creation ou confirmation precedente); `title` et `topic` sont nettoyes (espaces, chevrons, caracteres invisibles) par le serveur.
+         *     Regles (400 `requete_invalide`, rien n'est modifie): au plus 6 sections **et au plus 2 par page du scan** (`min(6, 2 x pages)`: 2 pour 1 page, 4 pour 2, 6 des 3 pages); la premiere commence a la toute premiere phrase; `fromSentenceId` inconnu, en double ou pas dans l'ordre croissant du texte; au moins une section non ignoree; chaque section contient au moins une phrase; le texte des sections non ignorees compte moins de 40 mots **au total** (seuil `MIN_WORDS` de la transcription; il s'applique a l'ensemble des sections retenues, jamais a chaque section: une petite section isolee reste acceptee); un `topic` ou `title` vide apres nettoyage; un `folderId` inconnu (404). Le quota de pages est consomme UNE fois pour le scan, quel que soit le nombre de sections; le plafond de cout `max(0,25 ; 0,15 x pages)` vaut pour l'ensemble du job (somme des sections).
          */
         post: operations["confirmJob"];
         delete?: never;
@@ -268,13 +268,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent n'y accede que par l'export (403).
+         * Le cours complet corrige, par phrases, avec son decoupage et les liens vers les fiches (handler cours-api). Eleve seulement: le parent a 403 (l'export parent n'a pas le texte).
          * @description `coursId` vient de `DocSummary.coursId` ou de `ScanSummary.coursId`. Un lien de section vers une fiche supprimee n'a plus de `docId` (statut `supprimee`).
          */
         get: operations["getCours"];
         put?: never;
         post?: never;
-        /** Supprime le texte du cours. Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours) ou `supprimer` (les fiches du cours sont supprimees aussi). Supprimer une fiche ne supprime jamais le cours (handler cours-api) */
+        /** Supprime le texte du cours (eleve seulement: 403 pour le parent, qui supprime par le compte de l'eleve). Option explicite `fiches`: `garder` (les fiches restent, sans lien vers le cours: `coursId`, `sectionIndex` et `sectionCount` retires) ou `supprimer` (les fiches du cours sont supprimees aussi). La copie de travail du texte (7 jours) est supprimee aussi. Supprimer une fiche ne supprime jamais le cours (handler cours-api) */
         delete: operations["deleteCours"];
         options?: never;
         head?: never;
@@ -463,7 +463,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Le texte brut lu sur les photos (7 jours) n'est pas exporte. */
+        /** Export complet des donnees de la famille - e-mail du parent, eleves (profil de jeu, jours actifs, tentatives), fiches (affirmations, sources, questions), signalements (handler family-admin, L3). Les cours conserves sont exportes SANS leur texte (structure et liens vers les fiches), l'eleve lit son texte par GET /cours/{coursId} (droit d'acces), le parent ne recoit jamais le texte des cours. Le texte brut lu sur les photos (7 jours) n'est pas exporte. */
         get: operations["exportFamily"];
         put?: never;
         post?: never;
@@ -598,6 +598,7 @@ export interface components {
             subject?: components["schemas"]["Subject"];
             topic?: components["schemas"]["Topic"];
             folderId?: string;
+            /** @description Pages du SCAN (pas de la fiche): un scan decoupe en 3 fiches repete la meme valeur sur chaque fiche; ne pas les additionner (regrouper par scanId). */
             pages: number;
             /** Format: date-time */
             createdAt: string;
@@ -630,17 +631,12 @@ export interface components {
                 }[];
             };
         };
-        /** @description Cours complet corrige, conserve jusqu'a suppression par l'eleve ou le parent (comme les fiches). Contient le texte lu et corrige, jamais la photo. */
-        Cours: {
+        /** @description Cours conserve SANS son texte: structure, sections et liens vers les fiches (c'est ce que contient l'export). */
+        CoursMeta: {
             coursId: string;
             /** Format: date-time */
             createdAt: string;
             pages: number;
-            /** @description Une entree par page, triee numeriquement; meme forme que `Transcription.pages` */
-            texts: {
-                page: number;
-                sentences: components["schemas"]["Sentence"][];
-            }[];
             sections: {
                 fromSentenceId: string;
                 subject: components["schemas"]["Subject"];
@@ -654,6 +650,14 @@ export interface components {
                 status: "fiche" | "ignoree" | "sans_fiche" | "supprimee";
                 /** @description Present si status = fiche */
                 docId?: string;
+            }[];
+        };
+        /** @description Cours complet corrige, conserve jusqu'a suppression par l'eleve (le parent supprime par le compte de l'eleve) et avec le compte, comme les fiches. Contient le texte lu et corrige, jamais la photo. Lu par l'eleve seulement (`GET /cours/{coursId}`); l'export parent n'a que `CoursMeta`. */
+        Cours: components["schemas"]["CoursMeta"] & {
+            /** @description Une entree par page, triee numeriquement; meme forme que `Transcription.pages` */
+            texts: {
+                page: number;
+                sentences: components["schemas"]["Sentence"][];
             }[];
         };
         Folder: {
@@ -972,8 +976,8 @@ export interface components {
             createdAt?: string;
             /** @description Dossiers de l'eleve (v1.3) */
             folders?: components["schemas"]["Folder"][];
-            /** @description Cours complets conserves (v1.3), texte compris: donnee personnelle exportee comme les fiches */
-            cours?: components["schemas"]["Cours"][];
+            /** @description Cours conserves (v1.3), SANS le texte (structure, sections, liens vers les fiches). Le texte se lit par GET /cours (eleve). */
+            cours?: components["schemas"]["CoursMeta"][];
             /** @description Profil de jeu (XP, serie, badges, signalements valides) */
             profile: {
                 [key: string]: unknown;
@@ -1438,15 +1442,10 @@ export interface operations {
                  *           "title": "La photosynthese"
                  *         },
                  *         {
-                 *           "fromSentenceId": "p2-s3",
+                 *           "fromSentenceId": "p2-s2",
                  *           "subject": "histoire_geo",
                  *           "topic": "La Revolution francaise",
                  *           "folderId": "01JEXAMPLE0FLD0000000000AA"
-                 *         },
-                 *         {
-                 *           "fromSentenceId": "p3-s2",
-                 *           "subject": "autre",
-                 *           "ignore": true
                  *         }
                  *       ]
                  *     }
