@@ -35,8 +35,8 @@ export const stateMachineName = (env: Env) => `qcm-${env}-${WORKFLOW_HANDLERS.st
 /** Prefixe de cle S3 des photos deposees; la regle EventBridge (Object Created) de L2a filtre dessus. */
 export const SCAN_EVENT_PREFIX = 'scans/';
 
-/** Garde cout des essais en dev (decision du proprietaire, 2026-11-24): le CUMUL `COST#dev / TOTAL` (toute la phase dev, jamais remis a zero) bloque tout appel Bedrock au-dela. */
-export const DEV_TRIAL_CAP_EUR = 12;
+/** Garde cout des essais en dev (decision du proprietaire, 2026-11-24; releve de 12 a 50 EUR le 2026-11-25): le CUMUL `COST#dev / TOTAL` (toute la phase dev, jamais remis a zero) bloque tout appel Bedrock au-dela. */
+export const DEV_TRIAL_CAP_EUR = 50;
 /** Mise au point: echantillon de 10 pages; au plus 2 passages complets par lot (cout estime en 4.6 / docs/cost-guard.md). */
 export const TRIAL_TUNING_PAGES = 10;
 export const TRIAL_MAX_FULL_RUNS_PER_LOT = 2;

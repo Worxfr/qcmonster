@@ -14,7 +14,7 @@ export function costGate(totalEur: number): CostGate {
 }
 
 /**
- * Garde par environnement. En dev, le plafond d'essais de 12 EUR s'applique au CUMUL depuis le debut de la phase dev
+ * Garde par environnement. En dev, le plafond d essais (DEV_TRIAL_CAP_EUR, 50 EUR) s applique au CUMUL depuis le debut de la phase dev
  * (decision du proprietaire), pas au mois. Les seuils 15/18 EUR restent mensuels.
  */
 export function costGateFor(env: Env, c: CostTotals | number): CostGate {

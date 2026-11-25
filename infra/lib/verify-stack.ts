@@ -7,7 +7,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
 import { fn, ssmParam, stackName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
-import { SYSTEM_PROFILES } from './models-stack.js';
+import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { VERIFY_RESERVED_CONCURRENCY } from '../../api/src/verify/limits.js';
 
 export interface VerifyStackProps extends StackProps {
@@ -58,7 +58,7 @@ export class VerifyStack extends Stack {
       new iam.PolicyStatement({
         sid: 'InvokeUnderlyingViaProfile',
         actions: ['bedrock:InvokeModel'],
-        resources: [this.formatArn({ service: 'bedrock', resource: 'inference-profile', resourceName: systemId }), `arn:${this.partition}:bedrock:*::foundation-model/${baseModel}`],
+        resources: [this.formatArn({ service: 'bedrock', resource: 'inference-profile', resourceName: systemId }), ...EU_REGIONS.map((region) => this.formatArn({ service: 'bedrock', region, account: '', resource: 'foundation-model', resourceName: baseModel }))],
         conditions: { StringLike: { 'bedrock:InferenceProfileArn': profileArn } },
       }),
     );

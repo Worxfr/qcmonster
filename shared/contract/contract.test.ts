@@ -65,4 +65,12 @@ describe('contrat OpenAPI', () => {
   it('aucune question de session ne porte de cle de reponse', () => {
     expect(Object.keys(spec.components.schemas.Question.properties).sort()).toEqual(['choices', 'kind', 'prompt', 'questionId']);
   });
+  it('contrat v1: /me d\'un parent sans famille repond 404; le PDF est refuse en 400 (pas de page reservee)', () => {
+    expect(Object.keys(spec.paths['/me'].get.responses)).toContain('404');
+    expect(spec.paths['/me'].get.description).toMatch(/sans|pas encore cree/);
+    const r400 = spec.paths['/scans'].post.responses['400'];
+    expect(r400.description).toMatch(/PDF refuse en v1/);
+    expect(JSON.stringify(r400.content['application/json'].examples.pdf.value)).toContain('requete_invalide');
+    expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
+  });
 });

@@ -25,7 +25,7 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | XP du jour | `STUDENT#<sid>` | `DAY#<aaaa-mm-jj>` | XP gagne, pages payees, jour valide | L3 |
 | Tentative | `STUDENT#<sid>` | `ATT#<questionId>#<aaaa-mm-jj>` | `attempts` (essais du jour), `done` (plus de recompense possible ce jour), `rewarded` (cette tentative a gagne la recompense unique). **Une recompense par question pour toujours**: L3 lit les `ATT#<questionId>#` des autres jours (prefixe) et ne paie que si aucun n'a `rewarded`. Le moment d'affichage n'est pas stocke ici (voir `PROFILE.tick`) | L3 |
 | Classement | `FAMILY#<fid>` | `WEEK#<aaaa-Www>#<sid>` | XP de la semaine, jours actifs | L3 |
-| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` et `TOTAL` | `micros` (micro-euros entiers), `pages`. `TOTAL` = cumul depuis le debut de la phase dev (plafond d'essais 12 EUR) | `shared/cost.ts` (L1); lu par L2a, L2b |
+| Compteur de cout | `COST#<env>` | `MONTH#<aaaa-mm>` et `TOTAL` | `micros` (micro-euros entiers), `pages`. `TOTAL` = cumul depuis le debut de la phase dev (plafond d'essais 50 EUR) | `shared/cost.ts` (L1); lu par L2a, L2b |
 | Invitation | `INVITE#<hache>` | `META` | `utilisee`, `utiliseeLe`, `creeLe` | `scripts/create-invite.ts` + `api/src/auth/pre-signup.ts` (L1) |
 | Activation | `ACTIVATION#<hache>` | `META` | `sid`, expiration. TTL 24 h | L3 |
 
