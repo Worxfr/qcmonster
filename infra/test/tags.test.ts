@@ -10,7 +10,7 @@ for (const env of ['dev', 'prod'] as Env[]) {
   describe(`tags obligatoires (${env})`, () => {
     const app = buildApp(env, 'test@example.invalid');
     const stacks = app.node.children.filter((c) => 'templateOptions' in c) as unknown as Parameters<typeof Template.fromStack>[0][];
-    it('synthetise les 8 stacks', () => expect(stacks).toHaveLength(8));
+    it('synthetise les 9 stacks', () => expect(stacks).toHaveLength(9));
     it.each(stacks.map((s) => [s.stackName, s] as const))('%s: toutes les ressources portent Project, Environment, ManagedBy, Owner', (_n, s) => {
       expect(missingTags(Template.fromStack(s).toJSON())).toEqual([]);
     });

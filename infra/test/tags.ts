@@ -17,6 +17,9 @@ export const UNTAGGABLE = new Set([
   'AWS::ApiGatewayV2::Integration',
   'AWS::ApiGatewayV2::Route',
   'AWS::Budgets::BudgetsAction',
+  'AWS::CloudFront::OriginAccessControl',
+  'AWS::CloudFront::ResponseHeadersPolicy',
+  'Custom::CDKBucketDeployment',
 ]);
 
 type Res = { Type: string; Properties?: Record<string, unknown> };

@@ -7,7 +7,7 @@ Ce script permet à GitHub (repo `Worxfr/qcmonster`) de se connecter à AWS **sa
 - Il vérifie que vous êtes bien sur le compte `<ID_COMPTE>` (sinon il s'arrête).
 - Il regarde si la connexion GitHub<->AWS (le « provider OIDC ») existe déjà. Les autres projets l'utilisent: s'il existe, **il n'y touche pas**. Il ne la crée que si elle manque.
 - Il crée **un seul rôle à lui**: `QCMonster-GitHubActions-Deploy`, et **une seule policy à elle**: `QCMonster-GitHubActions-Deploy-Policy`.
-- Le rôle n'est utilisable que par le repo `Worxfr/qcmonster`, depuis la branche `main` ou depuis un « environment » GitHub.
+- Le rôle n'est utilisable que par le repo `Worxfr/qcmonster`, depuis un « environment » GitHub (`dev` ou `prod`) (plus d'acces depuis la seule branche `main`).
 - Tout ce qu'il crée porte les tags `Project=QCMonster`, `Environment=prod`, `ManagedBy=script`, `Owner=Worxfr`.
 - Il ne crée aucune clé d'accès et ne supprime rien (pas de mode « teardown »).
 - Si le rôle ou la policy existent déjà et sont différents, il le signale mais ne les modifie pas.

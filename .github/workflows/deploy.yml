@@ -38,7 +38,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --ignore-scripts: ce job a id-token: write, aucun script d'installation tiers ne doit s'y executer.
+      - run: npm ci --ignore-scripts
       - name: Adresse d'alerte presente
         run: test -n "$QCM_ALERT_EMAIL" || { echo "Variable ALERT_EMAIL (environnement dev) manquante"; exit 1; }
       - name: Secret de depot AWS_ACCOUNT_ID present
@@ -50,10 +51,29 @@ jobs:
       - name: cdk deploy dev
         run: |
           cd infra
-          npx cdk deploy --all -c env=dev --require-approval never
+          npx cdk deploy --all -c env=dev --require-approval never --outputs-file ../cdk-outputs.json
+      # Build du front avec l'adresse de l'API et les identifiants PUBLICS du client Cognito, lus dans les sorties CloudFormation
+      # (ni compte ni secret). Mode simule jamais actif: VITE_AUTH_MODE vide, et env.ts l'ignore de toute facon en build de production.
+      - name: Valeurs du front (sorties CDK)
+        run: node scripts/front-env.mjs cdk-outputs.json dev >> "$GITHUB_ENV"
+      # vite build seul: les tests (jobs `checks`) n'aiment pas les VITE_* exportes (ils forcent leur propre environnement).
+      - name: Build du front
+        env:
+          VITE_AUTH_MODE: ''
+        run: |
+          cd web
+          npx vite build
+          node scripts/check-build.mjs
+      - name: Le build ne contient ni mode simule ni adresse locale
+        run: "! grep -rlE 'localhost:4010|127[.]0[.]0[.]1:401' web/dist"
+      - name: Publication du site (S3 + invalidation CloudFront, par CDK)
+        run: |
+          cd infra
+          npx cdk deploy qcm-dev-web-content -c env=dev -c webDist=../web/dist --require-approval never
   deploy-prod:
     needs: deploy-dev
-    # Approbation manuelle: reviewers requis sur l'environnement GitHub `prod`, branche main seulement.
+    # Lancement manuel seulement, depuis main, apres dev. Pas de relecteur obligatoire sur l'environnement `prod`: le plan GitHub
+    # (depot prive) ne le permet pas. La garde reste DEPLOY_ENABLED (variable de depot), a ne pas activer pour prod sans accord.
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -71,7 +91,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --ignore-scripts: ce job a id-token: write, aucun script d'installation tiers ne doit s'y executer.
+      - run: npm ci --ignore-scripts
       - name: Origine du front presente
         run: test -n "$WEB_ORIGIN" || { echo "Variable WEB_ORIGIN (environnement prod) manquante"; exit 1; }
       - name: Adresse d'alerte presente

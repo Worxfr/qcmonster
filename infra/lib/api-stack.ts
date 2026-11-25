@@ -1,4 +1,4 @@
-import { ArnFormat, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { ArnFormat, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
@@ -181,6 +181,8 @@ export class ApiStack extends Stack {
     cfnStage.routeSettings = Object.fromEntries(
       routes.map(({ route, throttle }) => [route, { ThrottlingRateLimit: (throttle ?? DEFAULT_THROTTLE).rate, ThrottlingBurstLimit: (throttle ?? DEFAULT_THROTTLE).burst }]),
     );
+
+    new CfnOutput(this, 'ApiUrl', { value: stage.url! });
 
     new ssm.StringParameter(this, 'ParamApiId', { parameterName: ssmParam(envName, 'api/id'), stringValue: this.api.apiId });
     new ssm.StringParameter(this, 'ParamApiUrl', { parameterName: ssmParam(envName, 'api/url'), stringValue: stage.url });

@@ -1,4 +1,4 @@
-import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -88,6 +88,10 @@ export class AuthStack extends Stack {
       readAttributes: readAttrs,
       writeAttributes: writeAttrs,
     });
+
+    // Identifiants publics (client sans secret), lus par le build du front dans deploy.yml via --outputs-file.
+    new CfnOutput(this, 'UserPoolId', { value: this.userPool.userPoolId });
+    new CfnOutput(this, 'WebClientId', { value: this.webClient.userPoolClientId });
 
     new ssm.StringParameter(this, 'ParamUserPoolId', { parameterName: ssmParam(envName, 'auth/userPoolId'), stringValue: this.userPool.userPoolId });
     new ssm.StringParameter(this, 'ParamClientId', { parameterName: ssmParam(envName, 'auth/webClientId'), stringValue: this.webClient.userPoolClientId });
