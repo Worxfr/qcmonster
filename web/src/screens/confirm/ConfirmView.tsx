@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ApiError, api } from '../../api';
-import { FolderSelect } from '../../components/FolderSelect';
+import { FolderSelect, useFolders } from '../../components/FolderSelect';
 import { Card, ErrorBox, Loading } from '../../components/ui';
 import { errMsg, useLoad } from '../../hooks';
 import { SUBJECTS, SUBJECT_IDS, plural, subjectLabel } from '../../labels';
@@ -12,7 +12,8 @@ import { MIN_WORDS, TITLE_MAX, TOPIC_MAX, addCut, confirmBody, initSections, max
 import { clearEdits, loadEdits, loadSections, saveEdits, saveSections } from './storage';
 import './confirm.css';
 
-export function ConfirmView({ id, onDone }: { id: string; onDone: (j: Job, fiches?: number) => void }) {
+/** Memorise: l'interrogation du statut ne re-rend pas la relecture pendant la frappe. */
+export const ConfirmView = memo(function ConfirmView({ id, onDone }: { id: string; onDone: (j: Job, fiches?: number) => void }) {
   const t = useLoad(() => api.transcription(id), [id]);
   // Pendant un rechargement (photo expirée), même raté, on garde l'écran et les saisies.
   const last = useRef<Tr | null>(null);
@@ -27,7 +28,7 @@ export function ConfirmView({ id, onDone }: { id: string; onDone: (j: Job, fiche
     );
   }
   return <ConfirmBody id={id} tr={tr} onDone={onDone} reloadPhotos={t.reload} reloading={t.loading} reloadError={t.data ? null : t.error} />;
-}
+});
 
 type Tr = NonNullable<ReturnType<typeof useLoad<Awaited<ReturnType<typeof api.transcription>>>>['data']>;
 type Pg = Tr['pages'][number];
@@ -55,6 +56,8 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   });
   const [pageIdx, setPageIdx] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const { folders, add: addFolder } = useFolders(); // un seul chargement pour toutes les fiches
   // Sur petit écran la photo est repliée: on voit les phrases sans défiler.
   const [photoOpen, setPhotoOpen] = useState(() => typeof window.matchMedia !== 'function' || window.matchMedia('(min-width: 900px)').matches);
   const rootEl = useRef<HTMLDivElement>(null);
@@ -83,6 +86,13 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     saveEdits(id, edits);
     saveSections(id, secs);
   }, [id, edits, secs]);
+
+  // Apres une coupe ou son retrait, le bouton clique disparait: on rend le focus a un endroit logique.
+  useEffect(() => {
+    if (!focusId) return;
+    document.getElementById(focusId)?.focus();
+    setFocusId(null);
+  }, [focusId, secs]);
 
   useEffect(() => {
     if (!flash) return;
@@ -114,8 +124,19 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     });
   }
   const patch = (from: string, p: Partial<Sec>) => setSecs((l) => l.map((s) => (s.from === from ? { ...s, ...p } : s)));
+  const showPageOf = (sentenceId: string) => {
+    const i = pages.findIndex((p) => p.sentences.some((s) => s.id === sentenceId));
+    if (i >= 0) setPageIdx(i);
+  };
   function cut(before: string) {
     setSecs((l) => addCut(l, all, before));
+    showPageOf(before);
+    setFocusId(`cf-sec-subject-${before}`);
+  }
+  function uncut(from: string) {
+    setSecs((l) => removeCut(l, from));
+    showPageOf(from);
+    setFocusId(`cf-cut-${from}`);
   }
   const goPage = (n: number) => {
     const i = pages.findIndex((p) => p.page === n);
@@ -179,7 +200,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     if (startOf.has(before.id) || gIndex.get(before.id) === 0) return null;
     return (
       <li className="cf-cutrow" key={`cut-${before.id}${boundary ? '-b' : ''}`}>
-        <button type="button" className="cf-cut" disabled={atLimit} onClick={() => cut(before.id)} aria-label={`Couper ici${boundary ? ', entre deux pages' : ''}, avant la phrase ${(gIndex.get(before.id) ?? 0) + 1}`}>
+        <button type="button" id={`cf-cut-${before.id}`} className="cf-cut" disabled={atLimit} onClick={() => cut(before.id)} aria-label={`Couper ici${boundary ? ', entre deux pages' : ''}, avant la phrase ${(gIndex.get(before.id) ?? 0) + 1}`}>
           <span aria-hidden="true">✂</span> {boundary ? 'Couper ici, entre les pages' : 'Couper ici'}
         </button>
         {atLimit && <span className="cf-cutlimit">{limitText}</span>}
@@ -192,11 +213,11 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
       <div className="cf-bandhead">
         <span className="cf-secnum">Fiche {i + 1}</span>
         {s.subject && <span className="cf-bandsub">{subjectLabel(s.subject)}</span>}
-        {i > 0 && <button type="button" className="cf-uncut" onClick={() => setSecs((l) => removeCut(l, s.from))}>Retirer cette coupe<span className="sr-only"> avant la fiche {i + 1}</span></button>}
+        {i > 0 && <button type="button" className="cf-uncut" onClick={() => uncut(s.from)}>Retirer cette coupe<span className="sr-only"> avant la fiche {i + 1}</span></button>}
       </div>
       <div className="cf-fields">
         <label>Matière
-          <select value={s.subject} onChange={(e) => patch(s.from, { subject: e.target.value as Subject })} aria-invalid={!s.subject && !s.ignore ? true : undefined}>
+          <select id={`cf-sec-subject-${s.from}`} value={s.subject} onChange={(e) => patch(s.from, { subject: e.target.value as Subject })} aria-invalid={!s.subject && !s.ignore ? true : undefined}>
             <option value="">Choisis…</option>
             {SUBJECT_IDS.map((k) => <option key={k} value={k}>{SUBJECTS[k]}</option>)}
           </select>
@@ -204,10 +225,15 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         <label>Sujet
           <input value={s.topic} maxLength={TOPIC_MAX} placeholder="Ex. La Révolution française" onChange={(e) => patch(s.from, { topic: e.target.value })} />
         </label>
-        <label>Titre (facultatif)
-          <input value={s.title} maxLength={TITLE_MAX} placeholder="Je propose un titre si tu n'en mets pas" onChange={(e) => patch(s.from, { title: e.target.value })} />
-        </label>
-        <FolderSelect label="Dossier (facultatif)" value={s.folderId} onChange={(f) => patch(s.from, { folderId: f })} />
+        <details className="cf-more">
+          <summary>Plus d'options</summary>
+          <div className="cf-fields">
+            <label>Titre (facultatif)
+              <input value={s.title} maxLength={TITLE_MAX} placeholder="Je propose un titre si tu n'en mets pas" onChange={(e) => patch(s.from, { title: e.target.value })} />
+            </label>
+            <FolderSelect label="Dossier (facultatif)" value={s.folderId} onChange={(f) => patch(s.from, { folderId: f })} folders={folders} onCreated={addFolder} />
+          </div>
+        </details>
       </div>
       <label className="check cf-ignore">
         <input type="checkbox" checked={s.ignore} onChange={(e) => patch(s.from, { ignore: e.target.checked })} />
@@ -223,9 +249,12 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         <header className="cf-head">
           <p className="cf-summary" role="status" aria-live="polite">{summary}</p>
           <p className="cf-words">{pl.words} {plural(pl.words, 'mot gardé', 'mots gardés')}</p>
-          <p className="cf-help">J'ai lu ta page, mais je peux me tromper. Regarde la photo et corrige les mots qui ne vont pas. Si une phrase est juste, ne touche à rien.</p>
+          <details className="cf-helpbox">
+            <summary>Comment ça marche ?</summary>
+            <p className="cf-help">J'ai lu ta page, mais je peux me tromper. Regarde la photo et corrige les mots qui ne vont pas. Si une phrase est juste, ne touche à rien.</p>
+            <p className="cf-help">Ton cours parle de plusieurs sujets ? Touche « Couper ici » entre deux phrases : tu auras une fiche par sujet, et ton cours complet reste gardé.</p>
+          </details>
           {proposed.current && secs.length > 1 && <p className="notice">J'ai proposé {secs.length} fiches, change-les si besoin.</p>}
-          <p className="cf-help">Ton cours parle de plusieurs sujets ? Touche « Couper ici » entre deux phrases : tu auras une fiche par sujet, et ton cours complet reste gardé.</p>
         </header>
 
         {pages.length > 1 && (
@@ -330,7 +359,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           {blocker && <p className="cf-fielderr">{blocker}</p>}
           {!blocker && (
             <p className="cf-plan">
-              {pl.kept} {plural(pl.kept, 'fiche', 'fiches')}{pl.subjects.length > 0 && ` (${pl.subjects.map(subjectLabel).join(', ')})`}
+              {pl.kept} {plural(pl.kept, 'fiche', 'fiches')}{pl.subjects.length > 0 && pl.subjects.length <= 3 && ` (${pl.subjects.map(subjectLabel).join(', ')})`}
               {pl.ignored > 0 && `, ${pl.ignored} ${plural(pl.ignored, 'partie ignorée', 'parties ignorées')}`}
             </p>
           )}

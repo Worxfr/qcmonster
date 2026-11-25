@@ -20,6 +20,7 @@ interface Params { subject: string; topic: string; folderId: string; status: str
 const EMPTY: Params = { subject: '', topic: '', folderId: '', status: '', sort: 'date-desc' };
 const KEYS = Object.keys(EMPTY) as (keyof Params)[];
 
+const rowKey = (s: ScanSummary) => `${s.scanId}/${s.docId ?? ''}`;
 const isFinal = (s: ScanSummary) => s.status.stage === 'termine' || s.status.stage === 'echec';
 
 function toQuery(p: Params, studentId?: string): ScanQuery {
@@ -102,17 +103,21 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
   const inProgress = list?.inProgress ?? 0;
   useEffect(() => {
     if (inProgress <= 0) return;
+    let stopped = false;
     let t: ReturnType<typeof setTimeout>;
     const loop = () => {
+      if (stopped) return;
       t = setTimeout(async () => {
+        if (stopped) return;
         if (!document.hidden) await load(false);
+        if (stopped) return; // l'ecran a ete quitte pendant le chargement: pas de nouveau minuteur
         loop();
       }, delay);
     };
     loop();
-    const vis = () => { if (!document.hidden) void load(false); };
+    const vis = () => { if (!stopped && !document.hidden) void load(false); };
     document.addEventListener('visibilitychange', vis);
-    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', vis); };
+    return () => { stopped = true; clearTimeout(t); document.removeEventListener('visibilitychange', vis); };
   }, [inProgress > 0, delay, load]);
 
   async function loadMore() {
@@ -128,7 +133,8 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
 
   const filtered = !!(params.subject || params.topic || params.folderId || params.status);
   const hideRunning = !params.status && running.length > 0;
-  const items = [...(list?.items ?? []), ...more].filter((s) => !(hideRunning && !isFinal(s)));
+  const seen = new Set((list?.items ?? []).map(rowKey));
+  const items = [...(list?.items ?? []), ...more.filter((s) => !seen.has(rowKey(s)))].filter((s) => !(hideRunning && !isFinal(s)));
   const folderName = (id?: string) => folders.find((f) => f.folderId === id)?.name;
   const toggle = (docId: string) => setPicked((p) => { const n = new Set(p); if (n.has(docId)) n.delete(docId); else n.add(docId); return n; });
   const byDoc = new Map(items.filter((s) => s.docId).map((s) => [s.docId!, s]));
@@ -168,14 +174,14 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
           {items.length === 0 ? (
             <Empty filtered={filtered} folder={!!params.folderId} readOnly={readOnly} clear={() => setParams({ ...EMPTY })} />
           ) : (
-            <Groups items={items} sort={params.sort} selecting={selecting} picked={picked} toggle={toggle} readOnly={readOnly} folderName={folderName} />
+            <Groups items={items} sort={params.sort} selecting={selecting} picked={picked} toggle={toggle} startSelect={(id) => { setSelecting(true); setPicked(new Set([id])); }} readOnly={readOnly} folderName={folderName} />
           )}
           {cursor && <button type="button" className="btn btn-ghost btn-big" onClick={loadMore}>Voir plus</button>}
         </section>
       )}
 
       {selecting && !readOnly && (
-        <SelectionBar chosen={chosen} folders={folders} onDone={() => { setPicked(new Set()); setSelecting(false); void load(true); api.folders().then((r) => setFolders(r.items), () => undefined); }} setError={setError} />
+        <SelectionBar chosen={chosen} folders={folders} onCreated={(f) => setFolders((l) => [...l, f])} onDone={() => { setPicked(new Set()); setSelecting(false); void load(true); api.folders(studentId).then((r) => setFolders(r.items), () => undefined); }} setError={setError} />
       )}
     </>
   );
@@ -286,7 +292,7 @@ function rows(items: ScanSummary[], sort: string): Row[] {
   return out;
 }
 
-function Groups({ items, sort, selecting, picked, toggle, readOnly, folderName }: { items: ScanSummary[]; sort: string; selecting: boolean; picked: Set<string>; toggle: (d: string) => void; readOnly: boolean; folderName: (id?: string) => string | undefined }) {
+function Groups({ items, sort, selecting, picked, toggle, startSelect, readOnly, folderName }: { items: ScanSummary[]; sort: string; selecting: boolean; picked: Set<string>; toggle: (d: string) => void; startSelect: (d: string) => void; readOnly: boolean; folderName: (id?: string) => string | undefined }) {
   return (
     <ul className="list scan-list">
       {rows(items, sort).map((r) => {
@@ -299,14 +305,15 @@ function Groups({ items, sort, selecting, picked, toggle, readOnly, folderName }
             </li>
           );
         }
-        return <ScanCard key={r.key} s={r.s} selecting={selecting} picked={!!r.s.docId && picked.has(r.s.docId)} toggle={toggle} readOnly={readOnly} folder={folderName(r.s.folderId)} grouped={(r.s.sectionCount ?? 1) > 1} />;
+        return <ScanCard key={r.key} s={r.s} selecting={selecting} picked={!!r.s.docId && picked.has(r.s.docId)} toggle={toggle} startSelect={startSelect} readOnly={readOnly} folder={folderName(r.s.folderId)} grouped={(r.s.sectionCount ?? 1) > 1} />;
       })}
     </ul>
   );
 }
 
-function ScanCard({ s, selecting, picked, toggle, readOnly, folder, grouped }: { s: ScanSummary; selecting: boolean; picked: boolean; toggle: (d: string) => void; readOnly: boolean; folder?: string; grouped: boolean }) {
+function ScanCard({ s, selecting, picked, toggle, startSelect, readOnly, folder, grouped }: { s: ScanSummary; selecting: boolean; picked: boolean; toggle: (d: string) => void; startSelect: (d: string) => void; readOnly: boolean; folder?: string; grouped: boolean }) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const longPressed = useRef(false);
   const stage = s.status.stage;
   const failed = stage === 'echec';
   const running = !failed && stage !== 'termine';
@@ -314,6 +321,7 @@ function ScanCard({ s, selecting, picked, toggle, readOnly, folder, grouped }: {
   const target = s.docId && !readOnly ? `/doc/${encodeURIComponent(s.docId)}` : !readOnly ? `/job/${encodeURIComponent(s.scanId)}` : null;
   const title = s.title ?? (running ? 'Cours en lecture…' : 'Cours sans titre');
   const open = () => {
+    if (longPressed.current) { longPressed.current = false; return; } // le relachement d'un appui long n'ouvre pas la fiche
     if (selecting && canPick) return toggle(s.docId!);
     if (target) go(target);
   };
@@ -338,14 +346,17 @@ function ScanCard({ s, selecting, picked, toggle, readOnly, folder, grouped }: {
   return (
     <li className={`scan-card${picked ? ' picked' : ''}${failed ? ' failed' : ''}${grouped ? ' in-group' : ''}`}>
       {selecting && !readOnly && (
-        <input type="checkbox" className="pick" checked={picked} disabled={!canPick} onChange={() => canPick && toggle(s.docId!)} aria-label={`Choisir ${title}`} />
+        <label className="pick-hit">
+          <input type="checkbox" className="pick" checked={picked} disabled={!canPick} onChange={() => canPick && toggle(s.docId!)} aria-label={`Choisir ${title}`} />
+        </label>
       )}
       {target || selecting ? (
         <button
           type="button"
           className="scan-open"
           onClick={open}
-          onPointerDown={() => { if (canPick && !selecting) timer.current = setTimeout(() => toggle(s.docId!), 600); }}
+          onPointerDown={() => { longPressed.current = false; if (canPick && !selecting) timer.current = setTimeout(() => { longPressed.current = true; startSelect(s.docId!); }, 600); }}
+          onContextMenu={(e) => { if (canPick) e.preventDefault(); }}
           onPointerUp={() => clearTimeout(timer.current)}
           onPointerLeave={() => clearTimeout(timer.current)}
         >
@@ -356,7 +367,7 @@ function ScanCard({ s, selecting, picked, toggle, readOnly, folder, grouped }: {
   );
 }
 
-function SelectionBar({ chosen, folders, onDone, setError }: { chosen: ScanSummary[]; folders: Folder[]; onDone: () => void; setError: (e: string | null) => void }) {
+function SelectionBar({ chosen, folders, onCreated, onDone, setError }: { chosen: ScanSummary[]; folders: Folder[]; onCreated: (f: Folder) => void; onDone: () => void; setError: (e: string | null) => void }) {
   const [panel, setPanel] = useState<'move' | 'delete' | null>(null);
   const [folderId, setFolderId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -382,14 +393,13 @@ function SelectionBar({ chosen, folders, onDone, setError }: { chosen: ScanSumma
   });
   const out = () => run(async () => { for (const s of inFolders) await api.removeFromFolder(s.folderId!, s.docId!); });
   const del = () => run(async () => { for (const s of chosen) await api.deleteDoc(s.docId!); });
-  void folders;
 
   return (
     <div className="selbar" role="region" aria-label="Actions sur les cours choisis">
       <p className="selcount" role="status">{n} {plural(n, 'choisi', 'choisis')}</p>
       {panel === 'move' && (
         <div className="selpanel">
-          <FolderSelect value={folderId} onChange={setFolderId} label="Dossier" none="Choisis un dossier" />
+          <FolderSelect value={folderId} onChange={setFolderId} label="Dossier" none="Choisis un dossier" folders={folders} onCreated={onCreated} />
           {moved > 0 && <p className="notice">{moved} {plural(moved, 'cours sera déplacé', 'cours seront déplacés')} depuis un autre dossier.</p>}
           <div className="btn-row">
             <button type="button" className="btn btn-small" disabled={!folderId || busy} onClick={move}>Ranger ici</button>

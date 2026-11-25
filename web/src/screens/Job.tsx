@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
 import { JOB_FINAL } from '../game';
@@ -7,6 +7,7 @@ import { STAGES, failKind, fmtElapsed, fmtTime, stageIndex, subjectClass, subjec
 import { go } from '../router';
 import type { Doc, Job, ScanStage } from '../types';
 import { ConfirmView } from './confirm/ConfirmView';
+import { clearEdits } from './confirm/storage';
 
 const STAGE_OF: Record<string, ScanStage> = {
   en_attente_envoi: 'envoi', verification_fichier: 'lecture', transcription: 'lecture', a_confirmer: 'a_confirmer',
@@ -24,17 +25,21 @@ function useJob(id: string) {
 
   useEffect(() => {
     let live = true;
+    let inFlight = false; // propre a ce montage (le mode strict remonte l'effet)
     const tick = async () => {
       clearTimeout(timer.current);
-      if (document.hidden) return; // reprise au retour sur l'onglet
+      if (document.hidden || inFlight) return; // reprise au retour sur l'onglet; une seule requete a la fois
+      inFlight = true;
       let delay = POLL_MS;
       try {
         const j = await api.job(id);
+        inFlight = false;
         if (!live) return;
         setJob(j);
         setError(null);
         if (JOB_FINAL.includes(j.state)) return;
       } catch (e) {
+        inFlight = false;
         if (!live) return;
         setError(errMsg(e));
         delay = POLL_ERR_MS;
@@ -51,9 +56,11 @@ function useJob(id: string) {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [id]);
-  return { job, setJob, error, setError, again: () => tickRef.current() };
+  const again = useCallback(() => tickRef.current(), []);
+  return { job, setJob, error, setError, again };
 }
 
+/** Chaque composant porte sa propre horloge: l'ecran de relecture n'est pas re-rendu a chaque seconde. */
 function useNow(ms: number) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -63,11 +70,31 @@ function useNow(ms: number) {
   return now;
 }
 
+function TimeLeft({ expiresAt, soon }: { expiresAt?: string; soon?: boolean }) {
+  const now = useNow(30000);
+  const left = timeLeft(expiresAt, now);
+  if (!left) return null;
+  return (
+    <p className={`review-time${soon ? ' soon' : ''}`} role="status">
+      <span aria-hidden="true">{soon ? '⏳' : '🕒'}</span> {left} pour relire
+    </p>
+  );
+}
+
+function Elapsed({ since }: { since: string }) {
+  const now = useNow(1000);
+  return <p className="muted">Commencé à {fmtTime(since)} · {fmtElapsed(Math.max(0, Math.round((now - Date.parse(since)) / 1000)))}</p>;
+}
+
 export function JobView({ id }: { id: string }) {
   const { job, setJob, error, setError, again } = useJob(id);
   const [fiches, setFiches] = useState<number | undefined>();
-  const now = useNow(1000);
   const [cancelling, setCancelling] = useState(false);
+  const onConfirmed = useCallback((j: Job, n?: number) => { setFiches(n); setJob(j); again(); }, [setJob, again]);
+  const state = job?.state;
+  useEffect(() => {
+    if (state && JOB_FINAL.includes(state)) clearEdits(id); // etat final (annule, expire, echec, termine): plus de texte garde
+  }, [state, id]);
 
   if (!job) return error ? <ErrorBox message={error} /> : <Loading />;
 
@@ -77,7 +104,9 @@ export function JobView({ id }: { id: string }) {
   const cancel = async () => {
     setCancelling(true);
     try {
-      setJob(await api.cancel(id));
+      const j = await api.cancel(id);
+      clearEdits(id); // le texte non envoye ne reste pas dans l'onglet
+      setJob(j);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -89,15 +118,10 @@ export function JobView({ id }: { id: string }) {
   );
 
   if (job.state === 'a_confirmer') {
-    const left = timeLeft(job.status?.expiresAt, now);
     return (
       <>
-        {left && (
-          <p className={`review-time${job.status?.expiresSoon ? ' soon' : ''}`} role="status">
-            <span aria-hidden="true">{job.status?.expiresSoon ? '⏳' : '🕒'}</span> {left.replace('Il reste ', 'Il reste ')} pour relire
-          </p>
-        )}
-        <ConfirmView id={id} onDone={(j, n) => { setFiches(n); setJob(j); again(); }} />
+        <TimeLeft expiresAt={job.status?.expiresAt} soon={job.status?.expiresSoon} />
+        <ConfirmView id={id} onDone={onConfirmed} />
         <ErrorBox message={error} />
         <Card>
           <p className="muted">Tes pages sont gardées pour toi pendant que tu relis. Si tu ne veux plus de ce scan :</p>
@@ -126,7 +150,6 @@ export function JobView({ id }: { id: string }) {
   const st = job.status;
   const done = stage === 'termine';
   const started = st?.startedAt ?? job.createdAt;
-  const elapsed = Math.max(0, Math.round((now - Date.parse(started)) / 1000));
   const showPages = st && (stage === 'envoi' || stage === 'lecture');
   return (
     <Card title={done ? 'Ta fiche est prête' : fiches && fiches > 1 ? `Ton cours est en route : ${fiches} fiches` : 'Ton cours est en route'}>
@@ -145,7 +168,7 @@ export function JobView({ id }: { id: string }) {
             <Bar pct={st.pagesTotal ? Math.round((st.pagesDone / st.pagesTotal) * 100) : 0} label="Pages traitées" />
           </>
         )}
-        {!done && <p className="muted">Commencé à {fmtTime(started)} · {fmtElapsed(elapsed)}</p>}
+        {!done && <Elapsed since={started} />}
         {!done && <p className="soft">Tu peux quitter cette page, on garde ta place.</p>}
       </div>
       <ErrorBox message={error} />

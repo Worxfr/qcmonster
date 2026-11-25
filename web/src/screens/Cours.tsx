@@ -50,7 +50,7 @@ export function Cours({ id }: { id: string }) {
                 <strong>{subjectLabel(s.subject)}{s.topic ? ` · ${s.topic}` : ''}</strong>
                 {s.title && <><br /><span className="muted">{s.title}</span></>}
               </span>
-              {s.status === 'fiche' && s.docId && <a className="btn btn-small" href={`#/doc/${encodeURIComponent(s.docId)}`}>Lire la fiche<span className="sr-only"> {i + 1}</span></a>}
+              {s.status === 'fiche' && s.docId && <a className="btn btn-small" href={`#/doc/${encodeURIComponent(s.docId)}`}>Lire la fiche<span className="sr-only"> {subjectLabel(s.subject)}{s.topic ? ` ${s.topic}` : ''}</span></a>}
               {s.status === 'supprimee' && <span className="pill pill-warn">Fiche supprimée</span>}
               {s.status === 'sans_fiche' && <span className="pill pill-warn">Pas de fiche</span>}
               {s.status === 'ignoree' && <span className="subj subj-none">Ignorée</span>}

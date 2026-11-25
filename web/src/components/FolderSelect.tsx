@@ -1,27 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { errMsg } from '../hooks';
 import type { Folder } from '../types';
 
 const NEW = '__new__';
 
-/** Liste de dossiers de l'eleve avec « Nouveau dossier… » (cree le dossier tout de suite). */
-export function FolderSelect({ value, onChange, label, none = 'Aucun dossier' }: { value: string; onChange: (id: string) => void; label: string; none?: string }) {
+/** Charge les dossiers de l'eleve UNE fois; a appeler dans le composant parent et a passer en propriete. */
+export function useFolders(): { folders: Folder[]; add: (f: Folder) => void } {
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     api.folders().then((r) => live && setFolders(r.items), () => undefined);
     return () => { live = false; };
   }, []);
+  const add = useCallback((f: Folder) => setFolders((l) => (l.some((x) => x.folderId === f.folderId) ? l : [...l, f])), []);
+  return { folders, add };
+}
+
+/** Liste de dossiers avec « Nouveau dossier… » (cree le dossier tout de suite). La liste vient du parent. */
+export function FolderSelect({ value, onChange, label, folders, onCreated, none = 'Aucun dossier' }: { value: string; onChange: (id: string) => void; label: string; folders: Folder[]; onCreated: (f: Folder) => void; none?: string }) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [err, setErr] = useState<string | null>(null);
 
   async function create() {
     setErr(null);
     try {
       const f = await api.createFolder(name.trim());
-      setFolders((l) => [...l, f]);
+      onCreated(f);
       setCreating(false);
       setName('');
       onChange(f.folderId);

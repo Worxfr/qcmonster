@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { ApiError, api, uploadScan } from '../api';
 import { useApp } from '../app-context';
-import { FolderSelect } from '../components/FolderSelect';
+import { FolderSelect, useFolders } from '../components/FolderSelect';
 import { Bar, Card, ErrorBox } from '../components/ui';
 import { errMsg } from '../hooks';
 import { plural } from '../labels';
@@ -39,6 +39,7 @@ export function Scan() {
   const [error, setError] = useState<string | null>(null);
   const [folderId, setFolderId] = useState('');
   const [sent, setSent] = useState<number | null>(null);
+  const { folders, add } = useFolders();
   const urls = useRef<string[]>([]);
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
@@ -130,7 +131,7 @@ export function Scan() {
               </li>
             ))}
           </ol>
-          <FolderSelect value={folderId} onChange={setFolderId} label="Ranger dans un dossier (facultatif)" />
+          <FolderSelect value={folderId} onChange={setFolderId} label="Ranger dans un dossier (facultatif)" folders={folders} onCreated={add} />
           {tooMany && <p role="alert" className="error">Tu as choisi {pages.length} pages mais il ne t'en reste que {left}. Retire-en {pages.length - (left ?? 0)} pour envoyer.</p>}
           {busy && (
             <div role="status">

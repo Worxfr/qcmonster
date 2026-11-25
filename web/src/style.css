@@ -195,3 +195,7 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
   .frise .step-label { font-size: .85rem; }
 }
 .btn { text-decoration: none; }
+/* Relecture F: cibles tactiles de 44 px */
+.btn-small { min-height: 44px; }
+.pick-hit { display: grid; place-items: center; min-width: 48px; min-height: 48px; flex: none; cursor: pointer; }
+.pick-hit .pick { margin: 0; }

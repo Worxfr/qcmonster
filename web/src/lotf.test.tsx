@@ -1,7 +1,15 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+
+// Compte les rendus des zones de texte pour verifier que le decompte ne re-rend pas la relecture.
+const renders = vi.hoisted(() => ({ n: 0 }));
+vi.mock('./screens/confirm/AutoGrow', async (orig) => {
+  const m = await orig<typeof import('./screens/confirm/AutoGrow')>();
+  return { ...m, AutoGrow: (p: Parameters<typeof m.AutoGrow>[0]) => { renders.n++; return m.AutoGrow(p); } };
+});
 
 // Lot F: envoi de plusieurs photos, statut, sections, liste, dossiers, cours. API simulee par un routeur local.
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
@@ -105,6 +113,14 @@ describe('envoi de plusieurs photos', () => {
 });
 
 describe('statut d\'un scan', () => {
+  it('mode strict (effets montés deux fois): le statut s\'affiche et l\'interrogation repart', async () => {
+    routes['GET /jobs/J1'] = () => json({ jobId: 'J1', state: 'transcription', pages: 2, createdAt: T0, status: status('lecture', { pagesDone: 1, pagesTotal: 2 }) });
+    sessionStorage.setItem('qcm.mockRole', 'eleve');
+    window.location.hash = '#/job/J1';
+    render(<StrictMode><App /></StrictMode>);
+    expect(await screen.findByText('Pages lues 1 sur 2')).toBeInTheDocument();
+  });
+
   it('frise, pages lues, interrogation qui s\'arrête à terminé, une carte par fiche', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -119,8 +135,8 @@ describe('statut d\'un scan', () => {
       await open('#/job/J1');
       expect(await screen.findByText('Pages lues 2 sur 5')).toBeInTheDocument();
       expect(screen.getByText('Lecture').closest('li')).toHaveAttribute('aria-current', 'step');
-      await vi.advanceTimersByTimeAsync(2600);
-      expect(await screen.findByText(/2 fiches sont prêtes/)).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(await screen.findByText(/2 fiches sont prêtes/, undefined, { timeout: 5000 })).toBeInTheDocument();
       expect(screen.getAllByRole('button', { name: /Lire la fiche/ })).toHaveLength(2);
       expect(screen.getByRole('button', { name: 'Voir le cours complet' })).toBeInTheDocument();
       await vi.advanceTimersByTimeAsync(10000);
@@ -192,16 +208,73 @@ describe('découper en sections', () => {
     expect(sent[0].subject).toBeUndefined();
   });
 
-  it('une coupe sur la frontière de deux pages est proposée sur les deux onglets; la retirer fusionne', async () => {
+  it('une coupe sur la frontière de deux pages: focus sur la matière de la nouvelle fiche; la retirer rend le focus à la coupe', async () => {
     review({ pages: [{ sentences: [sn(1, 1), sn(1, 2)] }, { sentences: [sn(2, 1)] }], subject: 'svt' });
     await open('#/job/J1');
     await screen.findByRole('tab', { name: /Page 2/ });
     await userEvent.click(screen.getByRole('button', { name: /entre deux pages/ }));
-    expect(screen.getByText('La fiche 2 commence page 2.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: /Page 2/ }));
+    // on passe sur la page de la nouvelle fiche et le focus suit
+    expect(screen.getByRole('tab', { name: /Page 2/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByLabelText('Matière')[0]).toHaveFocus();
     await userEvent.click(screen.getByRole('button', { name: /Retirer cette coupe/ }));
+    expect(screen.getByRole('button', { name: /^Couper ici/ })).toHaveFocus();
     await userEvent.click(screen.getByRole('tab', { name: /Page 1/ }));
     expect(screen.getByRole('button', { name: /entre deux pages/ })).toBeInTheDocument();
+  });
+
+  it('coupe au milieu d\'une page: le focus va sur la matière de la nouvelle fiche', async () => {
+    review({ pages: [{ sentences: [sn(1, 1), sn(1, 2), sn(1, 3)] }], subject: 'svt' });
+    await open('#/job/J1');
+    await userEvent.click((await screen.findAllByRole('button', { name: /^Couper ici/ }))[1]);
+    expect(screen.getAllByLabelText('Matière')[1]).toHaveFocus();
+  });
+
+  it('les dossiers ne sont chargés qu\'une fois, même avec 3 fiches', async () => {
+    review({
+      pages: [{ sentences: [sn(1, 1), sn(1, 2)] }, { sentences: [sn(2, 1)] }],
+      sug: [{ fromSentenceId: 'p1-s1', subject: 'svt' }, { fromSentenceId: 'p1-s2', subject: 'maths' }, { fromSentenceId: 'p2-s1', subject: 'francais' }],
+    });
+    await open('#/job/J1');
+    await screen.findByText("J'ai proposé 3 fiches, change-les si besoin.");
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/folders'))).toHaveLength(1);
+  });
+
+  it('le décompte ne re-rend pas la relecture (ni chaque seconde, ni à chaque interrogation)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      review({ pages: [{ sentences: [sn(1, 1), sn(1, 2)] }], subject: 'svt' });
+      await open('#/job/J1');
+      await screen.findByLabelText('Phrase 2');
+      await vi.advanceTimersByTimeAsync(3000);
+      const before = renders.n;
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(calls.filter((c) => c.url.endsWith('/jobs/J1')).length).toBeGreaterThan(2);
+      expect(renders.n).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('annuler le scan efface le texte non envoyé', async () => {
+    review({ pages: [{ sentences: [sn(1, 1)] }], subject: 'svt' });
+    routes['POST /jobs/J1/cancel'] = () => json({ jobId: 'J1', state: 'rejete', pages: 1, createdAt: T0, status: status('echec', { message: "Annulé par l'élève" }) });
+    await open('#/job/J1');
+    await userEvent.type(await screen.findByLabelText('Phrase 1'), ' ajout');
+    expect(sessionStorage.getItem('qcm.confirm.J1')).not.toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler et récupérer mes pages' }));
+    expect(await screen.findByText('Annulé')).toBeInTheDocument();
+    expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull();
+    expect(sessionStorage.getItem('qcm.confirm.sections.J1')).toBeNull();
+  });
+
+  it('un scan expiré efface le texte gardé dans l\'onglet', async () => {
+    sessionStorage.setItem('qcm.confirm.J1', JSON.stringify({ 'p1-s1': 'texte' }));
+    sessionStorage.setItem('qcm.confirm.sections.J1', '[]');
+    routes['GET /jobs/J1'] = () => json({ jobId: 'J1', state: 'expire', pages: 1, createdAt: T0, status: status('echec', { message: 'Pas de confirmation après 12 heures' }) });
+    await open('#/job/J1');
+    await screen.findByText('Délai dépassé');
+    expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull();
+    expect(sessionStorage.getItem('qcm.confirm.sections.J1')).toBeNull();
   });
 
   it('proposition automatique reprise, modifiable; une partie ignorée; tout ignorer bloque', async () => {
@@ -403,5 +476,55 @@ describe('dossiers', () => {
     expect(await screen.findByText('Tu as déjà un dossier avec ce nom.')).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: /Contrôle de juin/ })[0]);
     expect(window.location.hash).toBe('#/docs?folderId=F1');
+  });
+});
+
+describe('liste: interrogation et appui long', () => {
+  const running = () => json(list([{ ...scan(1), state: 'transcription', docId: undefined, title: undefined, status: status('lecture', { pagesDone: 1, pagesTotal: 3 }) }], { inProgress: 1 }));
+
+  it('plus aucun appel à /scans après avoir quitté l\'écran, même pendant un chargement', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      routes['GET /scans*'] = running;
+      const base = globalThis.fetch;
+      // seules les requetes de la liste sont lentes: un tour d'interrogation dure 3 s
+      vi.stubGlobal('fetch', (...a: Parameters<typeof fetch>) => (String(a[0]).includes('/scans') ? new Promise((res) => setTimeout(() => res(base(...a)), 1500)) : base(...a)));
+      const view = await open('#/docs');
+      await vi.advanceTimersByTimeAsync(4000); // premier chargement fini
+      const scansCalls = () => calls.filter((c) => c.url.includes('/scans')).length;
+      await vi.advanceTimersByTimeAsync(3000 + 600); // un tour d'interrogation commence
+      view.unmount(); // quitte l'ecran pendant le chargement
+      const atUnmount = scansCalls();
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(scansCalls()).toBeLessThanOrEqual(atUnmount + 2); // au plus les 2 requetes du tour deja en vol
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('appui long: mode sélection, la carte est choisie et la fiche ne s\'ouvre pas au relâchement', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      routes['GET /scans*'] = () => json(list([scan(1), scan(2)]));
+      await open('#/docs');
+      const card = (await screen.findByText('Fiche 1')).closest('button')!;
+      fireEvent.pointerDown(card);
+      await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+      fireEvent.pointerUp(card);
+      fireEvent.click(card);
+      expect(window.location.hash).toBe('#/docs');
+      expect(screen.getByLabelText('Choisir Fiche 1')).toBeChecked();
+      expect(screen.getByLabelText('Choisir Fiche 2')).not.toBeChecked();
+      expect(screen.getByText('1 choisi')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('un clic simple ouvre toujours la fiche', async () => {
+    routes['GET /scans*'] = () => json(list([scan(1)]));
+    await open('#/docs');
+    await userEvent.click((await screen.findByText('Fiche 1')).closest('button')!);
+    expect(window.location.hash).toBe('#/doc/D1');
   });
 });

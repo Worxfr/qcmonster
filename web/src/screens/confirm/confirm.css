@@ -97,3 +97,17 @@
 .cf-splitnote { margin: 0; color: #075985; font-size: .9rem; font-weight: 600; }
 .cf-plan { margin: 0; font-weight: 800; color: var(--brand); }
 .cf-privacy { margin: 0; font-size: .85rem; color: var(--muted); }
+
+/* Aide repliee et options des fiches */
+.cf-helpbox summary, .cf-more summary { cursor: pointer; font-weight: 800; color: var(--brand); min-height: 44px; display: flex; align-items: center; }
+.cf-helpbox { background: #f5f3ff; border-radius: 12px; padding: 0 .8rem; margin-top: .3rem; }
+.cf-helpbox[open] { padding-bottom: .5rem; }
+.cf-more { background: rgba(255, 255, 255, .6); border-radius: 12px; padding: 0 .7rem; }
+.cf-more[open] { padding-bottom: .6rem; }
+
+/* Barre du bas sur grand ecran: une seule ligne */
+@media (min-width: 900px) {
+  .cf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem 1rem; padding: .5rem 1.1rem; }
+  .cf-actions > p { margin: 0; }
+  .cf-actions .cf-send { width: auto; margin: 0 0 0 auto; padding: .55rem 1.8rem; min-height: 48px; }
+}
