@@ -1,8 +1,15 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Annotation } from './golden.js';
 import type { PageRun, Status } from './metrics.js';
 
 export interface Runner {
   mode: 'oracle' | 'mock' | 'real';
+  /** Dépense cumulée du lancement (voie `lambda`), pour l'arrêt de sécurité. */
+  spent?: () => number;
+  lastTotals?: () => { monthEur: number; totalEur: number } | undefined;
   /** Vrai si le runner peut rejouer une page avec des passages sans injection (test A7). L'API publique ne le permet pas. */
   passageTwin: boolean;
   run(input: { id: string; image: Buffer; ann: Annotation; expectedRefused?: boolean; cleanPassages?: boolean }): Promise<PageRun>;
@@ -87,4 +94,61 @@ export function apiRunner(baseUrl: string, token: string, mode: 'mock' | 'real')
       };
     },
   };
+}
+
+/**
+ * Voie `lambda` (dev seulement, stack eval-stack): invoque la Lambda `eval-run` avec la CLI AWS (identifiants OIDC du role QCMonster-Eval-dev).
+ * Une page par appel; la Lambda exécute le vrai pipeline en mémoire et renvoie résultats, coût par étape et compteurs.
+ * Sécurités: aucun nouvel essai de la CLI (un essai de plus = une facture de plus), arrêt dès que `maxEur` est atteint ou que le cumul dev
+ * atteint `stopAtTotalEur`. Les journaux n'affichent jamais de contenu: seulement l'identifiant de page et des nombres.
+ */
+export function lambdaRunner(fnName: string, o: { maxEur: number; stopAtTotalEur: number }): Runner {
+  let spent = 0;
+  let totals: { monthEur: number; totalEur: number } | undefined;
+  const invoke = (payload: unknown): Record<string, unknown> => {
+    const dir = mkdtempSync(join(tmpdir(), 'eval-'));
+    try {
+      writeFileSync(join(dir, 'in.json'), JSON.stringify(payload), { mode: 0o600 });
+      const meta = execFileSync(
+        'aws',
+        ['lambda', 'invoke', '--function-name', fnName, '--payload', `fileb://${join(dir, 'in.json')}`, '--cli-read-timeout', '0', '--cli-connect-timeout', '30', '--output', 'json', join(dir, 'out.json')],
+        { env: { ...process.env, AWS_MAX_ATTEMPTS: '1', AWS_PAGER: '' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 20 },
+      );
+      const out = JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as Record<string, unknown>;
+      if ((JSON.parse(meta) as { FunctionError?: string }).FunctionError) throw new Error(`eval-run: ${String(out.errorType ?? 'erreur')}`);
+      return out;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  return {
+    mode: 'real',
+    passageTwin: false,
+    spent: () => spent,
+    lastTotals: () => totals,
+    async run({ id, image }) {
+      if (spent >= o.maxEur) throw new Error(`arrêt: dépense du lancement ${spent.toFixed(3)} EUR >= plafond ${o.maxEur} EUR`);
+      if (totals && totals.totalEur >= o.stopAtTotalEur) throw new Error(`arrêt: cumul dev ${totals.totalEur.toFixed(2)} EUR >= ${o.stopAtTotalEur} EUR`);
+      const r = invoke({ action: 'run', pageId: id, image: image.toString('base64') }) as {
+        refused: boolean; state: string; transcript: string; claims: PageRun['claims']; outputText: string; steps: NonNullable<PageRun['steps']>;
+        costEur: number; durationSec: number; costBefore: NonNullable<PageRun['costBefore']>; costAfter: NonNullable<PageRun['costAfter']>; uncounted: number; errorClass?: string;
+      };
+      spent += r.costEur;
+      totals = r.costAfter;
+      console.log(`page ${id}: ${r.state}${r.errorClass ? ` (${r.errorClass})` : ''}, ${r.costEur.toFixed(4)} EUR, ${r.durationSec.toFixed(0)} s, cumul dev ${r.costAfter.totalEur.toFixed(4)} EUR`);
+      return { refused: r.refused, transcript: r.transcript, claims: r.claims, outputText: r.outputText, durationSec: r.durationSec, costEur: r.costEur, steps: r.steps, state: r.state, errorClass: r.errorClass, uncounted: r.uncounted, costBefore: r.costBefore, costAfter: r.costAfter };
+    },
+  };
+}
+
+/** Compteurs de coût dev (action `cost` de la Lambda). */
+export function lambdaCost(fnName: string): { monthEur: number; totalEur: number } {
+  const dir = mkdtempSync(join(tmpdir(), 'eval-'));
+  try {
+    writeFileSync(join(dir, 'in.json'), JSON.stringify({ action: 'cost' }));
+    execFileSync('aws', ['lambda', 'invoke', '--function-name', fnName, '--payload', `fileb://${join(dir, 'in.json')}`, '--cli-read-timeout', '60', '--output', 'json', join(dir, 'out.json')], { env: { ...process.env, AWS_MAX_ATTEMPTS: '1', AWS_PAGER: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    return (JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')) as { costBefore: { monthEur: number; totalEur: number } }).costBefore;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
