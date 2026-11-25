@@ -1,6 +1,6 @@
 # 7. CI/CD: GitHub Actions, OIDC, CDK
 
-![CI/CD](07_cicd.png)
+![CI/CD](07_cicd.svg)
 
 1. Le propriétaire fusionne une pull request quand la CI est verte (lint, tests, synthèse CDK).
 2. Le push sur « main » lance le workflow « deploy ». Il refait d'abord la CI, puis le job « deploy-dev » (environnement GitHub « dev »). Rien ne se déploie tant que la variable DEPLOY_ENABLED n'est pas « true ».

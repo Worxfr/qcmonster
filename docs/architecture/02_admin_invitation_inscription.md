@@ -1,6 +1,6 @@
 # 2. Code d'invitation (admin) et inscription du parent
 
-![Invitation et inscription](02_admin_invitation_inscription.png)
+![Invitation et inscription](02_admin_invitation_inscription.svg)
 
 1. L'administrateur (compte Cognito du groupe « admin ») envoie « POST /admin/invitations ». Le serveur lit le groupe dans le jeton et refuse tous les autres.
 2. La fonction « admin-invitations » écrit deux choses dans DynamoDB: une ligne d'audit (20 codes par jour au plus) et le code, stocké haché (SHA-256).

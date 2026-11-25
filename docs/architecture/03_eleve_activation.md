@@ -1,6 +1,6 @@
 # 3. Ajout et activation d'un élève
 
-![Ajout et activation d'un élève](03_eleve_activation.png)
+![Ajout et activation d'un élève](03_eleve_activation.svg)
 
 1. Le parent envoie « POST /students » (pseudo, niveau, cases d'autorité parentale cochées). La fonction « students-create » le reçoit.
 2. Elle écrit l'élève et un jeton d'activation dans DynamoDB. Le jeton est aléatoire, valable 24 h, à usage unique, stocké haché.

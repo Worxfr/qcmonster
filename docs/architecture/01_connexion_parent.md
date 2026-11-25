@@ -1,6 +1,6 @@
 # 1. Connexion du parent et création de la famille
 
-![Connexion du parent](01_connexion_parent.png)
+![Connexion du parent](01_connexion_parent.svg)
 
 1. Le parent ouvre le site (CloudFront + S3).
 2. Il se connecte à Cognito (mot de passe, double authentification proposée). Il reçoit des jetons valables 1 heure, renouvelables 30 jours.

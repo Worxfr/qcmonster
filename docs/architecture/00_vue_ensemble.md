@@ -1,6 +1,6 @@
 # 0. Vue d'ensemble
 
-![Vue d'ensemble](00_vue_ensemble.png)
+![Vue d'ensemble](00_vue_ensemble.svg)
 
 1 et 2. Le navigateur charge le site (HTML, JavaScript) depuis CloudFront, qui lit le bucket S3 privé. L'utilisateur se connecte directement à Cognito et reçoit des jetons.
 3. Le site appelle l'API Gateway HTTP avec le jeton. API Gateway vérifie le jeton avant de continuer.

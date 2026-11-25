@@ -5,14 +5,14 @@ Chaque schéma a son fichier `.md` en français simple, qui suit les numéros de
 
 | Schéma | Explication |
 |---|---|
-| ![0](00_vue_ensemble.png) | [0. Vue d'ensemble](00_vue_ensemble.md) |
-| ![1](01_connexion_parent.png) | [1. Connexion du parent et création de la famille](01_connexion_parent.md) |
-| ![2](02_admin_invitation_inscription.png) | [2. Code d'invitation (admin) et inscription du parent](02_admin_invitation_inscription.md) |
-| ![3](03_eleve_activation.png) | [3. Ajout et activation d'un élève](03_eleve_activation.md) |
-| ![4](04_scan.png) | [4. Scan d'un cours](04_scan.md) |
-| ![5](05_jeu.png) | [5. Jeu](05_jeu.md) |
-| ![6](06_export_suppression.png) | [6. Export et suppression des données](06_export_suppression.md) |
-| ![7](07_cicd.png) | [7. CI/CD](07_cicd.md) |
+| ![0](00_vue_ensemble.svg) | [0. Vue d'ensemble](00_vue_ensemble.md) |
+| ![1](01_connexion_parent.svg) | [1. Connexion du parent et création de la famille](01_connexion_parent.md) |
+| ![2](02_admin_invitation_inscription.svg) | [2. Code d'invitation (admin) et inscription du parent](02_admin_invitation_inscription.md) |
+| ![3](03_eleve_activation.svg) | [3. Ajout et activation d'un élève](03_eleve_activation.md) |
+| ![4](04_scan.svg) | [4. Scan d'un cours](04_scan.md) |
+| ![5](05_jeu.svg) | [5. Jeu](05_jeu.md) |
+| ![6](06_export_suppression.svg) | [6. Export et suppression des données](06_export_suppression.md) |
+| ![7](07_cicd.svg) | [7. CI/CD](07_cicd.md) |
 
 ## Lire un schéma
 - Cadre plein: compte AWS. Cadre pointillé turquoise: région `eu-west-3`. Cadre gris pointillé: groupe de services.
@@ -21,6 +21,7 @@ Chaque schéma a son fichier `.md` en français simple, qui suit les numéros de
 - Les identifiants réels (compte, pool, adresse CloudFront) n'apparaissent jamais: `<ID_COMPTE>`, `<POOL>`.
 
 ## Régénérer
+Le dépôt garde les SVG (lisibles sur GitHub). Les PNG sont générés aussi par `build.sh` mais ignorés par git: la garde `scripts/guards.test.ts` interdit les `.png` hors de ses dossiers prévus.
 Les images sortent de `NN_*.py` (bibliothèque Python [`diagrams`](https://diagrams.mingrammer.com/), icônes AWS embarquées dans la bibliothèque) et de `common.py` (styles, flèches numérotées).
 Les icônes sont celles livrées avec la bibliothèque; ce n'est pas forcément la dernière version du jeu « AWS Architecture Icons ».
 
@@ -62,7 +63,7 @@ let svg = viz.renderString(src, { format: 'svg', images: [...imgs.values()] });
 // Les libellés des noeuds-icônes chevauchent le bas de l'icône avec viz wasm: on les descend sous l'image.
 svg = svg.replace(/<g id="node\d+" class="node">[\s\S]*?<\/g>/g, (g) => g.includes('<image') ? g.replace(/(<text [^>]*? y=")(-?[\d.]+)(")/g, (m, a, y, c) => a + (parseFloat(y) + 30) + c) : g);
 // embed images as data URIs so the SVG is self-contained
-svg = svg.replace(/xlink:href="([^"]+\.png)"/g, (s, p) => fs.existsSync(p) ? `xlink:href="data:image/png;base64,${fs.readFileSync(p).toString('base64')}"` : s);
+svg = svg.replace(/xlink:href="([^"]+\.svg)"/g, (s, p) => fs.existsSync(p) ? `xlink:href="data:image/png;base64,${fs.readFileSync(p).toString('base64')}"` : s);
 if (fmt === 'svg') { fs.writeFileSync(out, svg); }
 else {
   const r = new Resvg(svg, { font: { loadSystemFonts: true, defaultFontFamily: 'DejaVu Sans' }, fitTo: { mode: 'zoom', value: 1.5 }, background: 'white' });

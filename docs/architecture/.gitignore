@@ -1,0 +1,2 @@
+# Les PNG sont generes localement (build.sh) mais pas versionnes: la garde scripts/guards.test.ts interdit les .png hors dossiers prevus. Les SVG, eux, sont versionnes.
+*.png

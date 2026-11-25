@@ -1,6 +1,6 @@
 # 5. Jeu: réponses, points, séries, badges, classement
 
-![Jeu](05_jeu.png)
+![Jeu](05_jeu.svg)
 
 1. L'élève ouvre une fiche: « GET /docs/{id}/session ».
 2. API Gateway appelle la fonction « session-get » (rôle « play »).

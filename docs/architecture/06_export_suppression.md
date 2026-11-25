@@ -1,6 +1,6 @@
 # 6. Export et suppression des données
 
-![Export et suppression](06_export_suppression.png)
+![Export et suppression](06_export_suppression.svg)
 
 1. Le parent demande « GET /family/export ». La fonction « family-admin » (rôle « admin ») le reçoit.
 2. Elle lit dans DynamoDB les élèves, les fiches, les questions et les signalements, en partant de la famille du jeton seulement.

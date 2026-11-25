@@ -1,6 +1,6 @@
 # 4. Scan d'un cours
 
-![Scan d'un cours](04_scan.png)
+![Scan d'un cours](04_scan.svg)
 
 1. L'élève demande un scan (« POST /scans », nombre de pages). Les PDF sont refusés, seules les images JPEG et PNG passent.
 2 et 3. La fonction lit le compteur de coût (refus à 15 €/mois), réserve les pages du quota et crée le job dans DynamoDB. Elle démarre la machine Step Functions, qui attend la photo (15 minutes au plus).
