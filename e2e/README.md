@@ -36,6 +36,20 @@ export E2E_REAL_SCANS=2
 npm test
 ```
 
+Lancer le parcours complet avec un vrai scan (mode dev, `E2E_REAL_SCANS=1`) :
+
+```bash
+cd e2e
+export E2E_MODE=dev E2E_REAL_SCANS=1
+# avec E2E_BASE_URL, E2E_USER et E2E_PASSWORD déjà exportés comme ci-dessus
+npx playwright test tests/03-parcours-cours.spec.ts
+```
+
+Coût attendu : 1 scan de 3 pages pour le parcours complet (`E2E_REAL_SCANS=1`), 2 avec `E2E_REAL_SCANS=2` (parcours + annulation). Moins de 0,50 € au total, un appel à Claude par scan, aucun autre appel payant.
+Durée : environ 3 à 6 minutes. La lecture réelle d'un scan prend 2 minutes environ ; si la lecture propose déjà 2 fiches, le test les garde (il ne coupe pas).
+
+Délais : chaque action du navigateur est limitée à 30 s, chaque test à 6 min (60 s en mock). La seule longue attente est la lecture du scan (5 min au plus).
+
 - `E2E_REAL_SCANS=0` : aucun vrai scan. Les tests qui envoient des photos sont sautés. Les tests d'erreurs sans envoi tournent quand même.
 - Chaque vrai scan coûte un appel à Claude (moins de 0,5 € pour 3 pages). Le parcours complet en utilise 1, l'annulation 1.
 - En mode dev, il n'y a ni capture, ni vidéo, ni trace (elles pourraient montrer l'identifiant tapé). `E2E_CAPTURES=1` active les captures d'échec.

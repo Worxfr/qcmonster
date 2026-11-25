@@ -176,6 +176,7 @@ const server = createServer(async (req, res) => {
   }
   const b = json(await readBody(req));
   if (p === '/__test/reset') { reset(b); return send(res, 200, { ok: true }); }
+  if (p === '/__test/suggest') { S.suggest = b.on !== false; return send(res, 200, { ok: true }); } // la lecture propose deja 2 fiches (coupe avant la page 2)
   if (p === '/__test/role') { S.role = b.role === 'parent' ? 'parent' : 'eleve'; return send(res, 200, { ok: true }); }
   if (p === '/__test/fail') { S.fail = b.mode ?? null; return send(res, 200, { ok: true }); }
   if (p === '/__test/state') return send(res, 200, { jobs: S.jobs.length, docs: S.docs.length, cours: S.cours.length, pagesRemaining: S.pagesLimit - used(), uploadedBytes: S.jobs.reduce((a, j) => a + j.bytes, 0) });
@@ -242,7 +243,7 @@ const server = createServer(async (req, res) => {
     if (parent) return err(res, 403, 'interdit', 'Interdit');
     if (m === 'GET' && seg[3] === 'transcription') {
       if (j.state !== 'a_confirmer') return err(res, 409, 'etat_invalide', 'Ce scan ne peut plus être relu');
-      return send(res, 200, { jobId: j.jobId, docType: 'cours', pages: textOf(j), suggestedSubject: 'svt', suggestedTopic: 'La photosynthèse', photoUrls: Array.from({ length: j.pages }, (_, i) => `${BASE}/__photo/${i}.svg`), photoUrlsExpireAt: iso(Date.now() + 300e3) });
+      return send(res, 200, { jobId: j.jobId, docType: 'cours', pages: textOf(j), suggestedSubject: 'svt', suggestedTopic: 'La photosynthèse', ...(S.suggest && j.pages > 1 ? { suggestedSections: [{ fromSentenceId: 'p1-s1', subject: 'svt', topic: 'La photosynthèse' }, { fromSentenceId: 'p2-s1', subject: 'histoire_geo', topic: 'La Révolution française' }] } : {}), photoUrls: Array.from({ length: j.pages }, (_, i) => `${BASE}/__photo/${i}.svg`), photoUrlsExpireAt: iso(Date.now() + 300e3) });
     }
     if (m === 'POST' && seg[3] === 'confirm') {
       if (j.state !== 'a_confirmer') return err(res, 409, 'etat_invalide', 'Ce scan ne peut plus être confirmé');
