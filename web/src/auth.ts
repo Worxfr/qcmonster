@@ -76,7 +76,8 @@ export function refreshSession(): Promise<void> {
 }
 
 export function signIn(username: string, password: string): Promise<SignInResult> {
-  const user = new CognitoUser({ Username: username, Pool: getPool() });
+  // Storage explicite: sans lui, CognitoUser ecrit les jetons dans localStorage (defaut de la bibliotheque) et getCurrentUser() ne les voit pas.
+  const user = new CognitoUser({ Username: username, Pool: getPool(), Storage: window.sessionStorage });
   const details = new AuthenticationDetails({ Username: username, Password: password });
   return new Promise((resolve, reject) => {
     user.authenticateUser(details, {
@@ -96,7 +97,16 @@ export function signIn(username: string, password: string): Promise<SignInResult
   });
 }
 
+// Une version fautive a ecrit des jetons dans localStorage (stockage durable): on les efface.
+export function purgeStrayTokens(): void {
+  if (MOCK_AUTH || !COGNITO_CLIENT_ID) return;
+  const prefix = `CognitoIdentityServiceProvider.${COGNITO_CLIENT_ID}.`;
+  for (const k of Object.keys(localStorage)) if (k.startsWith(prefix)) localStorage.removeItem(k);
+}
+purgeStrayTokens();
+
 export function signOut(): void {
+  purgeStrayTokens();
   if (MOCK_AUTH) sessionStorage.removeItem(ROLE_KEY);
   else getPool().getCurrentUser()?.signOut();
   SIGNED_OUT.dispatchEvent(new Event('out'));
