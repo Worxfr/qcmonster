@@ -12,7 +12,7 @@ Conception: `docs/design-v2.md`. Region `eu-west-3`, compte `<ID_COMPTE>`.
 | `api/` | Lambda (lot 1: declencheur Cognito `auth/pre-signup.ts`) |
 | `mock/` | API simulee: `npm run mock` (Prism, port 4010) puis `npm run mock:check` |
 | `web/` | front React/Vite (squelette) |
-| `docs/` | `data-model.md`, `ops/bootstrap.md` |
+| `docs/` | `data-model.md`, `ops/bootstrap.md`, [schémas d'architecture](docs/architecture/README.md) |
 | `infra-bootstrap/` | `setup-oidc.sh` (lance par le propriétaire) |
 
 ## Commandes
