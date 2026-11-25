@@ -172,6 +172,43 @@ describe('quota idempotent', () => {
   });
 });
 
+describe('T3 B2/B3: la consigne ne devient ni resume ni question', () => {
+  it('generate: seules les affirmations verifiees nourrissent les questions; la consigne et les erreurs sont ecartees du resume', async () => {
+    const prompts: string[] = [];
+    const k = await makeCtx(goodScript());
+    const inner = k.ctx.port;
+    k.ctx.port = { converse: async (req) => { if (req.prompt.includes('<affirmations>')) prompts.push(req.prompt); return inner.converse(req); } };
+    const u = await toConfirm(k);
+    await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
+    const ex = await extract(k.ctx, u.i);
+    // 01 verifiee, 02 consigne (non_factuelle), 03 erreur, 04 non verifiable
+    await k.db.put({ ...keys.claim(ex.docId!, 2), texte: 'Decris la vie d un poilu dans une tranchee.', origine: {}, type: 'non_factuelle', aRisque: false });
+    const st: Record<number, string> = { 1: 'verifiee', 2: 'non_factuelle', 3: 'erreur', 4: 'non_verifiable' };
+    for (const [n, statut] of Object.entries(st)) await k.db.put({ ...keys.verdict(ex.docId!, Number(n)), statut, secondeLecture: false, sources: [] });
+    await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 0 } });
+    const g = await generate(k.ctx, u.i);
+    const p = prompts[0];
+    expect(p).not.toContain('poilu'); // la consigne n'est pas envoyee
+    expect(p).toContain('[01] La photosynthese'); // verifiee
+    expect(p).not.toContain('[03]'); // erreur: jamais enseignee
+    expect(p).toMatch(/\[04\] \(non verifiee\)/); // non verifiable: resume seulement
+    expect(g.qcm).toBeLessThanOrEqual(1); // un seul fait verifie: au plus 1 question
+    for (const q of await k.db.query(`DOC#${ex.docId}`, 'QCM#')) expect(q.claimId).toBe('01');
+  });
+  it('generate: sans fait verifie, la consigne seule ne produit ni resume ni question', async () => {
+    const k = await makeCtx(goodScript());
+    const u = await toConfirm(k);
+    await jobsConfirm(k.ctx, event({ params: { jobId: u.jobId }, body: { corrections: [] } }));
+    const ex = await extract(k.ctx, u.i);
+    for (const c of await k.db.query(`DOC#${ex.docId}`, 'CLAIM#')) await k.db.remove([{ PK: c.PK, SK: c.SK }]);
+    await k.db.put({ ...keys.claim(ex.docId!, 1), texte: 'Decris la vie d un poilu.', origine: {}, type: 'non_factuelle', aRisque: false });
+    await k.db.put({ ...keys.verdict(ex.docId!, 1), statut: 'non_factuelle', secondeLecture: false, sources: [] });
+    await quotaConsume(k.ctx, { ...u.i, verify: { coutCentimes: 0 } });
+    expect(await generate(k.ctx, u.i)).toMatchObject({ qcm: 0, gaps: 0 });
+    expect(k.calls).not.toContain('generation');
+  });
+});
+
 describe('generation: sorties illisibles et relances', () => {
   it('generation illisible: fiche publiee sans questions, pages consommees', async () => {
     const k = await makeCtx(goodScript({ generation: 'pas du json' }));

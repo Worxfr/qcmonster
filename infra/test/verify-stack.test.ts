@@ -23,7 +23,7 @@ describe.each(ENVS)('Verify (%s)', (env) => {
   const all = templates(env);
   const t = all.find((x) => x.name === stackName(env, 'verify'))!.t;
 
-  it('Lambda verify-run: concurrence reservee, 15 min, mode simule (QCM_BEDROCK absent)', () => {
+  it('Lambda verify-run: concurrence reservee, 15 min, mode simule par defaut (QCM_BEDROCK=mock)', () => {
     t.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: `qcm-${env}-verify-run`,
       ReservedConcurrentExecutions: VERIFY_RESERVED_CONCURRENCY,
@@ -31,7 +31,13 @@ describe.each(ENVS)('Verify (%s)', (env) => {
       Environment: { Variables: Match.objectLike({ QCM_ENV: env, TABLE_NAME: `qcm-${env}` }) },
     });
     const fns = Object.values(t.findResources('AWS::Lambda::Function', { Properties: { FunctionName: `qcm-${env}-verify-run` } }));
-    expect(JSON.stringify(fns)).not.toContain('QCM_BEDROCK');
+    expect(JSON.stringify(fns)).toContain('"QCM_BEDROCK":"mock"');
+  });
+  // F7 / T3 B1: le deploy passe -c bedrock=real; sans cette variable la verification tournait avec le FAUX modele (1 jeton, aucun verdict).
+  it('avec -c bedrock=real, verify-run recoit QCM_BEDROCK=real', () => {
+    const app = buildApp(env, 'test@example.invalid', { bedrock: 'real' });
+    const s = app.node.children.find((c) => c.node.id === stackName(env, 'verify'))!;
+    Template.fromStack(s as never).hasResourceProperties('AWS::Lambda::Function', { FunctionName: `qcm-${env}-verify-run`, Environment: { Variables: Match.objectLike({ QCM_BEDROCK: 'real' }) } });
   });
   it('le role porte le nom exact de processingRoleNames (cible de l\'action du budget securite-40)', () => {
     t.hasResourceProperties('AWS::IAM::Role', { RoleName: `qcm-${env}-verify-role` });

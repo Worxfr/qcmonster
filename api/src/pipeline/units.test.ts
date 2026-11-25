@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DUPLICATE_THRESHOLD, jaccard, minhash, shingles, similarity } from './fingerprint.js';
-import { anchorClaims, shuffleChoices, validGap, validQcm } from './steps-doc.js';
+import { anchorClaims, questionCap, shuffleChoices, validGap, validQcm } from './steps-doc.js';
 import { imageFormat } from './steps.js';
 import { normalize, parseModelJson, splitSentences } from './text.js';
 import { z } from 'zod';
@@ -46,6 +46,13 @@ describe('texte', () => {
 describe('controles par code', () => {
   const sentences = new Map([['p1-s1', 'Mendel a mené ses expériences au XIXe siècle.']]);
   const base = { texte: 'Mendel a travaille au XIXe siecle.', type: 'factuelle' as const, aRisque: true };
+  it('une consigne d exercice n est jamais une affirmation (T3 B2)', () => {
+    const r = anchorClaims([{ ...base, phraseId: 'p1-s1', extrait: 'expériences au XIXe', type: 'consigne' }], sentences);
+    expect(r.kept).toHaveLength(0);
+  });
+  it('nombre de questions: une pour deux faits, de 1 a 5 (T3 B3)', () => {
+    expect([1, 2, 3, 4, 8, 14, 60].map(questionCap)).toEqual([1, 1, 2, 2, 4, 5, 5]);
+  });
   it('ancrage: phrase inconnue, extrait absent, extrait d un mot, doublon: supprimes', () => {
     const r = anchorClaims(
       [

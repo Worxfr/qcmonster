@@ -35,6 +35,7 @@ export class VerifyStack extends Stack {
     }
     const profileArn = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'models/sonnet'));
     const uaContact = this.node.tryGetContext('uaContact') as string | undefined; // -c uaContact=...; obligatoire a l'execution en prod
+    const bedrockMode = this.node.tryGetContext('bedrock') === 'real' ? 'real' : 'mock'; // meme regle que la stack Pipeline (-c bedrock=real)
     const table = tableName(envName);
     const tableArn = this.formatArn({ service: 'dynamodb', resource: 'table', resourceName: table });
 
@@ -75,7 +76,7 @@ export class VerifyStack extends Stack {
       // Concurrence reservee: avec la limite par instance de api/src/verify/limits.ts, le total reste sous 5 requetes MediaWiki par seconde (revue C7).
       reservedConcurrentExecutions: VERIFY_RESERVED_CONCURRENCY,
       logGroup,
-      environment: { QCM_ENV: envName, TABLE_NAME: table, QCM_MODEL_SONNET_ARN: profileArn, ...(uaContact ? { QCM_UA_CONTACT: String(uaContact) } : {}) }, // QCM_BEDROCK absent: faux modele tant que personne ne l'active
+      environment: { QCM_ENV: envName, TABLE_NAME: table, QCM_MODEL_SONNET_ARN: profileArn, QCM_BEDROCK: bedrockMode, ...(uaContact ? { QCM_UA_CONTACT: String(uaContact) } : {}) },
       bundling: { format: OutputFormat.ESM, target: 'node22', minify: true, sourceMap: false, mainFields: ['module', 'main'], banner: "import{createRequire}from'module';const require=createRequire(import.meta.url);" },
     });
   }
