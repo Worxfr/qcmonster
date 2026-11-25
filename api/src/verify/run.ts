@@ -5,8 +5,8 @@ import { JOB_COST_CAP_EUR } from '../../../shared/names.js';
 import { costEur } from '../../../shared/pricing.js';
 import { log } from '../../../shared/log/index.js';
 import type { VerifyInput, VerifyOutput } from '../../../shared/items.js';
-import { checkVerdict, judgePrompt, mergeSecondRead, needsSecondRead, parseVerdicts, secondReadPrompt, type Checked, type JudgeClaim } from './judge.js';
-import { CLAIMS_PER_CALL } from './limits.js';
+import { checkVerdict, countRejectedCitations, judgePrompt, mergeSecondRead, needsSecondRead, parseVerdictsDetailed, secondReadPrompt, type Checked, type JudgeClaim, type RawVerdict } from './judge.js';
+import { CLAIMS_PER_CALL, JUDGE_RETRIES } from './limits.js';
 import type { Passage, SearchPort } from './search.js';
 import { fingerprint, type ClaimItem, type VerdictBody, type VerifyStore } from './store.js';
 
@@ -14,6 +14,25 @@ export interface VerifyDeps {
   store: VerifyStore;
   search: SearchPort;
   model: { port: ModelPort; costStore: CostStore; arn: string };
+  /** Recoit la trace de chaque appel de jugement (en plus du journal). Sans contenu de cours. */
+  onTrace?: (t: JudgeTrace) => void;
+}
+
+/** Observabilite d'un appel de jugement (V2). Que des nombres et des booleens: aucun texte de cours. */
+export interface JudgeTrace {
+  step: 'verify-judge' | 'verify-second';
+  /** Affirmations envoyees dans l'appel. */
+  expected: number;
+  /** Verdicts bien formes recus (apres la relance eventuelle). */
+  received: number;
+  /** Vrai si la sortie (la derniere) contient un objet JSON avec une liste `verdicts`. Faux aussi si aucun appel n'a eu lieu (budget). */
+  readable: boolean;
+  /** Une relance a eu lieu parce que la premiere sortie etait illisible. */
+  retried: boolean;
+  /** Aucun appel emis (budget du job) ou erreur du modele. */
+  skipped: boolean;
+  /** Citations ecartees par le controle par code. */
+  rejectedCitations: number;
 }
 
 const MAX_TOKENS = 4096;
@@ -65,6 +84,25 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     }
   };
 
+  const judged = async (p: { system: string; prompt: string }, step: JudgeTrace['step'], jc: JudgeClaim[]): Promise<{ raw: Map<string, RawVerdict>; called: boolean }> => {
+    let text = await call(p, step, jc.length);
+    const trace: JudgeTrace = { step, expected: jc.length, received: 0, readable: false, retried: false, skipped: text === null, rejectedCitations: 0 };
+    let parsed = text === null ? undefined : parseVerdictsDetailed(text);
+    // Sortie illisible: on rejoue l'appel (au plus JUDGE_RETRIES fois) avant de classer les affirmations en non_verifiable.
+    for (let k = 0; parsed && !parsed.readable && k < JUDGE_RETRIES; k++) {
+      trace.retried = true;
+      text = await call(p, step, jc.length);
+      parsed = text === null ? undefined : parseVerdictsDetailed(text);
+    }
+    const verdicts = parsed?.verdicts ?? new Map<string, RawVerdict>();
+    trace.readable = parsed?.readable ?? false;
+    trace.received = verdicts.size;
+    for (const c of jc) trace.rejectedCitations += countRejectedCitations(c, verdicts.get(c.alias));
+    log({ jobId: input.jobId, step, status: trace.readable ? 'ok' : 'error', outputReadable: trace.readable, claimsExpected: trace.expected, verdictsReceived: trace.received, citationsRejected: trace.rejectedCitations, retried: trace.retried });
+    deps.onTrace?.(trace);
+    return { raw: verdicts, called: !trace.skipped };
+  };
+
   const claims = (await store.listClaims(input.docId)).filter((c) => !existing.has(c.nn));
   const early: [number, Final][] = [];
   const factual: Work[] = [];
@@ -95,8 +133,7 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     const before = spent;
     const jc = asJudge(batch);
     // Etape 8 puis 9 (controle par code).
-    const text = await call(judgePrompt(jc), 'verify-judge', batch.length);
-    const raw = text === null ? new Map() : parseVerdicts(text);
+    const { raw } = await judged(judgePrompt(jc), 'verify-judge', jc);
     batch.forEach((w, i) => {
       w.checked = checkVerdict(jc[i], raw.get(jc[i].alias));
     });
@@ -106,11 +143,10 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     if (second.length) {
       try {
         const sj = asJudge(second);
-        const t2 = await call(secondReadPrompt(sj), 'verify-second', second.length);
-        const raw2 = t2 === null ? new Map() : parseVerdicts(t2);
+        const { raw: raw2, called } = await judged(secondReadPrompt(sj), 'verify-second', sj);
         second.forEach((w, i) => {
           w.checked = mergeSecondRead(w.checked!, checkVerdict(sj[i], raw2.get(sj[i].alias)));
-          w.secondRead = t2 !== null; // vrai seulement si l'appel a eu lieu
+          w.secondRead = called; // vrai seulement si l'appel a eu lieu
         });
       } catch (e) {
         failure = e;

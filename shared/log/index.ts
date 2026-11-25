@@ -10,9 +10,15 @@ export interface LogFields {
   costEur?: number;
   /** Nom de la classe d'erreur (ex. ThrottlingException), jamais son message. */
   errorCode?: string;
+  /** Appel de jugement (sans contenu): sortie lisible, verdicts attendus et recus, citations rejetees, relance faite. */
+  outputReadable?: boolean;
+  claimsExpected?: number;
+  verdictsReceived?: number;
+  citationsRejected?: number;
+  retried?: boolean;
 }
 
-const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode'] as const;
+const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode', 'outputReadable', 'claimsExpected', 'verdictsReceived', 'citationsRejected', 'retried'] as const;
 
 /** Ecrit une ligne JSON. Les champs hors liste blanche sont ignores (jamais de texte libre). */
 export function log(fields: LogFields): void {

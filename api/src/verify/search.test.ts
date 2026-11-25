@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSearchTool, mediaWikiUrl, searchIndexes, WIKI_HOSTS } from './search.js';
+import { createSearchTool, fullArticleUrl, mediaWikiUrl, searchIndexes, WIKI_HOSTS } from './search.js';
 import { ALLOWED_HOSTS } from './fetch.js';
 import { jsonResponse, wikiPages } from './testkit.js';
 
@@ -23,7 +23,7 @@ describe('outil de recherche', () => {
     expect(ps).toHaveLength(1);
     expect(ps[0]).toMatchObject({ url: 'https://fr.wikipedia.org/wiki/Moli%C3%A8re', site: 'Wikipédia', titre: 'Molière', niveau: 2 });
     expect(ps[0].texte).toBe('Molière est mort en 1673. Il est né à Paris.');
-    expect(f).toHaveBeenCalledTimes(1); // sources secondaires non interrogees: la principale a repondu
+    expect(f).toHaveBeenCalledTimes(2); // introductions, puis article entier de la 1re page; sources secondaires non interrogees
   });
   it('sources secondaires seulement si la principale ne renvoie rien; hotes toujours de la liste', async () => {
     const hosts: string[] = [];
@@ -53,5 +53,29 @@ describe('outil de recherche', () => {
     expect(ps[0]).toMatchObject({ site: expect.stringContaining('NIST'), niveau: 1 });
     expect(ps[0].texte).toContain('299 792 458');
     expect(searchIndexes('recette gateau chocolat')).toEqual([]);
+  });
+  it("article entier: la 1re page est lue en entier, le passage garde les phrases pertinentes d'au-dela de l'introduction (V2)", async () => {
+    const article = ['Molière est un dramaturge. Il est né à Paris.', '== Fin de vie ==', 'Il joue Le Malade imaginaire. Molière est mort en 1673 à Paris pendant une représentation.', '== Postérité ==', 'Beaucoup de théâtres portent son nom.'].join('\n');
+    const urls: string[] = [];
+    const f = vi.fn(async (url: string) => {
+      urls.push(url);
+      const u = new URL(url);
+      return jsonResponse(u.searchParams.has('titles') ? { query: { pages: [{ title: 'Molière', extract: article }] } } : wikiPages([{ title: 'Molière', extract: 'Molière est un dramaturge français du XVIIe siècle.' }]));
+    });
+    const ps = await createSearchTool({ fetchImpl: f as never, indexes: [] }).search(CLAIM);
+    expect(ps).toHaveLength(1);
+    expect(ps[0].texte).toContain('mort en 1673');
+    expect(ps[0].url).toBe('https://fr.wikipedia.org/wiki/Moli%C3%A8re');
+    expect(new URL(urls[1]).searchParams.get('titles')).toBe('Molière');
+    expect(new URL(fullArticleUrl('fr.wikipedia.org', 'A&B')).searchParams.get('titles')).toBe('A&B');
+  });
+  it("article entier refusé (taille): l'introduction reste, la recherche continue, le refus est compté", async () => {
+    const f = vi.fn(async (url: string) =>
+      new URL(url).searchParams.has('titles') ? new Response('x'.repeat(10), { status: 200, headers: { 'content-length': String(10_000_000) } }) : jsonResponse(wikiPages([{ title: 'Molière', extract: 'Molière est mort en 1673 à Paris, sur scène ou presque.' }])),
+    );
+    const tool = createSearchTool({ fetchImpl: f as never, indexes: [] });
+    const ps = await tool.search(CLAIM);
+    expect(ps[0].texte).toBe('Molière est mort en 1673 à Paris, sur scène ou presque.');
+    expect(tool.refusals.size).toBe(1);
   });
 });

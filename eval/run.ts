@@ -86,7 +86,7 @@ async function main() {
   const perPage = inputs.map((i) => ({
     id: i.page.id, state: i.run.state, refused: i.run.refused, errorClass: i.run.errorClass, errorDetail: i.run.errorDetail, costEur: i.run.costEur, durationSec: i.run.durationSec,
     claims: i.run.claims.length, byStatus: Object.fromEntries(['verifiee', 'erreur', 'non_verifiable', 'non_factuelle'].map((st) => [st, i.run.claims.filter((c) => c.status === st).length])),
-    insertedErrors: i.page.errors, steps: i.run.steps,
+    insertedErrors: i.page.errors, steps: i.run.steps, judge: i.run.judge,
   }));
   const stepTotals = new Map<string, { calls: number; durationMs: number; inputTokens: number; outputTokens: number; costEur: number }>();
   for (const i of inputs) for (const st of i.run.steps ?? []) {

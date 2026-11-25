@@ -7,13 +7,15 @@ export type Status = 'verifiee' | 'erreur' | 'non_verifiable' | 'non_factuelle';
 export interface PageRun {
   refused: boolean;
   transcript: string;
-  claims: { text: string; status: Status }[];
+  claims: { text: string; status: Status; excerpt?: string }[];
   durationSec?: number;
   costEur?: number;
   /** Tout texte produit (fiche, QCM), pour chercher le canari d'injection. */
   outputText?: string;
   /** Mesures par étape (voie `lambda`): appels, durée, jetons, coût. */
   steps?: { step: string; calls: number; durationMs: number; inputTokens: number; outputTokens: number; costEur: number }[];
+  /** Voie `lambda`: un enregistrement par appel de jugement (nombres seulement). */
+  judge?: { step: string; expected: number; received: number; readable: boolean; retried: boolean; skipped: boolean; rejectedCitations: number }[];
   /** Voie `lambda`: état final du job, classe de l'erreur éventuelle (jamais son message), appels non comptés, compteurs avant/après. */
   state?: string;
   errorClass?: string;
@@ -103,6 +105,22 @@ function detection(ins: PageInput[]) {
   return { recall: wilson(det, err), falsePositives: wilson(fp, good) };
 }
 
+/** Compteurs des appels de jugement (voie lambda): lisibilité de la sortie, verdicts reçus sur attendus, citations rejetées, relances. */
+export function judgeSummary(inputs: PageInput[]) {
+  const all = inputs.flatMap((i) => i.run.judge ?? []);
+  const by = (step: string) => all.filter((j) => j.step === step);
+  const one = (js: typeof all) => ({
+    calls: js.length,
+    unreadable: js.filter((j) => !j.readable && !j.skipped).length,
+    retried: js.filter((j) => j.retried).length,
+    skipped: js.filter((j) => j.skipped).length,
+    claimsExpected: js.reduce((n, j) => n + j.expected, 0),
+    verdictsReceived: js.reduce((n, j) => n + j.received, 0),
+    citationsRejected: js.reduce((n, j) => n + j.rejectedCitations, 0),
+  });
+  return { total: one(all), judge: one(by('verify-judge')), second: one(by('verify-second')), pagesWithTrace: inputs.filter((i) => i.run.judge?.length).length };
+}
+
 export function computeReport(inputs: PageInput[], negatives: { refused: boolean }[], review: Review = {}) {
   // Une page refusée reste au dénominateur: ses erreurs comptent comme manquées.
   const ok = inputs.filter((i) => !i.run.refused);
@@ -110,8 +128,18 @@ export function computeReport(inputs: PageInput[], negatives: { refused: boolean
   const refusedWrongly = inputs.length - ok.length;
   const dt = detection(tuning), dh = detection(hidden);
 
-  let anch = 0, prod = 0;
-  for (const { run } of ok) for (const c of run.claims) { prod++; if (norm(run.transcript).includes(norm(c.text))) anch++; }
+  // Ancrage: c'est l'EXTRAIT copié de la transcription que le pipeline contrôle (étape 6), pas le texte réécrit de l'affirmation.
+  // Sans extrait (API publique, oracle), on retombe sur le texte. `anchoringText` garde l'ancienne mesure (texte réécrit) pour comparaison.
+  let anch = 0, prod = 0, anchText = 0, withExcerpt = 0;
+  for (const { run } of ok) {
+    const t = norm(run.transcript);
+    for (const c of run.claims) {
+      prod++;
+      if (c.excerpt !== undefined) withExcerpt++;
+      if (t.includes(norm(c.excerpt ?? c.text))) anch++;
+      if (t.includes(norm(c.text))) anchText++;
+    }
+  }
 
   let mw = 0, mt = 0;
   for (const { page, ann, run } of inputs) if (page.degraded) { const r = matchedWords(ann.transcription, run.transcript); mw += r.matched; mt += r.total; }
@@ -133,6 +161,8 @@ export function computeReport(inputs: PageInput[], negatives: { refused: boolean
   return {
     pages: { total: inputs.length, tuning: tuning.length, hidden: hidden.length, refused: refusedWrongly },
     anchoring,
+    anchoringBasis: { claimsWithExcerpt: withExcerpt, claims: prod, anchoringOfRewrittenText: wilson(anchText, prod) },
+    judgeCalls: judgeSummary(inputs),
     errorRecall: { tuning: dt.recall, hidden: dh.recall, gap },
     falsePositives: { tuning: dt.falsePositives, hidden: dh.falsePositives },
     qcmValid: qcm,

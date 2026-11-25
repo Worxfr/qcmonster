@@ -44,7 +44,7 @@ const ENTITIES: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>
  * Texte brut sur: retire balises HTML, entites courantes, caracteres de controle, phrases d'injection; borne a 1 200 caracteres
  * en coupant sur une fin de phrase. Renvoie le nombre de phrases retirees (journalise, jamais le texte).
  */
-export function cleanPassage(raw: string): { text: string; dropped: number } {
+export function cleanPassage(raw: string, maxChars = MAX_PASSAGE_CHARS): { text: string; dropped: number } {
   const plain = raw
     .replace(/<[^>]*>/g, ' ')
     .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (m) => ENTITIES[m])
@@ -56,10 +56,10 @@ export function cleanPassage(raw: string): { text: string; dropped: number } {
   const kept = sentences.filter((s) => !looksInjected(s));
   let text = '';
   for (const s of kept) {
-    if ((text + ' ' + s).trim().length > MAX_PASSAGE_CHARS) break;
+    if ((text + ' ' + s).trim().length > maxChars) break;
     text = (text + ' ' + s).trim();
   }
-  if (!text && kept[0]) text = kept[0].slice(0, MAX_PASSAGE_CHARS);
+  if (!text && kept[0]) text = kept[0].slice(0, maxChars);
   return { text: defang(text), dropped: sentences.length - kept.length };
 }
 
@@ -79,3 +79,32 @@ export function buildQuery(claimText: string, maxWords = 8): string {
 
 /** Empreinte de cache: texte normalise (meme affirmation, meme verdict). */
 export const claimFingerprintText = (claimText: string): string => normalize(claimText);
+
+/**
+ * Extrait d'un article entier (texte brut) pour une requete: les deux premieres phrases (le sujet), puis les phrases qui contiennent le
+ * plus de mots de la requete (les nombres comptent un peu plus), dans l'ordre de l'article, jusqu'a `maxChars`. Les titres de section
+ * ("== X ==") sont ignores. Le resultat passe ensuite par cleanPassage (anti-injection, bornes).
+ * shortcut: score par mots communs, sans lemmatisation; a remplacer par un classement lexical si le rappel stagne.
+ */
+export function relevantExcerpt(article: string, query: string, maxChars: number): string {
+  const sentences = article
+    .split(/\n+/)
+    .filter((l) => l.trim() && !/^\s*=+.*=+\s*$/.test(l))
+    .flatMap((l) => splitSentences(l));
+  const words = new Set(query.split(' ').filter(Boolean));
+  const score = (sent: string): number => {
+    const have = new Set(normalize(sent).split(' '));
+    let n = 0;
+    for (const w of words) if (have.has(w)) n += /^\d+$/.test(w) ? 1.5 : 1;
+    return n;
+  };
+  const picked = new Set<number>([0, 1].filter((i) => i < sentences.length));
+  let used = [...picked].reduce((n, i) => n + sentences[i].length + 1, 0);
+  const ranked = sentences.map((t, i) => ({ i, sc: score(t) })).filter((x) => x.sc >= Math.min(2, words.size) && !picked.has(x.i)).sort((a, b) => b.sc - a.sc || a.i - b.i);
+  for (const { i } of ranked) {
+    if (used + sentences[i].length + 1 > maxChars) continue;
+    picked.add(i);
+    used += sentences[i].length + 1;
+  }
+  return [...picked].sort((a, b) => a - b).map((i) => sentences[i]).join(' ');
+}
