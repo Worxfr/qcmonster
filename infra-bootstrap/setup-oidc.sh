@@ -65,8 +65,7 @@ TRUST="$(cat <<JSON
     "Condition": {
       "StringEquals": {"${OIDC_HOST}:aud": "sts.amazonaws.com", "${OIDC_HOST}:sub": [
         "${SUB_PREFIX}:environment:dev",
-        "${SUB_PREFIX}:environment:prod",
-        "${SUB_PREFIX}:ref:refs/heads/main"
+        "${SUB_PREFIX}:environment:prod"
       ]}
     }
   }]

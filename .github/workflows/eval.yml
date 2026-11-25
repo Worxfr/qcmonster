@@ -1,7 +1,7 @@
 name: eval
 # Evaluation manuelle (design-v2 10.1). Appel mince: tout est dans `npm run eval` (eval/run.ts).
 # - oracle / mock: aucun appel Bedrock, aucun cout (pour essayer l'outil, mesures sans valeur).
-# - real: appelle l'API deployee en dev, donc Bedrock. Garde cout: le compteur COST#dev bloque tout appel au-dela de 12 EUR
+# - real: appelle l'API deployee en dev, donc Bedrock. Garde cout: le compteur COST#dev bloque tout appel au-dela de 50 EUR
 #   (shared/bedrock.ts, docs/cost-guard.md). Lancement explicite seulement, jamais sur push ni sur pull request.
 # Les pages cachees ne sont JAMAIS evaluees ici (elles ne quittent pas le coffre prive).
 on:

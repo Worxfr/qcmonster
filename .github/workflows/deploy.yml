@@ -38,7 +38,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --ignore-scripts: ce job a id-token: write, aucun script d'installation tiers ne doit s'y executer.
+      - run: npm ci --ignore-scripts
       - name: Adresse d'alerte presente
         run: test -n "$QCM_ALERT_EMAIL" || { echo "Variable ALERT_EMAIL (environnement dev) manquante"; exit 1; }
       - name: Secret de depot AWS_ACCOUNT_ID present
@@ -71,7 +72,8 @@ jobs:
           npx cdk deploy qcm-dev-web-content -c env=dev -c webDist=../web/dist --require-approval never
   deploy-prod:
     needs: deploy-dev
-    # Approbation manuelle: reviewers requis sur l'environnement GitHub `prod`, branche main seulement.
+    # Lancement manuel seulement, depuis main, apres dev. Pas de relecteur obligatoire sur l'environnement `prod`: le plan GitHub
+    # (depot prive) ne le permet pas. La garde reste DEPLOY_ENABLED (variable de depot), a ne pas activer pour prod sans accord.
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -89,7 +91,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --ignore-scripts: ce job a id-token: write, aucun script d'installation tiers ne doit s'y executer.
+      - run: npm ci --ignore-scripts
       - name: Origine du front presente
         run: test -n "$WEB_ORIGIN" || { echo "Variable WEB_ORIGIN (environnement prod) manquante"; exit 1; }
       - name: Adresse d'alerte presente
