@@ -172,7 +172,8 @@ describe('contrat OpenAPI', () => {
     expect(op.description).toMatch(/au plus 6 sections/);
     expect(op.description).toMatch(/consomme UNE fois/);
     expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'ordre', 'debut', 'rien']);
-    for (const ex of Object.values(op.requestBody.content['application/json'].examples) as { value: unknown }[]) expect(z.safeParse(ex.value).success).toBe(true);
+    expect(z.safeParse(op.requestBody.content['application/json'].example).success).toBe(true); // `example` (et non `examples`): l'API simulee et mock:check l'utilisent comme corps
+    expect(z.safeParse({ corrections: [], subject: 'svt', topic: 'La photosynthese', folderId: 'f' }).success).toBe(true); // une seule section
   });
   it('contrat 1.3: GET/DELETE /cours, regroupement des fiches, export', () => {
     const del = spec.paths['/cours/{coursId}'].delete;
