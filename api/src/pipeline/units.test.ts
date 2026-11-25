@@ -86,3 +86,12 @@ describe('controles par code', () => {
     }
   });
 });
+
+describe('F6: le faux modele ne produit pas de transcription', () => {
+  it('sa reponse {} est refusee par le schema de transcription (cause du B1 quand QCM_BEDROCK=mock sur dev)', async () => {
+    const { mockModelPort } = await import('../../../shared/bedrock.js');
+    const { z } = await import('zod');
+    const out = await mockModelPort().converse({ modelArn: 'x', prompt: 'p', maxTokens: 1 } as never);
+    expect(() => parseModelJson(out.text, z.object({ docType: z.enum(['cours', 'exercice', 'autre']), text: z.string() }))).toThrow(/schema invalide/);
+  });
+});

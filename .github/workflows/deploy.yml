@@ -48,10 +48,11 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/QCMonster-GitHubActions-Deploy
           aws-region: eu-west-3
+      # `-c bedrock=real` est indispensable: sans lui les Lambdas du traitement tournent avec le FAUX modele (reponse `{}`), et tout scan echoue a la transcription.
       - name: cdk deploy dev
         run: |
           cd infra
-          npx cdk deploy --all -c env=dev --require-approval never --outputs-file ../cdk-outputs.json
+          npx cdk deploy --all -c env=dev -c bedrock=real --require-approval never --outputs-file ../cdk-outputs.json
       # Build du front avec l'adresse de l'API et les identifiants PUBLICS du client Cognito, lus dans les sorties CloudFormation
       # (ni compte ni secret). Mode simule jamais actif: VITE_AUTH_MODE vide, et env.ts l'ignore de toute facon en build de production.
       - name: Valeurs du front (sorties CDK)

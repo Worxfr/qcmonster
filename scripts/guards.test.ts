@@ -91,3 +91,12 @@ describe('aucune photo ni PDF hors des dossiers prevus', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('deploiement dev: Bedrock reel (F6)', () => {
+  it('le job deploy-dev passe -c bedrock=real, sinon les Lambdas du traitement utilisent le faux modele (reponse {}) et tout scan echoue en transcription', () => {
+    const wf = readFileSync(join(ROOT, '.github/workflows/deploy.yml'), 'utf8');
+    const line = wf.split('\n').find((l) => /cdk deploy --all -c env=dev\b/.test(l));
+    expect(line).toBeDefined();
+    expect(line).toMatch(/-c bedrock=real\b/);
+  });
+});
