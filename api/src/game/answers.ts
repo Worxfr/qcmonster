@@ -61,7 +61,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
       const previousTick = p.tick;
       // Reponse trop rapide: rien du tout, pas meme la justesse (sinon 0,5 s par proposition suffirait a trouver la bonne reponse).
       // Le temps de reference n'est pas remis a zero: une rafale reste refusee jusqu'a 1 s apres la derniere reponse acceptee.
-      if (previousTick !== undefined && s.now - previousTick < MIN_ANSWER_MS) throw new HttpError(429, 'etat_invalide', 'Trop rapide, reessayez dans une seconde');
+      if (previousTick !== undefined && s.now - previousTick < MIN_ANSWER_MS) throw new HttpError(429, 'etat_invalide', 'Trop rapide, réessaie dans une seconde');
       p.tick = s.now;
 
       // Une recompense par question POUR TOUJOURS (game-rules 1 et 7.2): une tentative payee un autre jour ferme la question.
@@ -113,7 +113,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
         result: { gained: c.gained, newBadges, streakBonus: c.streakBonus, reveal: att.done },
       };
     },
-    () => conflict('Reessayez'),
+    () => conflict('Réessaie'),
   );
   if (result.streakBonus) await grantStreakBonus(deps, ctx.familyId, ctx.studentId, st.month);
   return {

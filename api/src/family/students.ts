@@ -26,7 +26,7 @@ export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { ps
   const meta = await deps.store.get(keys.family(ctx.familyId));
   if (!meta) throw forbidden();
   const existing = await deps.store.query(`FAMILY#${ctx.familyId}`, 'STUDENT#');
-  if (existing.length >= MAX_STUDENTS_PER_FAMILY) throw forbidden('Nombre maximal d\'eleves atteint');
+  if (existing.length >= MAX_STUDENTS_PER_FAMILY) throw forbidden('Nombre maximal d\'élèves atteint');
 
   const studentId = deps.newId();
   const base = body.pseudo.trim().replace(/\s+/g, '-');
@@ -80,13 +80,13 @@ export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   const meta = await deps.store.get(keys.family(ctx.familyId));
   const familyLimit = Number(meta?.plafondPages ?? quotaDefaults(deps.env).familyPages);
   // Le quota d'un eleve ne depasse pas le plafond de la famille (design 4.7).
-  if (body.pageQuota !== undefined && body.pageQuota > familyLimit) throw badRequest('Quota superieur au plafond de la famille');
+  if (body.pageQuota !== undefined && body.pageQuota > familyLimit) throw badRequest('Quota supérieur au plafond de la famille');
   const next: Item = { ...s };
   if (body.status !== undefined) next.statut = body.status;
   if (body.pageQuota !== undefined) next.quotaPages = body.pageQuota;
   if (body.schoolLevel !== undefined) next.niveau = body.schoolLevel; // rectification (droit de correction); le pseudo et `under15` se refont en recreant l'eleve
   // Base d'abord: un eleve suspendu est refuse par l'API immediatement, meme si Cognito echoue ensuite.
-  if (!(await deps.store.commit([{ item: next, when: s.v ?? 'any' }]))) throw conflict('Reessayez');
+  if (!(await deps.store.commit([{ item: next, when: s.v ?? 'any' }]))) throw conflict('Réessaie');
   // A chaque requete portant `status` (idempotent): si Cognito a echoue, relancer la meme requete repare.
   if (body.status !== undefined) await deps.identity.setEnabled(sid, body.status === 'actif');
   if (body.pageQuota !== undefined) {

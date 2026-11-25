@@ -16,10 +16,10 @@ export class HttpError extends Error {
     super(message);
   }
 }
-export const badRequest = (m = 'Requete invalide') => new HttpError(400, 'requete_invalide', m);
-export const forbidden = (m = 'Acces refuse') => new HttpError(403, 'interdit', m);
+export const badRequest = (m = 'Requête invalide') => new HttpError(400, 'requete_invalide', m);
+export const forbidden = (m = 'Accès refusé') => new HttpError(403, 'interdit', m);
 export const notFound = () => new HttpError(404, 'introuvable', 'Introuvable');
-export const conflict = (m = 'Etat incompatible') => new HttpError(409, 'etat_invalide', m);
+export const conflict = (m = 'État incompatible') => new HttpError(409, 'etat_invalide', m);
 
 export type Role = 'parent' | 'eleve';
 export interface Auth {
@@ -71,7 +71,7 @@ export interface StudentCtx {
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 export function requireParent(a: Auth): ParentCtx {
-  if (a.role !== 'parent' || !a.familyId) throw forbidden('Reserve au parent');
+  if (a.role !== 'parent' || !a.familyId) throw forbidden('Réservé au parent');
   return { sub: a.sub, username: a.username, ...(a.email ? { email: a.email } : {}), familyId: a.familyId };
 }
 export function requireStudent(a: Auth): StudentCtx {

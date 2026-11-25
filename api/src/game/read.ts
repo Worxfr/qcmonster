@@ -45,7 +45,7 @@ export async function markRead(deps: Deps, ctx: StudentCtx, docId: string): Prom
       const c = credit(s, amount, subject);
       return { result: { gained: c.gained, newBadges: awardBadges(s), streakBonus: c.streakBonus } };
     },
-    () => conflict('Reessayez'),
+    () => conflict('Réessaie'),
   );
   if (result.streakBonus) await grantStreakBonus(deps, ctx.familyId, ctx.studentId, st.month);
   return { xpGained: result.gained, badges: result.newBadges, progress: await progressOf(deps, ctx.familyId, ctx.studentId, st.profile, Number(student.quotaPages), st.today) };

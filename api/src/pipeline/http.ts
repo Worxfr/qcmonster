@@ -55,7 +55,7 @@ export async function callerOf(ctx: Ctx, event: APIGatewayProxyEventV2): Promise
   const sub = typeof c.sub === 'string' ? c.sub : '';
   const familyId = typeof c['custom:famille_id'] === 'string' ? (c['custom:famille_id'] as string) : '';
   // Un seul message pour tous les refus: il ne dit pas si le compte existe, s'il est suspendu ou quel groupe manque.
-  const refuse = (): never => fail('interdit', 'Acces refuse');
+  const refuse = (): never => fail('interdit', 'Accès refusé');
   if (!sub || !ID_RE.test(familyId)) return refuse();
   const groups = c['cognito:groups'];
   const isParent = hasGroup(groups, 'parent');
@@ -69,7 +69,7 @@ export async function callerOf(ctx: Ctx, event: APIGatewayProxyEventV2): Promise
   return { sub, familyId, role: 'eleve', studentId: me.SK.slice('STUDENT#'.length) };
 }
 
-export const requireStudent = (c: Caller): string => c.studentId ?? fail('interdit', "Reserve a l'eleve");
+export const requireStudent = (c: Caller): string => c.studentId ?? fail('interdit', "Réservé à l'élève");
 
 export function pathId(event: APIGatewayProxyEventV2, name: string): string {
   const v = event.pathParameters?.[name];

@@ -29,7 +29,7 @@ describe('identite du jeton', () => {
   });
   it('requireParent / requireStudent: role et famille obligatoires', () => {
     expect(requireParent({ sub: 's', username: 'u', role: 'parent', familyId: 'f' })).toEqual({ sub: 's', username: 'u', familyId: 'f' });
-    expect(() => requireParent({ sub: 's', username: 'u', role: 'eleve', familyId: 'f' })).toThrow('Reserve au parent');
+    expect(() => requireParent({ sub: 's', username: 'u', role: 'eleve', familyId: 'f' })).toThrow('Réservé au parent');
     expect(() => requireParent({ sub: 's', username: 'u', role: 'parent' })).toThrow(HttpError);
     expect(requireStudent({ sub: 's', username: 'u', role: 'eleve', familyId: 'f' })).toEqual({ sub: 's', studentId: 'u', familyId: 'f' });
     expect(() => requireStudent({ sub: 's', username: 'u', role: 'parent', familyId: 'f' })).toThrow(HttpError);
@@ -60,7 +60,7 @@ describe('wrap', () => {
       expect(ok.statusCode).toBe(200);
       const ko = await wrap('t', async () => { throw badRequest(); })(ev({ sub: 's' }));
       expect(ko).toMatchObject({ statusCode: 400 });
-      expect(JSON.parse(ko.body as string)).toEqual({ code: 'requete_invalide', message: 'Requete invalide' });
+      expect(JSON.parse(ko.body as string)).toEqual({ code: 'requete_invalide', message: 'Requête invalide' });
       const boom = await wrap('t', async () => { throw new Error('boom MotDePasse-Secret-1'); })(ev({ sub: 's' }));
       expect(boom).toMatchObject({ statusCode: 500 });
       expect(boom.body).not.toContain('boom');

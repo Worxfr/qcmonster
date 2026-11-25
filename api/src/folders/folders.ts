@@ -52,7 +52,7 @@ async function create(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   if (existing.length >= MAX_FOLDERS_PER_STUDENT) return coded(400, 'dossiers_limite', 'Tu as atteint 50 dossiers');
   const nomCle = labelKey(name);
   // shortcut: deux creations simultanees du meme nom peuvent passer (deux dossiers homonymes, sans consequence), voir docs/data-model.md.
-  if (existing.some((f) => f.nomCle === nomCle)) return coded(409, 'dossier_nom_pris', 'Tu as deja un dossier avec ce nom');
+  if (existing.some((f) => f.nomCle === nomCle)) return coded(409, 'dossier_nom_pris', 'Tu as déjà un dossier avec ce nom');
   const item = { ...keys.folder(sid, ctx.newId()), nom: name, nomCle, createdAt: ctx.now().toISOString() };
   await ctx.db.put(item);
   return json(201, view(item, 0));
@@ -67,7 +67,7 @@ async function rename(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   if (!name) return fail('requete_invalide', 'Demande invalide');
   const nomCle = labelKey(name);
   // Le meme nom que lui-meme est permis; celui d'un AUTRE dossier de l'eleve non.
-  if ((await foldersOf(ctx, sid)).some((f) => f.nomCle === nomCle && f.SK !== `FOLDER#${folderId}`)) return coded(409, 'dossier_nom_pris', 'Tu as deja un dossier avec ce nom');
+  if ((await foldersOf(ctx, sid)).some((f) => f.nomCle === nomCle && f.SK !== `FOLDER#${folderId}`)) return coded(409, 'dossier_nom_pris', 'Tu as déjà un dossier avec ce nom');
   const updated = await ctx.db.update(keys.folder(sid, folderId), { set: { nom: name, nomCle }, cond: { exists: true } });
   if (!updated) return fail('introuvable', 'Introuvable'); // supprime entre-temps
   return json(200, view(updated, countIn(await docsOf(ctx, sid), folderId)));
