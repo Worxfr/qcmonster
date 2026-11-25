@@ -5,7 +5,8 @@ import { Card, ErrorBox, Loading } from '../components/ui';
 import { JOB_FINAL, JOB_STEPS, countPdfPages } from '../game';
 import { errMsg, useLoad } from '../hooks';
 import { go } from '../router';
-import type { Job, Sentence } from '../types';
+import type { Job } from '../types';
+import { ConfirmView } from './confirm/ConfirmView';
 
 const TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -84,7 +85,7 @@ export function JobView({ id }: { id: string }) {
   }, [id]);
 
   if (!job) return error ? <ErrorBox message={error} /> : <Loading />;
-  if (job.state === 'a_confirmer') return <Confirm id={id} onDone={(j) => setJob(j)} />;
+  if (job.state === 'a_confirmer') return <ConfirmView id={id} onDone={(j) => setJob(j)} />;
   const idx = JOB_STEPS.findIndex((s) => s.state === job.state);
   const failed = ['rejete', 'echec', 'expire'].includes(job.state);
   return (
@@ -108,60 +109,6 @@ export function JobView({ id }: { id: string }) {
       {!failed && job.state !== 'termine' && (
         <button className="btn btn-ghost" onClick={() => api.cancel(id).then(setJob, (e) => setError(errMsg(e)))}>Annuler et récupérer mes pages</button>
       )}
-    </Card>
-  );
-}
-
-function Confirm({ id, onDone }: { id: string; onDone: (j: Job) => void }) {
-  const t = useLoad(() => api.transcription(id), [id]);
-  const [edits, setEdits] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  if (t.loading) return <Loading />;
-  if (!t.data) return <ErrorBox message={t.error} />;
-  const tr = t.data;
-  const original = new Map<string, string>();
-  tr.pages.forEach((p) => p.sentences.forEach((s) => original.set(s.id, s.text)));
-
-  async function send() {
-    setBusy(true);
-    setError(null);
-    const corrections: Sentence[] = Object.entries(edits)
-      .filter(([sid, text]) => text !== original.get(sid))
-      .map(([sid, text]) => ({ id: sid, text }));
-    try {
-      onDone(await api.confirm(id, corrections));
-    } catch (e) {
-      setError(errMsg(e));
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card title="Vérifie ce que j'ai lu">
-      <p>Compare la photo et le texte, corrige les erreurs, puis valide. C'est ce texte qui sera vérifié.</p>
-      <div className="side-by-side">
-        <div className="photos">
-          {tr.photoUrls.map((u, i) => (
-            <img key={u} src={u} alt={`Photo de ta page ${i + 1}`} loading="lazy" />
-          ))}
-        </div>
-        <div className="texts">
-          {tr.pages.map((p) => (
-            <fieldset key={p.page}>
-              <legend>Page {p.page}</legend>
-              {p.sentences.map((s, i) => (
-                <label key={s.id} className="sentence">
-                  <span className="sr-only">Phrase {i + 1}</span>
-                  <textarea rows={2} value={edits[s.id] ?? s.text} maxLength={2000} onChange={(e) => setEdits({ ...edits, [s.id]: e.target.value })} />
-                </label>
-              ))}
-            </fieldset>
-          ))}
-        </div>
-      </div>
-      <ErrorBox message={error} />
-      <button className="btn btn-big" onClick={send} disabled={busy}>C'est bon, vérifie !</button>
     </Card>
   );
 }
