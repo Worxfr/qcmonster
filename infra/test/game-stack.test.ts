@@ -75,6 +75,17 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
     }
   });
 
+  it('DynamoDB: chaque instruction est limitee a des partitions (dynamodb:LeadingKeys)', () => {
+    const byRole = statementsByRole(t);
+    const leading = (k: string) => (byRole[`qcm-${env}-game-${k}-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('dynamodb:'))).map((s) => (s as unknown as { Condition?: Record<string, Record<string, string[]>> }).Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']);
+    for (const k of ['read', 'play', 'account', 'manage', 'admin', 'activation']) for (const l of leading(k)) expect(l, k).toBeDefined();
+    // La route publique n'atteint que les liens d'activation et la famille (lecture de l'eleve).
+    expect(leading('activation').flat().sort()).toEqual(['ACTIVATION#*', 'FAMILY#*']);
+    expect(leading('read').flat()).not.toContain('ACTIVATION#*');
+    expect(leading('play').flat()).not.toContain('ACTIVATION#*');
+    expect(leading('play').flat()).not.toContain('JOB#*');
+  });
+
   it('droits Cognito: mot de passe seulement pour l\'activation; creation seulement pour les comptes; lecture seule n\'a rien', () => {
     const byRole = statementsByRole(t);
     const cog = (k: string) => (byRole[`qcm-${env}-game-${k}-role`] ?? []).flatMap(actions).filter((a) => a.startsWith('cognito-idp:'));

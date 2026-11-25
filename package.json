@@ -3,12 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": [
-    "web"
-  ],
-  "engines": {
-    "node": ">=22"
-  },
+  "workspaces": ["web"],
+  "engines": { "node": ">=22" },
   "scripts": {
     "gen": "tsx scripts/gen-contract.ts",
     "gen:check": "npm run gen && git diff --exit-code -- shared/contract/generated",

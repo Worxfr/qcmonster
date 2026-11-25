@@ -22,7 +22,7 @@ Identite: toujours le **jeton** (`custom:famille_id`, `cognito:groups`, `cognito
 
 ## Creation de la famille: le jeton doit etre rafraichi
 
-`POST /family` (premiere connexion d'un parent invite) cree `FAMILY#<fid>/META`, pose `custom:famille_id` et ajoute l'utilisateur au groupe `parent` (`AdminUpdateUserAttributes`, `AdminAddUserToGroup`). `fid` est derive du `sub` du parent: deux appels simultanes visent le meme element, un seul gagne.
+`POST /family` (premiere connexion d'un parent invite; **idempotent**: refaire l'appel complete ce qui manque, par exemple le groupe si l'ajout avait echoue) cree `FAMILY#<fid>/META`, pose `custom:famille_id` et ajoute l'utilisateur au groupe `parent` (`AdminUpdateUserAttributes`, `AdminAddUserToGroup`). `fid` est derive du `sub` du parent: deux appels simultanes visent le meme element, un seul gagne.
 
 **Le jeton deja emis ne contient ni groupe ni `famille_id`.** Le front doit, apres la reponse 201:
 1. demander un nouveau jeton avec le refresh token (`InitiateAuth` `REFRESH_TOKEN_AUTH`; le jeton d'identite renvoye contient les nouvelles valeurs), ou a defaut se reconnecter;
@@ -48,7 +48,7 @@ Tant que le jeton est ancien, `GET /me` repond **404** pour un parent (c'est le 
 | `FAMILY#<fid>/STUDENT#<sid>` | `pseudo`, `niveau`, `moins15`, `statut`, `cognitoSub`, `quotaPages`, `activationHash`, `createdAt` |
 | `STUDENT#<sid>/PROFILE` | `xp`, `correct`, `perfectSeries`, `validReports`, `readFirst`, `streak`, `lastValidDay`, `freezes`, `freezeMonth`, `badges[]`, `xpBySubject{}`, `subjects{month,list}`, `tick`, `series{n,perfect,risky,startedAt}`, `recent[]`, `quarantineDay`, `quarantineXp` |
 | `STUDENT#<sid>/DAY#<jour>` | `xp`, `pagesPaid`, `valid`, `reads{docId: scan/review/none}` |
-| `STUDENT#<sid>/ATT#<questionId>#<jour>` | `attempts`, `done` |
+| `STUDENT#<sid>/ATT#<questionId>#<jour>` | `attempts`, `done`, `rewarded` |
 | `FAMILY#<fid>/WEEK#<aaaa-Www>#<sid>` | `xp`, `days[]` (jours valides) |
 | `ACTIVATION#<hache>/META` | `hash`, `sid`, `fid`, `expiresAt`, `creeLe`, `ttl`, `usedAt` (pendant la reservation) |
 
@@ -56,9 +56,9 @@ Chaque element porte un compteur `v`. Une reponse ecrit `PROFILE`, `DAY`, `WEEK`
 
 ## Choix sur les regles (a relire)
 
-- **Une recompense par question et par jour** (cle `ATT#<questionId>#<jour>`): `game-rules` dit « une recompense par question » sans preciser; `design.md` 5.7 dit « repeter la meme question dans la journee ne rapporte rien ». La cle du modele de donnees porte la date. Si le proprietaire veut « une fois pour toutes », il faut interroger `ATT#<questionId>#` en prefixe (changement local, sans migration).
+- **Une recompense par question, pour toujours** (decision du conducteur, conforme a `game-rules.md`). La cle `ATT#<questionId>#<jour>` garde la date; avant de payer, L3 lit les `ATT#<questionId>#` des autres jours (prefixe) et ne paie que si aucun n'a `rewarded`. Une question jamais reussie hier peut donc etre payee aujourd'hui, une seule fois. Rejouer une question deja payee ne donne ni XP, ni badge (`correct` ne compte que les premieres reussites), ni progression de serie de 10.
 - QCM: 5 XP au premier essai, 2 au second, ensuite rien; la bonne reponse n'est revelee (`correctAnswer`) qu'une fois la question terminee (juste, ou 2 essais). Texte a trous: un seul essai par jour, reponse revelee si faux.
-- **Moment d'affichage** (`shownAt`): le client n'envoie pas d'heure. Le serveur prend `PROFILE.tick` = ouverture de la session (`GET .../session`) ou derniere reponse. Reponse a moins de 1 s: jugee mais ni XP, ni essai compte, ni reponse revelee. Serie de 10: elle commence a l'ouverture de la session; seule la premiere tentative du jour d'une question compte (rejouer ne fabrique pas de series); fin en moins de 20 s: ni +20 ni +30.
+- **Moment d'affichage** (`shownAt`): le client n'envoie pas d'heure. Le serveur prend `PROFILE.tick` = ouverture de la session (`GET .../session`) ou derniere reponse acceptee. Reponse a moins de 1 s: **refus 429 `etat_invalide`, sans rien reveler** (ni justesse, ni reponse), aucun essai compte, le temps de reference n'est pas remis a zero. Serie de 10: mesuree depuis le `startedAt` pose par l'ouverture de la session **du jour**; une reponse sans session ouverte aujourd'hui ne compte pas pour la serie (elle garde son XP); seule la premiere tentative du jour d'une question jamais payee compte; fin en moins de 20 s: ni +20 ni +30.
 - Serie parfaite (+30): 10 sur 10 du premier coup **et** chaque question liee a une affirmation `verifiee` ou `non_factuelle`. Une affirmation `erreur`, `non_verifiable` ou **sans verdict** bloque le bonus.
 - Plus de 100 bonnes reponses en 10 minutes: `quarantineDay` = aujourd'hui, plus aucun XP credite ce jour-la (`quarantineXp` compte ce qui a ete retenu). Elle se leve le lendemain. Le parent est « notifie » par ce marqueur, mais le contrat n'a **aucun champ** pour l'afficher (voir limites).
 - Lecture de la fiche (`POST /docs/{docId}/read`, option b du plan C4): fiche creee **aujourd'hui** = 10 XP par page consommee, 2 pages payees par jour, rien pour un doublon; fiche d'un autre jour = 8 XP (revue). Une seule recompense par fiche et par jour. Une fiche creee a 23 h 50 et lue a 00 h 10 compte comme une revue.
@@ -75,6 +75,11 @@ Chaque element porte un compteur `v`. Une reponse ecrit `PROFILE`, `DAY`, `WEEK`
 - Pas de TTL sur `ATT#`, `DAY#`, `WEEK#` (quelques elements par eleve et par jour; supprimes avec l'eleve).
 - L2a n'ecrit pas `studentId` sur le signalement: `reports-validate` retrouve l'eleve par la fiche (parmi les eleves de la famille). Ajouter `studentId` au signalement le rendrait direct (il est deja lu s'il existe).
 - Les routes `GET /me/progress` et `session` sont refusees (403) a un parent.
+- **XP de revue non verifie** (limite connue): `POST /docs/{docId}/read` rapporte 8 XP par fiche et par jour sans preuve de lecture (le serveur ne mesure pas « jusqu'au bout »). Avec 4 fiches, 4 appels donnent 32 XP: un jour valide, donc une serie et, tous les 7 jours, +2 pages (plafond 6 par famille et par mois). Le plafond de 250 XP par jour borne le gain, pas la serie. Piste: exiger une reponse enregistree sur la fiche le meme jour.
+- **Droits IAM**: `dynamodb:LeadingKeys` limite chaque role a ses partitions (voir `game-stack.ts`), mais IAM ne filtre pas la cle de tri: `play` pourrait ecrire n'importe quel element `STUDENT#`/`FAMILY#`; « un type, un ecrivain » repose sur le code et ses tests.
+- **Risque accepte, Cognito**: IAM ne filtre pas par groupe. `AdminSetUserPassword` (role `activation`, route publique) vaut pour tout le pool, parents compris, si le code etait contourne. Mitigation: jeton de 256 bits a usage unique, nom d'utilisateur lu en base (jamais dans la requete). Idem `AdminDeleteUser`, `AdminDisableUser` des autres roles.
+- Limite de 10 eleves par famille non atomique (comptage puis creation); la route est limitee a 1 requete/s.
+- La suppression d'une grande famille peut depasser les 29 s de l'API Gateway (503 avant la fin); tout est idempotent, relancer termine.
 
 ## A verifier au premier deploiement en dev (non verifiable en local)
 

@@ -3,11 +3,12 @@
 import { keys } from '../../../shared/ddb/keys.js';
 import { GapItemSchema, QcmItemSchema, parseQuestionId } from '../../../shared/items.js';
 import type { Deps } from '../lib/deps.js';
-import { badRequest, conflict, notFound, type StudentCtx } from '../lib/http.js';
+import { HttpError, badRequest, conflict, notFound, type StudentCtx } from '../lib/http.js';
 import { activeStudent } from './access.js';
 import { grantStreakBonus } from './bonus.js';
 import { BURST_MAX_CORRECT, BURST_WINDOW_MS, MIN_ANSWER_MS, MIN_SERIES_MS, SERIES_LENGTH, XP, normalizeGap } from './rules.js';
 import { awardBadges, credit, mutate, newSeries, progressOf, type Progress } from './state.js';
+import { parisDate } from './time.js';
 
 export interface AnswerResult {
   correct: boolean;
@@ -21,6 +22,8 @@ interface Attempt {
   attempts: number;
   /** Plus de recompense possible aujourd'hui pour cette question: juste, ou essais epuises (QCM: 2, texte a trous: 1). */
   done: boolean;
+  /** Cette tentative a fait gagner la recompense unique de la question (une fois pour toutes, quelle que soit la fiche). */
+  rewarded: boolean;
 }
 
 export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId: string; choice: string }): Promise<AnswerResult> {
@@ -53,30 +56,39 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
     async (s) => {
       const attKey = keys.attempt(ctx.studentId, body.questionId, s.today);
       const attIt = await deps.store.get(attKey);
-      const att: Attempt = { attempts: Number(attIt?.attempts ?? 0), done: attIt?.done === true };
+      const att: Attempt = { attempts: Number(attIt?.attempts ?? 0), done: attIt?.done === true, rewarded: attIt?.rewarded === true };
       const p = s.profile;
       const previousTick = p.tick;
+      // Reponse trop rapide: rien du tout, pas meme la justesse (sinon 0,5 s par proposition suffirait a trouver la bonne reponse).
+      // Le temps de reference n'est pas remis a zero: une rafale reste refusee jusqu'a 1 s apres la derniere reponse acceptee.
+      if (previousTick !== undefined && s.now - previousTick < MIN_ANSWER_MS) throw new HttpError(429, 'etat_invalide', 'Trop rapide, reessayez dans une seconde');
       p.tick = s.now;
-      // Reponse trop rapide: jugee, mais ni recompense, ni essai compte, ni reponse revelee.
-      if (previousTick !== undefined && s.now - previousTick < MIN_ANSWER_MS) return { result: { gained: 0, newBadges: [] as string[], streakBonus: false, reveal: false } };
+
+      // Une recompense par question POUR TOUJOURS (game-rules 1 et 7.2): une tentative payee un autre jour ferme la question.
+      const before = await deps.store.query(`STUDENT#${ctx.studentId}`, `ATT#${body.questionId}#`);
+      const paidBefore = before.some((i) => i.SK !== attKey.SK && i.rewarded === true);
 
       const wasDone = att.done;
       att.attempts += 1;
       let amount = 0;
       if (!wasDone) {
         if (correct) {
-          amount += q.kind === 'gap' ? XP.gap : att.attempts === 1 ? XP.qcmFirst : XP.qcmSecond;
           att.done = true;
+          if (!paidBefore) {
+            att.rewarded = true;
+            amount += q.kind === 'gap' ? XP.gap : att.attempts === 1 ? XP.qcmFirst : XP.qcmSecond;
+          }
         } else if (q.kind === 'gap' || att.attempts >= 2) att.done = true;
       }
-      if (att.attempts === 1) {
-        // Serie de 10 questions: seule la premiere tentative du jour d'une question compte (rejouer ne fabrique pas de series).
-        p.series.startedAt ??= previousTick ?? s.now;
+      // Serie de 10: elle se mesure depuis l'ouverture de la session du jour (`startedAt`). Sans session ouverte aujourd'hui, la reponse
+      // ne compte pas pour la serie. Seule la premiere tentative du jour d'une question jamais payee compte (rejouer ne fabrique rien).
+      const sessionToday = p.series.startedAt !== undefined && parisDate(new Date(p.series.startedAt)) === s.today;
+      if (att.attempts === 1 && !paidBefore && sessionToday) {
         p.series.n += 1;
         p.series.perfect &&= correct;
         p.series.risky ||= risky;
         if (p.series.n >= SERIES_LENGTH) {
-          if (s.now - p.series.startedAt >= MIN_SERIES_MS) {
+          if (s.now - (p.series.startedAt as number) >= MIN_SERIES_MS) {
             amount += XP.seriesDone;
             if (p.series.perfect && !p.series.risky) {
               amount += XP.seriesPerfect;
@@ -87,7 +99,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
         }
       }
       if (correct && !wasDone) {
-        p.correct += 1;
+        if (att.rewarded) p.correct += 1; // « bonnes reponses »: premieres reussites seulement
         p.recent = [...p.recent.filter((t) => s.now - t <= BURST_WINDOW_MS), s.now];
         if (p.recent.length > BURST_MAX_CORRECT) {
           p.quarantineDay = s.today; // plus de 100 bonnes reponses en 10 min: gains en quarantaine pour la journee
@@ -97,7 +109,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
       const c = credit(s, amount, subject);
       const newBadges = awardBadges(s);
       return {
-        extra: [{ item: { ...attKey, attempts: att.attempts, done: att.done }, when: attIt ? (attIt.v ?? 'any') : 'absent' }],
+        extra: [{ item: { ...attKey, attempts: att.attempts, done: att.done, rewarded: att.rewarded }, when: attIt ? (attIt.v ?? 'any') : 'absent' }],
         result: { gained: c.gained, newBadges, streakBonus: c.streakBonus, reveal: att.done },
       };
     },

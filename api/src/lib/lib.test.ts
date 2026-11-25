@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { badRequest, authOf, HttpError, json, parseBody, parseGroups, pathId, requireParent, requireStudent, wrap } from './http.js';
 import { realRandom } from './deps.js';
-import { cognitoIdentity, InvalidPasswordError, AliasTakenError } from './identity.js';
+import { cognitoIdentity, InvalidPasswordError, AliasTakenError, UserGoneError } from './identity.js';
 import { memoryPhotos, s3Photos } from './photos.js';
 import { dynamoStore, memoryStore } from './store.js';
 
@@ -128,15 +128,23 @@ describe('adaptateur Cognito', () => {
     expect(sent[0].input).toMatchObject({ Permanent: true, Username: 'u' });
     await expect(make(() => 'InvalidPasswordException').setPassword('u', 'pw')).rejects.toBeInstanceOf(InvalidPasswordError);
     await expect(make(() => 'TooManyRequestsException').setPassword('u', 'pw')).rejects.toThrow('TooManyRequestsException');
+    await expect(make(() => 'UserNotFoundException').setPassword('u', 'pw')).rejects.toBeInstanceOf(UserGoneError);
   });
   it('famille du parent: groupe + attribut, une seule fois', async () => {
     const id = make(undefined, [], [{ Name: 'email', Value: 'x' }]);
     expect(await id.attachFamily('p', 'fam1')).toBe(true);
     expect(sent.map((s) => s.name)).toEqual(['AdminGetUserCommand', 'AdminUpdateUserAttributesCommand', 'AdminAddUserToGroupCommand']);
     expect(sent[2].input).toMatchObject({ GroupName: 'parent' });
+    // famille_id deja egal (reprise apres un echec d'ajout au groupe): le groupe est ajoute quand meme
+    const same = make(undefined, [], [{ Name: 'custom:famille_id', Value: 'fam1' }]);
+    expect(await same.attachFamily('p', 'fam1')).toBe(true);
+    expect(sent.map((s) => s.name)).toEqual(['AdminGetUserCommand', 'AdminAddUserToGroupCommand']);
+    // une AUTRE famille: refus, rien n'est ecrit
     const had = make(undefined, [], [{ Name: 'custom:famille_id', Value: 'f' }]);
     expect(await had.attachFamily('p', 'fam1')).toBe(false);
     expect(sent.map((s) => s.name)).toEqual(['AdminGetUserCommand']);
+    // l'ajout au groupe echoue apres l'ecriture de famille_id: l'erreur remonte
+    await expect(make((n) => (n === 'AdminAddUserToGroupCommand' ? 'ThrottlingException' : undefined), [], []).attachFamily('p', 'fam1')).rejects.toThrow('ThrottlingException');
     const none = make(undefined, [], []);
     expect(await none.attachFamily('p', 'fam1')).toBe(true);
   });

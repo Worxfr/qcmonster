@@ -14,13 +14,15 @@ import {
 
 export class InvalidPasswordError extends Error {}
 export class AliasTakenError extends Error {}
+/** L'utilisateur Cognito n'existe plus (supprime cote Cognito seulement). */
+export class UserGoneError extends Error {}
 
 export interface Identity {
   /** Cree l'eleve (groupe `eleve`, `famille_id`), sans message. Le nom d'utilisateur est `studentId`. Renvoie le `sub`. */
   createStudent(a: { studentId: string; familyId: string; alias: string }): Promise<{ sub: string }>;
   /** Mot de passe permanent choisi par l'eleve. Leve InvalidPasswordError si la politique du pool le refuse. */
   setPassword(username: string, password: string): Promise<void>;
-  /** Parent: pose `famille_id` et le groupe `parent`. Renvoie false si le compte a deja une famille. */
+  /** Parent: pose `famille_id` et le groupe `parent`. Idempotent: refaire l'appel complete ce qui manque. Renvoie false si le compte a une AUTRE famille. */
   attachFamily(username: string, familyId: string): Promise<boolean>;
   setEnabled(username: string, enabled: boolean): Promise<void>;
   /** Supprime l'utilisateur; absent = deja supprime (idempotent). */
@@ -60,13 +62,16 @@ export function cognitoIdentity(userPoolId: string, client: CognitoIdentityProvi
         await client.send(new AdminSetUserPasswordCommand({ UserPoolId: userPoolId, Username: username, Password: password, Permanent: true }));
       } catch (e) {
         if (name(e) === 'InvalidPasswordException') throw new InvalidPasswordError();
+        if (name(e) === 'UserNotFoundException') throw new UserGoneError();
         throw e;
       }
     },
     async attachFamily(username, familyId) {
       const u = await client.send(new AdminGetUserCommand({ UserPoolId: userPoolId, Username: username }));
-      if (u.UserAttributes?.some((a) => a.Name === 'custom:famille_id' && a.Value)) return false;
-      await client.send(new AdminUpdateUserAttributesCommand({ UserPoolId: userPoolId, Username: username, UserAttributes: [{ Name: 'custom:famille_id', Value: familyId }] }));
+      const current = u.UserAttributes?.find((a) => a.Name === 'custom:famille_id')?.Value;
+      if (current && current !== familyId) return false;
+      if (!current) await client.send(new AdminUpdateUserAttributesCommand({ UserPoolId: userPoolId, Username: username, UserAttributes: [{ Name: 'custom:famille_id', Value: familyId }] }));
+      // Toujours ajouter au groupe (idempotent): si un appel precedent a pose l'attribut puis echoue ici, la reprise repare le compte.
       await client.send(new AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: username, GroupName: 'parent' }));
       return true;
     },
@@ -92,12 +97,15 @@ export function memoryIdentity(): Identity & {
   users: Map<string, { sub: string; familyId?: string; alias?: string; enabled: boolean; password?: string; groups: string[] }>;
   failPasswordPolicy: boolean;
   failCreate: number;
+  /** Fait echouer AdminAddUserToGroup (apres l'ecriture de famille_id). */
+  failAddToGroup: boolean;
 } {
   const users = new Map<string, { sub: string; familyId?: string; alias?: string; enabled: boolean; password?: string; groups: string[] }>();
   const self = {
     users,
     failPasswordPolicy: false,
     failCreate: 0,
+    failAddToGroup: false,
     async createStudent(a: { studentId: string; familyId: string; alias: string }) {
       await Promise.resolve();
       if (self.failCreate > 0) {
@@ -112,16 +120,17 @@ export function memoryIdentity(): Identity & {
       await Promise.resolve();
       if (self.failPasswordPolicy) throw new InvalidPasswordError();
       const u = users.get(username);
-      if (!u) throw new Error('UserNotFound');
+      if (!u) throw new UserGoneError();
       u.password = password;
     },
     async attachFamily(username: string, familyId: string) {
       await Promise.resolve();
       const u = users.get(username) ?? { sub: `sub-${username}`, enabled: true, groups: [] };
       users.set(username, u);
-      if (u.familyId) return false;
+      if (u.familyId && u.familyId !== familyId) return false;
       u.familyId = familyId;
-      u.groups.push('parent');
+      if (self.failAddToGroup) throw new Error('ThrottlingException');
+      if (!u.groups.includes('parent')) u.groups.push('parent');
       return true;
     },
     async setEnabled(username: string, enabled: boolean) {

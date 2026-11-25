@@ -86,7 +86,10 @@ describe('Api', () => {
     for (const id of routeIds) expect(stage.DependsOn).toContain(id);
   });
   it('les squelettes repondent 501', () => {
-    t.hasResourceProperties('AWS::Lambda::Function', { Code: { ZipFile: Match.stringLikeRegexp('statusCode: 501') } });
+    // Toutes les routes ont maintenant un proprietaire de lot: on force `skeleton` pour tester le mecanisme.
+    const app = new App({ context: { webOrigin: 'https://front.example.invalid' } });
+    const sk = new ApiStack(app, 'api-skeleton-test', { envName: 'dev', routes: ROUTES.map((r) => ({ ...r, owner: 'skeleton' as const })) });
+    Template.fromStack(sk).hasResourceProperties('AWS::Lambda::Function', { Code: { ZipFile: Match.stringLikeRegexp('statusCode: 501') } });
   });
 });
 
@@ -116,7 +119,7 @@ describe('role d\'evaluation', () => {
 describe('Api: mecanisme owner', () => {
   it('une ligne non skeleton ne cree ni fonction ni permission, mais garde route, autorisateur et limitation', () => {
     const app = new App({ context: { webOrigin: 'https://front.example.invalid' } });
-    const routes = ROUTES.map((r) => (r.handler === 'scans-create' ? { ...r, owner: 'pipeline' as const } : r));
+    const routes = ROUTES.map((r) => ({ ...r, owner: r.handler === 'scans-create' ? ('pipeline' as const) : ('skeleton' as const) }));
     const st = new ApiStack(app, 'api-owner-test', { envName: 'dev', routes });
     const t = Template.fromStack(st);
     const fnNames = Object.values(t.findResources('AWS::Lambda::Function')).map((f) => (f as { Properties: { FunctionName: string } }).Properties.FunctionName);

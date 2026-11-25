@@ -65,30 +65,43 @@ export class GameStack extends Stack {
     const poolArn = this.formatArn({ service: 'cognito-idp', resource: 'userpool', resourceName: userPoolId });
     const webOrigin = webOriginFor(this, envName);
 
-    const ddb = (actions: string[], index = false) => new iam.PolicyStatement({ actions: actions.map((a) => `dynamodb:${a}`), resources: index ? [tableArn, `${tableArn}/index/GSI1`] : [tableArn] });
+    // DynamoDB: chaque instruction est limitee aux partitions que le role utilise (dynamodb:LeadingKeys), comme verify-stack.
+    // shortcut: IAM filtre la cle de partition, pas la cle de tri: `play` pourrait ecrire n'importe quel element STUDENT#/FAMILY#
+    // (par exemple FAMILY#<fid>/META); « chaque type a un seul ecrivain » repose sur le code et ses tests pour ces partitions.
+    const ddb = (actions: string[], leading: string[], index = false) =>
+      new iam.PolicyStatement({
+        actions: actions.map((a) => `dynamodb:${a}`),
+        resources: index ? [tableArn, `${tableArn}/index/GSI1`] : [tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': leading } },
+      });
+    // Risque accepte: IAM ne filtre pas les utilisateurs Cognito par groupe. Les actions ci-dessous valent pour TOUT le pool; en particulier
+    // `AdminSetUserPassword` (role `activation`, route publique) permettrait de changer le mot de passe d'un parent si le code etait contourne.
+    // Mitigation: le jeton d'activation (256 bits, usage unique, 24 h) et le nom d'utilisateur lu en base, jamais dans la requete.
     const cognito = (actions: string[]) => new iam.PolicyStatement({ actions: actions.map((a) => `cognito-idp:${a}`), resources: [poolArn] });
     const READ = ['GetItem', 'Query'];
     // TransactWriteItems exige les droits de chaque action de la transaction (ici Put pour nos elements, Update pour les quotas).
     const WRITE = ['PutItem', 'UpdateItem', 'ConditionCheckItem'];
+    const FAM = ['FAMILY#*'];
+    const STU = ['STUDENT#*'];
 
     const policies: Record<RoleKey, iam.PolicyStatement[]> = {
       // Lectures seules (profil, tableau de bord, classement).
-      read: [ddb(READ)],
-      // Jeu: lit fiches/questions/verdicts, ecrit PROFILE, DAY, ATT, WEEK, quotas (bonus), signalements (statut).
-      play: [ddb([...READ, ...WRITE])],
-      // Creation: famille (groupe parent, famille_id) et eleve (utilisateur Cognito sans message).
-      account: [ddb([...READ, ...WRITE, 'DeleteItem']), cognito(['AdminCreateUser', 'AdminAddUserToGroup', 'AdminUpdateUserAttributes', 'AdminGetUser', 'AdminDeleteUser'])],
+      read: [ddb(READ, [...FAM, ...STU])],
+      // Jeu: lit fiches/questions/verdicts (DOC#), ecrit PROFILE, DAY, ATT (STUDENT#), WEEK, quotas, bonus, signalements (FAMILY#).
+      play: [ddb(READ, [...FAM, ...STU, 'DOC#*']), ddb(WRITE, [...FAM, ...STU])],
+      // Creation: famille (groupe parent, famille_id) et eleve (utilisateur Cognito sans message), lien d'activation.
+      account: [ddb([...READ, ...WRITE, 'DeleteItem'], [...FAM, 'ACTIVATION#*']), cognito(['AdminCreateUser', 'AdminAddUserToGroup', 'AdminUpdateUserAttributes', 'AdminGetUser', 'AdminDeleteUser'])],
       // Gestion: nouveau lien, suspension (desactive le compte et revoque ses jetons), quota.
-      manage: [ddb([...READ, ...WRITE, 'DeleteItem']), cognito(['AdminDisableUser', 'AdminEnableUser', 'AdminUserGlobalSignOut'])],
+      manage: [ddb([...READ, ...WRITE, 'DeleteItem'], [...FAM, 'ACTIVATION#*']), cognito(['AdminDisableUser', 'AdminEnableUser', 'AdminUserGlobalSignOut'])],
       // Suppression et export: efface tout, y compris l'utilisateur Cognito et les photos en cours.
       admin: [
-        ddb([...READ, 'DeleteItem', 'BatchWriteItem'], true),
+        ddb([...READ, 'DeleteItem', 'BatchWriteItem'], [...FAM, ...STU, 'DOC#*', 'JOB#*', 'ACTIVATION#*'], true),
         cognito(['AdminDeleteUser']),
         new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*'] } } }),
         new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`] }),
       ],
       // Route publique: lit l'eleve et le jeton (hache), consomme le jeton, pose le mot de passe. Rien d'autre.
-      activation: [ddb([...READ, 'PutItem', 'DeleteItem']), cognito(['AdminSetUserPassword'])],
+      activation: [ddb([...READ, 'PutItem', 'DeleteItem'], ['ACTIVATION#*', ...FAM]), cognito(['AdminSetUserPassword'])],
     };
 
     const roles = {} as Record<RoleKey, iam.Role>;

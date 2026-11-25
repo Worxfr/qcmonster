@@ -49,7 +49,9 @@ export async function getDashboard(deps: Deps, ctx: ParentCtx) {
   return { students, familyPagesRemaining: Math.max(0, remaining), familyPagesLimit: limit };
 }
 
-export async function getLeaderboard(deps: Deps, fid: string) {
+/** Classement de la famille. Un eleve (`who`) doit etre actif: un eleve suspendu n'y accede plus meme avec un jeton encore valide. */
+export async function getLeaderboard(deps: Deps, fid: string, who?: StudentCtx) {
+  if (who) await activeStudent(deps, who);
   const week = isoWeek(parisDate(deps.now()));
   const pseudos = new Map((await studentsOf(deps, fid)).map((s) => [s.SK.slice('STUDENT#'.length), studentView(s)] as const));
   const entries = (await deps.store.query(`FAMILY#${fid}`, `WEEK#${week}#`))

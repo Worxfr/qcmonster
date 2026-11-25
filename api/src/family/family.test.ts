@@ -34,27 +34,43 @@ describe('POST /family', () => {
     expect(t.identity.users.get('new1')).toMatchObject({ familyId: me.familyId, groups: ['parent'] });
     expect(await t.store.get(keys.family(me.familyId))).toMatchObject({ ownerSub: 'sub-new', plafondPages: 50 });
   });
-  it('un second appel (jeton perime) est refuse; une reprise apres echec Cognito reussit', async () => {
+  it('POST /family est idempotent: un second appel renvoie la meme famille', async () => {
     const t = testDeps();
-    await createFamily(t.deps, a);
-    await rejects(createFamily(t.deps, a), 409, 'etat_invalide');
+    const first = await createFamily(t.deps, a);
+    expect(await createFamily(t.deps, a)).toEqual(first);
+    expect(t.identity.users.get('new1')?.groups).toEqual(['parent']);
+  });
+  it('B2: si l\'ajout au groupe echoue apres famille_id, la reprise repare le compte (plus de 409 definitif)', async () => {
+    const t = testDeps();
+    t.identity.failAddToGroup = true;
+    await expect(createFamily(t.deps, a)).rejects.toThrow('ThrottlingException');
+    expect(t.identity.users.get('new1')).toMatchObject({ familyId: familyIdFor('sub-new'), groups: [] }); // etat partiel
+    t.identity.failAddToGroup = false;
+    expect((await createFamily(t.deps, a)).familyId).toBe(familyIdFor('sub-new'));
+    expect(t.identity.users.get('new1')?.groups).toEqual(['parent']);
+  });
+  it('reprise apres echec entre META et Cognito; META d\'un autre parent: 409; autre famille deja posee: 409', async () => {
     const t2 = testDeps();
-    await t2.store.commit([{ item: { ...keys.family(familyIdFor('sub-new')), ownerSub: 'sub-new' }, when: 'any' }]); // META ecrite, Cognito avait echoue
+    await t2.store.commit([{ item: { ...keys.family(familyIdFor('sub-new')), ownerSub: 'sub-new' }, when: 'any' }]);
     expect((await createFamily(t2.deps, a)).familyId).toBe(familyIdFor('sub-new'));
     const t3 = testDeps();
     await t3.store.commit([{ item: { ...keys.family(familyIdFor('sub-new')), ownerSub: 'quelqu-un-d-autre' }, when: 'any' }]);
     await rejects(createFamily(t3.deps, a), 409);
+    const t4 = testDeps();
+    t4.identity.users.set('new1', { sub: 'sub-new', familyId: 'autre-famille', enabled: true, groups: ['parent'] });
+    await rejects(createFamily(t4.deps, a), 409);
   });
   it('refuse un eleve, un compte avec famille ou sans nom d\'utilisateur', async () => {
     const t = testDeps();
     await rejects(createFamily(t.deps, { ...a, role: 'eleve', familyId: FID }), 403);
-    await rejects(createFamily(t.deps, { ...a, role: 'parent', familyId: FID }), 409);
+    await rejects(createFamily(t.deps, { ...a, role: 'parent', familyId: FID }), 409); // jeton qui porte deja une famille
     await rejects(createFamily(t.deps, { sub: 'x', username: '' }), 409);
   });
   it('deux appels simultanes: une seule famille', async () => {
     const t = testDeps();
-    const r = await Promise.allSettled([createFamily(t.deps, a), createFamily(t.deps, a)]);
-    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    await Promise.allSettled([createFamily(t.deps, a), createFamily(t.deps, a)]);
+    expect([...t.store.items.keys()].filter((k) => k.endsWith('|META'))).toHaveLength(1);
+    expect(t.identity.users.get('new1')?.familyId).toBe(familyIdFor('sub-new'));
   });
 });
 
@@ -157,9 +173,17 @@ describe('POST /activation (publique)', () => {
   });
   it('erreur Cognito inattendue: relancee, lien libere', async () => {
     const { t, token } = await created();
-    t.identity.users.clear(); // setPassword leve « UserNotFound »
-    await expect(activate(t.deps, t.identity, { token, password: PW })).rejects.toThrow('UserNotFound');
+    t.identity.setPassword = async () => {
+      throw new Error('ThrottlingException');
+    };
+    await expect(activate(t.deps, t.identity, { token, password: PW })).rejects.toThrow('ThrottlingException');
     expect(await t.store.get(keys.activation(token))).toBeDefined();
+  });
+  it('utilisateur absent de Cognito: le meme 404 qu\'un jeton inconnu, jeton supprime', async () => {
+    const { t, token } = await created();
+    t.identity.users.clear();
+    await rejects(activate(t.deps, t.identity, { token, password: PW }), 404, 'introuvable');
+    expect(await t.store.get(keys.activation(token))).toBeUndefined();
   });
   it('un nouveau lien remplace l\'ancien; eleve supprime: 404', async () => {
     const { t, sid, token } = await created();
@@ -218,8 +242,11 @@ describe('students-link, update, delete', () => {
     await updateStudent(t.deps, parentCtx, SID, { status: 'actif' });
     expect(t.identity.users.get(SID)?.enabled).toBe(true);
     await getSession(t.deps, s.ctx, 'doc1');
-    // meme statut: Cognito n'est pas rappele
-    await updateStudent(t.deps, parentCtx, SID, { status: 'actif' });
+    // C4: une requete portant `status` rappelle toujours Cognito (reprise apres un echec Cognito).
+    await updateStudent(t.deps, parentCtx, SID, { status: 'suspendu' });
+    t.identity.users.get(SID)!.enabled = true; // Cognito n'avait pas suivi
+    await updateStudent(t.deps, parentCtx, SID, { status: 'suspendu' });
+    expect(t.identity.users.get(SID)?.enabled).toBe(false);
   });
   it('quota: limite par le plafond de la famille, applique au quota du mois, relu par le profil', async () => {
     const t = testDeps();
@@ -270,6 +297,7 @@ describe('students-link, update, delete', () => {
     await put({ ...keys.quota(FID, '2026-12', sid) });
     await t.identity.attachFamily(sid, FID);
     await getSession(t.deps, ctx, 'docA');
+    t.clk.advance(2000);
     await postAnswer(t.deps, ctx, { questionId: qid('docA', 'qcm', 1), choice: 'B' });
     const mine = (k: { PK: string; SK: string }) => k.PK === `STUDENT#${sid}` || k.PK === `DOC#docA` || k.PK === 'JOB#job1' || k.SK === `STUDENT#${sid}` || k.SK.endsWith(`#${sid}`) || k.PK === `ACTIVATION#${sha256(tokenOf(r.activationLink.url))}`;
     const before = [...t.store.items.values()].filter(mine).length;

@@ -79,6 +79,7 @@ describe('answers-post: XP par question', () => {
     expect(r2).toMatchObject({ correct: true, xpGained: 2, correctAnswer: 'B' });
     t.clk.advance(2000);
     expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(0); // une recompense par question
+    t.clk.advance(2000);
     expect((await answer(t, ctx, qid('doc1', 'qcm', 2), good)).xpGained).toBe(0);
     expect(r2.progress.xp).toBe(7);
   });
@@ -105,14 +106,33 @@ describe('answers-post: XP par question', () => {
     t.clk.advance(2000);
     expect((await answer(t, ctx, qid('doc1', 'gap', 2), 'energie')).xpGained).toBe(0);
   });
-  it('la meme question rapporte a nouveau le lendemain', async () => {
+  it('une recompense par question POUR TOUJOURS: rejouer le lendemain ne rapporte rien et ne compte pas pour les badges', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await play(t, ctx, 1, 2000);
+    await play(t, ctx, 3, 2000);
+    expect((await profile(t)).correct).toBe(3);
+    t.clk.advance(24 * 3600 * 1000);
+    const again = await play(t, ctx, 3, 2000);
+    expect(again.map((r) => r.xpGained)).toEqual([0, 0, 0]);
+    expect(again.every((r) => r.correct)).toBe(true);
+    const p = await profile(t);
+    expect([p.correct, p.xp]).toEqual([3, 15]);
+    expect(p.series.n).toBe(0); // rejouer des questions deja payees ne fabrique pas de series
+  });
+  it('une question ratee hier (jamais payee) peut etre payee aujourd\'hui, une seule fois', async () => {
+    const t = testDeps();
+    const { ctx } = await seed(t);
+    await play(t, ctx, 1, 2000, 'A'); // faux
+    t.clk.advance(2000);
+    await answer(t, ctx, qid('doc1', 'qcm', 1), 'C'); // faux, essais epuises
     t.clk.advance(24 * 3600 * 1000);
     await getSession(t.deps, ctx, 'doc1');
     t.clk.advance(2000);
     expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(5);
+    t.clk.advance(24 * 3600 * 1000);
+    await getSession(t.deps, ctx, 'doc1');
+    t.clk.advance(2000);
+    expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(0);
   });
   it('refuse une question mal formee, inconnue, ou d\'une fiche qui n\'est pas a l\'eleve', async () => {
     const t = testDeps();
@@ -135,18 +155,33 @@ describe('answers-post: XP par question', () => {
 });
 
 describe('anti-triche', () => {
-  it('moins de 1 s apres l\'affichage: juge, mais ni XP, ni essai, ni reponse revelee', async () => {
+  it('moins de 1 s apres la precedente: refus (429) sans RIEN reveler sur la justesse, ni essai compte', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
     await getSession(t.deps, ctx, 'doc1');
-    t.clk.advance(500);
-    const fast = await answer(t, ctx, qid('doc1', 'qcm', 1), 'A');
-    expect(fast).toMatchObject({ correct: false, xpGained: 0 });
-    expect(fast.correctAnswer).toBeUndefined();
-    t.clk.advance(500); // 0,5 s apres la reponse precedente: encore trop rapide
-    expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(0);
-    t.clk.advance(1500);
-    expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(5); // la question n'a pas ete « brulee »
+    // La bonne et les mauvaises reponses recoivent exactement la meme reponse: aucun oracle.
+    const outcomes: string[] = [];
+    for (const choice of ['A', good, 'C', good]) {
+      t.clk.advance(200);
+      const e = await answer(t, ctx, qid('doc1', 'qcm', 1), choice).then(() => undefined, (x: unknown) => x as HttpError);
+      outcomes.push(JSON.stringify([e?.status, e?.code, e?.message]));
+    }
+    expect(new Set(outcomes).size).toBe(1);
+    expect(outcomes[0]).toContain('429');
+    expect(await t.store.get(keys.attempt(SID, qid('doc1', 'qcm', 1), '2026-12-01'))).toBeUndefined(); // aucun essai enregistre
+    t.clk.advance(1000);
+    expect(await answer(t, ctx, qid('doc1', 'qcm', 1), good)).toMatchObject({ correct: true, xpGained: 5 }); // la question n'a pas ete « brulee »
+  });
+  it('trou: la rafale ne permet pas de deviner le mot', async () => {
+    const t = testDeps();
+    const { ctx } = await seed(t, { nQcm: 1, nGap: 1 });
+    await getSession(t.deps, ctx, 'doc1');
+    const seen = new Set<string>();
+    for (const w of ['faux', 'energie', 'autre']) {
+      t.clk.advance(200);
+      seen.add(await answer(t, ctx, qid('doc1', 'gap', 1), w).then((r) => JSON.stringify(r), (e: HttpError) => `${e.status}`));
+    }
+    expect([...seen]).toEqual(['429']);
   });
   it('sans session ouverte, la premiere reponse est acceptee', async () => {
     const t = testDeps();
@@ -183,6 +218,26 @@ describe('anti-triche', () => {
     const s3 = await seed(t3);
     await t3.store.remove(keys.verdict('doc1', 5)); // pas de verdict: considere non verifie
     expect((await play(t3, s3.ctx, 10, 2500))[9].xpGained).toBe(5 + 20);
+  });
+  it('sans session ouverte aujourd\'hui, les reponses ne comptent pas pour la serie de 10 (critere des 20 s)', async () => {
+    const t = testDeps();
+    const { ctx } = await seed(t);
+    await getSession(t.deps, ctx, 'doc1'); // session d'hier
+    t.clk.advance(24 * 3600 * 1000);
+    const xp: number[] = [];
+    for (let i = 1; i <= 10; i++) {
+      t.clk.advance(2500);
+      xp.push((await answer(t, ctx, qid('doc1', 'qcm', i), good)).xpGained);
+    }
+    expect(xp).toEqual(Array(10).fill(5)); // pas de +20 ni +30
+    expect((await profile(t)).series.n).toBe(0);
+    const t2 = testDeps();
+    const s2 = await seed(t2);
+    for (let i = 1; i <= 10; i++) {
+      t2.clk.advance(2500);
+      await answer(t2, s2.ctx, qid('doc1', 'qcm', i), good); // jamais de session
+    }
+    expect((await profile(t2)).series.n).toBe(0);
   });
   it('rejouer les memes questions ne fabrique pas de series', async () => {
     const t = testDeps();
@@ -252,8 +307,8 @@ describe('anti-triche', () => {
     const { ctx } = await seed(t);
     await getSession(t.deps, ctx, 'doc1');
     t.clk.advance(3000);
-    const [a, b] = await Promise.all([answer(t, ctx, qid('doc1', 'qcm', 1), good), answer(t, ctx, qid('doc1', 'qcm', 1), good)]);
-    expect(a.xpGained + b.xpGained).toBe(5);
+    const r = await Promise.allSettled([answer(t, ctx, qid('doc1', 'qcm', 1), good), answer(t, ctx, qid('doc1', 'qcm', 1), good)]);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     expect((await profile(t)).xp).toBe(5);
   });
   it('conflit persistant: 409', async () => {
@@ -483,6 +538,14 @@ describe('lectures: profil, tableau de bord, classement', () => {
       { studentId: 'stu3', pseudo: 'Autre-9zzz', xp: 300, activeDays: 4 },
       { studentId: SID, pseudo: 'Pseudo-1abc', xp: 100, activeDays: 3 },
     ]);
+  });
+  it('classement: un eleve suspendu ou d\'un autre compte est refuse', async () => {
+    const t = testDeps();
+    const a = await seed(t);
+    expect((await getLeaderboard(t.deps, FID, a.ctx)).entries).toEqual([]);
+    await rejects(getLeaderboard(t.deps, FID, { ...a.ctx, sub: 'autre' }), 403);
+    await t.store.commit([{ item: { ...keys.student(FID, SID), pseudo: 'x', niveau: 'seconde', statut: 'suspendu', cognitoSub: a.ctx.sub }, when: 'any' }]);
+    await rejects(getLeaderboard(t.deps, FID, a.ctx), 403);
   });
   it('classement: a egalite, ordre alphabetique des pseudos', async () => {
     const t = testDeps();

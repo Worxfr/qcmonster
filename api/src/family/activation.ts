@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { keys, sha256, type Key } from '../../../shared/ddb/keys.js';
 import type { Deps } from '../lib/deps.js';
 import { badRequest, notFound } from '../lib/http.js';
-import { InvalidPasswordError, type Identity } from '../lib/identity.js';
+import { InvalidPasswordError, UserGoneError, type Identity } from '../lib/identity.js';
 import type { Item, Write } from '../lib/store.js';
 
 export const ACTIVATION_TTL_MS = 24 * 3600 * 1000;
@@ -30,7 +30,9 @@ export function issueActivation(deps: Deps, webOrigin: string, fid: string, sid:
   };
 }
 
-const sameHash = (a: unknown, b: string): boolean => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// La cle de lecture est deja le hache du jeton fourni: cette comparaison en temps constant est une garde en plus (element corrompu), pas la protection.
+// La protection reelle est le hachage SHA-256 d'un jeton aleatoire de 256 bits.
+const sameHash = (stored: unknown, hash: string): boolean => typeof stored === 'string' && stored.length === hash.length && timingSafeEqual(Buffer.from(stored), Buffer.from(hash));
 
 /**
  * POST /activation (route publique). Jeton inconnu, expire, deja utilise ou remplace: la MEME reponse 404.
@@ -63,6 +65,10 @@ export async function activate(deps: Deps, identity: Identity, body: { token: st
   } catch (e) {
     await release();
     if (e instanceof InvalidPasswordError) throw badRequest('Mot de passe refuse: 12 caracteres, avec majuscule, minuscule et chiffre');
+    if (e instanceof UserGoneError) {
+      await deps.store.remove(key); // utilisateur supprime cote Cognito seulement: meme 404 que tout jeton inutilisable
+      throw notFound();
+    }
     throw e;
   }
   await deps.store.remove(key);

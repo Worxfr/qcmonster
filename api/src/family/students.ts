@@ -81,7 +81,8 @@ export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   if (body.pageQuota !== undefined) next.quotaPages = body.pageQuota;
   // Base d'abord: un eleve suspendu est refuse par l'API immediatement, meme si Cognito echoue ensuite.
   if (!(await deps.store.commit([{ item: next, when: s.v ?? 'any' }]))) throw conflict('Reessayez');
-  if (body.status !== undefined && body.status !== s.statut) await deps.identity.setEnabled(sid, body.status === 'actif');
+  // A chaque requete portant `status` (idempotent): si Cognito a echoue, relancer la meme requete repare.
+  if (body.status !== undefined) await deps.identity.setEnabled(sid, body.status === 'actif');
   if (body.pageQuota !== undefined) {
     await setLimit(deps.quota, { familyId: ctx.familyId, studentId: sid, month: parisMonth(deps.now()), studentLimit: body.pageQuota, familyLimit }, body.pageQuota);
   }
