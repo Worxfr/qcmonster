@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { signIn, mockSignIn, type MockRole } from '../auth';
-import { CONFIG_ERROR, MOCK_AUTH } from '../env';
+import { CONFIG_ERROR, MOCK_AUTH, SIGNUP_ENABLED } from '../env';
 import { Mascot } from '../components/Mascot';
 import { ErrorBox } from '../components/ui';
 import { errMsg } from '../hooks';
@@ -70,6 +70,11 @@ export function Login({ onDone }: { onDone: () => void }) {
           <ErrorBox message={error} />
           <button className="btn" disabled={busy}>{confirm ? 'Valider le code' : 'Se connecter'}</button>
         </form>
+      )}
+      {SIGNUP_ENABLED && !CONFIG_ERROR && (
+        <p className="muted">
+          <a href="#/inscription">Créer un compte parent</a> · <a href="#/mot-de-passe-oublie">Mot de passe oublié</a>
+        </p>
       )}
       <p className="muted"><a href="#/politique">Politique de confidentialité</a></p>
     </main>

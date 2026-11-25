@@ -119,6 +119,8 @@ export class AuthStack extends Stack {
 
     (this.signupClient.node.defaultChild as cognito.CfnUserPoolClient).explicitAuthFlows = ['ALLOW_REFRESH_TOKEN_AUTH']; // aucun flux de connexion
 
+    new CfnOutput(this, 'SignupClientId', { value: this.signupClient.userPoolClientId }); // public, lu par scripts/front-env.mjs
+
     new ssm.StringParameter(this, 'ParamUserPoolId', { parameterName: ssmParam(envName, 'auth/userPoolId'), stringValue: this.userPool.userPoolId });
     new ssm.StringParameter(this, 'ParamClientId', { parameterName: ssmParam(envName, 'auth/webClientId'), stringValue: this.webClient.userPoolClientId });
     new ssm.StringParameter(this, 'ParamSignupClientId', { parameterName: ssmParam(envName, 'auth/signupClientId'), stringValue: this.signupClient.userPoolClientId });
