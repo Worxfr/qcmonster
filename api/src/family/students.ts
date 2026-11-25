@@ -95,12 +95,11 @@ export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   return studentView(next);
 }
 
-/** Efface les donnees d'un eleve hors table (utilisateur Cognito, photos en cours, lien d'activation), puis son arbre DynamoDB. */
+/** Efface les donnees d'un eleve hors table (utilisateur Cognito, photos restantes, lien d'activation), puis son arbre DynamoDB. */
 export async function purgeStudent(deps: FamilyDeps, fid: string, s: Item): Promise<void> {
   const sid = s.SK.slice('STUDENT#'.length);
   await deps.identity.deleteUser(sid);
-  const jobs = await deps.store.query(`STUDENT#${sid}`, 'JOB#');
-  await deps.photos.deleteForJobs(jobs.map((j) => j.SK.slice('JOB#'.length)));
+  await deps.photos.deleteForStudent(sid); // toutes les photos scans/<eleve>/..., meme sans fiche JOB# restante
   if (typeof s.activationHash === 'string') await deps.store.remove({ PK: `ACTIVATION#${s.activationHash}`, SK: 'META' });
   await deleteStudentTree(deps.tree, fid, sid);
 }

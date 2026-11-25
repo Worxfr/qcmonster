@@ -13,8 +13,8 @@ Tu prends en photo une page de cours. L'application lit la page, vérifie les fa
 ## Quelles données sont collectées ?
 
 - **Le compte du parent** : adresse e-mail et mot de passe. Quand il crée sa famille ou un compte élève, l'application garde la **date de son accord** et la **version de cette politique** qu'il a acceptée. Une double authentification (application d'authentification) est proposée.
-- **Le compte de l'élève** : un pseudo choisi par le parent, sans nom de famille (l'application y ajoute des lettres au hasard), et un mot de passe. Aucune adresse e-mail d'élève. On garde seulement la réponse « moins de 15 ans : oui ou non ». Aucune date de naissance.
-- **Les photos et PDF de cours** : envoyés pour être analysés.
+- **Le compte de l'élève** : un pseudo choisi par le parent, sans nom de famille (l'application y ajoute des lettres au hasard), et un mot de passe. L'application ne demande ni ne garde d'adresse e-mail pour l'élève. On garde seulement la réponse « moins de 15 ans : oui ou non ». Aucune date de naissance.
+- **Les photos de cours** : envoyées pour être analysés.
 - **Le texte du cours** lu sur la photo, corrigé par l'élève, et les **fiches** créées (QCM, textes à trous). Le **texte complet du cours est gardé dans l'espace de l'élève**, y compris les parties pour lesquelles l'élève a choisi de ne pas faire de fiche.
 - **Tes résultats** : les réponses données, les points d'expérience (XP), les passages d'entraînement.
 - **Des données techniques** : numéro du travail d'analyse, étape, durée, coût. Jamais le contenu de tes cours.
@@ -42,7 +42,7 @@ Rien n'est utilisé pour de la publicité. Rien n'est vendu.
 | Résultats, réponses et points d'expérience (XP) | Jusqu'à suppression du compte ou de l'élève |
 | Travaux d'analyse et copie de travail du texte lu sur les photos (suivi d'un scan en cours) | 7 jours, plus un délai technique d'au plus 2 jours (le cours complet gardé dans l'espace de l'élève est une autre copie, voir ci-dessus) |
 | Extraits de sites web trouvés pour vérifier les faits | 30 jours, plus un délai technique d'au plus 2 jours |
-| Photos et PDF envoyés | Supprimés dès que tu as confirmé le texte lu (tu as 12 heures pour le faire, sinon le scan est annulé et la photo supprimée), et au plus tard dans les 2 jours |
+| Photos envoyées | Supprimées dès que tu as confirmé le texte lu (tu as 12 heures pour le faire, sinon le scan est annulé et la photo supprimée), et au plus tard dans les 2 jours. Si le compte de l'élève est supprimé, ses photos encore présentes sont effacées au même moment |
 | Journaux techniques | 14 jours en principe (sans contenu de cours) |
 | Historique technique du traitement chez AWS | 90 jours (numéros de travaux et étapes, jamais le texte de tes cours) |
 
@@ -65,7 +65,7 @@ Toi, ou ton parent, tu peux demander :
 
 - à **voir** tes données : le parent peut télécharger dans l'application un fichier avec son e-mail, les comptes élèves (profil de jeu, jours de jeu, réponses), les fiches (affirmations, sources, questions et réponses) et les signalements. Ce fichier ne contient **pas le texte des cours** (ni le texte brut lu sur les photos) ni les extraits de sites web partagés : il indique seulement la structure de chaque cours et les fiches qui en viennent. **L'élève lit le texte complet de ses cours dans l'application** (écran « Cours complet »), c'est sa façon d'exercer son droit d'accès ;
 - à les **corriger** : le parent peut changer le niveau d'un élève dans l'application. Pour changer un pseudo ou la réponse « moins de 15 ans », il faut **supprimer le compte de l'élève et le recréer** (les fiches et les cours sont alors perdus) ;
-- à les **supprimer** (le parent peut supprimer le compte de l'élève ; l'effacement est immédiat et comprend ses fiches, ses cours complets, ses résultats et ses signalements ; **l'élève peut aussi supprimer lui-même un cours**, en gardant ou en supprimant ses fiches, au choix, sans passer par le parent ; la copie de travail du texte, gardée 7 jours, est supprimée en même temps) ;
+- à les **supprimer** (le parent peut supprimer le compte de l'élève ; l'effacement de la base est immédiat et comprend ses fiches, ses cours complets, ses résultats et ses signalements ; ses photos encore stockées sont effacées dans la même opération (au plus tard 2 jours si la suppression échoue, par la règle d'expiration du stockage) ; **l'élève peut aussi supprimer lui-même un cours**, en gardant ou en supprimant ses fiches, au choix, sans passer par le parent ; la copie de travail du texte, gardée 7 jours, est supprimée en même temps) ;
 - à **limiter** ou t'**opposer** à leur utilisation (pour le budget et la sécurité) ;
 - à **retirer ton accord** à tout moment ;
 - à les **récupérer** dans un format lisible.

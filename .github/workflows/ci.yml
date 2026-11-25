@@ -20,6 +20,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Non bloquant (audit M8): signale les failles hautes des dependances d'execution sans casser la PR.
+      - name: npm audit (dependances d'execution)
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
       - name: Contrat genere a jour
         run: npm run gen:check
       - name: Lint

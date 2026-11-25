@@ -367,7 +367,7 @@ describe('students-link, update, delete', () => {
     expect([...t.store.items.values()].filter(mine).map((k) => `${k.PK}|${k.SK}`)).toEqual([]);
     expect([...t.store.items.values()].filter((k) => !mine(k))).toHaveLength(others); // rien d'autre n'est touche
     expect(t.identity.users.has(sid)).toBe(false);
-    expect(t.photos.deleted).toEqual(['job1']);
+    expect(t.photos.deleted).toEqual([sid]);
     await rejects(deleteStudent(t.deps, parentCtx, sid), 404);
   });
 });

@@ -58,3 +58,16 @@ describe('docs-read et docs-delete (B2)', () => {
     expect(await t.db.get({ PK: 'STUDENT#s1', SK: 'COURS#C1#T01' })).toBeDefined();
   });
 });
+
+describe('sources: hotes autorises (audit L-14)', () => {
+  it("docsRead ne rend que les sources https d'un hote de la liste", async () => {
+    const t = await world();
+    await putDoc(t, 's1', 'D1');
+    await t.db.put({ PK: 'DOC#D1', SK: 'CLAIM#01', texte: 'Une phrase.', aRisque: false });
+    const src = (url: string) => ({ passageId: url, url, site: 's', titre: 't', extrait: 'e', niveau: 2 });
+    const urls = ['https://fr.wikipedia.org/wiki/Paris', 'javascript:alert(1)', 'http://fr.wikipedia.org/wiki/X', 'https://evil.example.invalid/x', 'https://fr.wikipedia.org.evil.example.invalid/x', 'https://u:p@fr.wikipedia.org/x'];
+    await t.db.put({ PK: 'DOC#D1', SK: 'VERDICT#01', statut: 'verifiee', niveau: 2, secondeLecture: false, sources: urls.map(src) });
+    const r = await guarded(docsRead)(t.ctx, ev('s1', 'GET /docs/{docId}', { params: { docId: 'D1' } }));
+    expect(body(r).claims[0].sources.map((s: { url: string }) => s.url)).toEqual(['https://fr.wikipedia.org/wiki/Paris']);
+  });
+});

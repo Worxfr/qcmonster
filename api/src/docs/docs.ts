@@ -9,8 +9,19 @@ import { iso, type Ctx } from '../pipeline/ctx.js';
 import { bodyOf, callerOf, fail, json, noContent, pathId, requireStudent, type Caller } from '../pipeline/http.js';
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { claimStatus } from '../pipeline/steps-doc.js';
+import { ALLOWED_HOSTS } from '../verify/fetch.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
+
+/** Une source n'est rendue que si son URL est en https sur un hote de la liste de verification (jamais javascript:, http:, ni un hote tiers). */
+export const sourceAllowed = (url: unknown): boolean => {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === 'https:' && !u.username && !u.password && !u.port && ALLOWED_HOSTS.includes(u.hostname);
+  } catch {
+    return false;
+  }
+};
 
 const str = (x: unknown): string | undefined => (typeof x === 'string' && x ? x : undefined);
 /** Resume d'une fiche (contrat 1.3: sujet, dossier, cours d'origine et rang de section, seulement s'ils existent). */
@@ -64,7 +75,7 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
         text: cl.texte,
         status: claimStatus(cl, ok ? v : undefined),
         aRisque: cl.aRisque === true,
-        sources: ok ? ok.sources : [],
+        sources: ok ? ok.sources.filter((src) => sourceAllowed(src.url)) : [],
       };
     })
     .sort((a, b) => a.claimId.localeCompare(b.claimId));
