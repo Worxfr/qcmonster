@@ -4,6 +4,8 @@ process.env.QCM_NO_AUTORUN = '1';
 process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' });
 const { buildApp } = await import('../bin/app.js');
 const { API_FUNCTIONS, STEP_FUNCTIONS, TASK_TIMEOUT_S, UPLOAD_TIMEOUT_S, machineTimeoutS, MACHINE_TIMEOUT } = await import('../lib/pipeline-stack.js');
+import { readFileSync } from 'node:fs';
+import { run, type Def, type Handlers } from './sfn-sim.js';
 import { ENVS, METRIC_NAMESPACE, processingRoleNames, stackName } from '../../shared/names.js';
 import { CONFIRM_TIMEOUT_S, MACHINE_TIMEOUT_MIN_S, MAX_SECTIONS, machineTimeoutNeededS } from '../../shared/scans.js';
 import { REQUIRED_TAGS } from './tags.js';
@@ -42,7 +44,7 @@ describe('Pipeline (L2a)', () => {
       it('seul le role de traitement peut appeler Bedrock, et il est dans processingRoleNames', () => {
         expect(processingRoleNames(env)).toContain(`qcm-${env}-pipeline-role`);
         const roles = Object.values(t.findResources('AWS::IAM::Role')).map((r) => (r as { Properties: { RoleName?: string } }).Properties.RoleName).filter(Boolean); // la machine d'etats a son role genere (sans Bedrock)
-        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
+        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-confirm', 'api-list'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
         const bedrock = (re: RegExp) => actions(statements(t, re)).filter((a) => a.startsWith('bedrock:'));
         expect(bedrock(/pipelineapi/i)).toEqual([]);
         expect(bedrock(/pipelinetriggerrole/i)).toEqual([]);
@@ -55,6 +57,7 @@ describe('Pipeline (L2a)', () => {
         const del = actions(statements(t, /pipelineapidelete/i));
         expect(del.filter((a) => /^(s3|states|bedrock):/.test(a) || /PutItem|UpdateItem/.test(a))).toEqual([]);
         expect(actions(statements(t, /pipelineapiwrite/i))).not.toContain('dynamodb:DeleteItem');
+        expect(actions(statements(t, /pipelineapiwrite/i))).not.toContain('dynamodb:BatchWriteItem');
         for (const re of [/pipelineapiread/i, /pipelineapiwrite/i, /pipelineapidelete/i]) {
           const d = statements(t, re).filter((x) => [x.Action].flat().some((a) => a.startsWith('dynamodb:')));
           expect(d.length).toBeGreaterThan(0);
@@ -238,47 +241,56 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
       const ddbStatements = (re: RegExp) => statements(t, re).filter((x) => actions([x]).some((a) => a.startsWith('dynamodb:')));
       const leadingOf = (x: Stmt) => (x as unknown as { Condition: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': string[] } } }).Condition['ForAllValues:StringLike']['dynamodb:LeadingKeys'];
 
-      it('les 8 routes FEAT-A ont une fonction (une par handler) et passent de 501 au vrai proprietaire', () => {
+      const flat = (re: RegExp) => ddbStatements(re).map((x) => ({ actions: [...new Set(actions([x]))].sort(), keys: leadingOf(x) }));
+      it('les 9 routes FEAT-A ont une fonction (une par handler) et passent de 501 au vrai proprietaire', () => {
         const names = Object.values(t.findResources('AWS::Lambda::Function')).map((f) => (f as { Properties: { FunctionName: string } }).Properties.FunctionName);
         for (const h of NEW_ROUTES) expect(names, h).toContain(`qcm-${env}-${h}`);
         expect(Object.keys(API_FUNCTIONS)).toEqual(expect.arrayContaining(NEW_ROUTES));
       });
-      it('docs-patch: GetItem et UpdateItem seulement, STUDENT# seulement, ni S3 ni Query ni PutItem', () => {
+      it('scans-list: DynamoDB en lecture seule sur FAMILY# et STUDENT#, sans S3', () => {
+        expect(fnRole('scans-list').role).toMatch(/pipelineapilist/i);
+        expect(flat(/pipelineapilist/i)).toEqual([{ actions: ['dynamodb:GetItem', 'dynamodb:Query'], keys: ['FAMILY#*', 'STUDENT#*'] }]);
+        expect(own(/pipelineapilist/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual([]);
+      });
+      it('docs-patch: Query de FAMILY# (callerOf) et un seul UpdateItem sur STUDENT#; ni GetItem, ni PutItem, ni S3', () => {
         expect(fnRole('docs-patch').role).toMatch(/pipelineapipatch/i);
-        const st = ddbStatements(/pipelineapipatch/i);
-        expect([...new Set(actions(st))].sort()).toEqual(['dynamodb:GetItem', 'dynamodb:UpdateItem']);
-        expect(leadingOf(st[0])).toEqual(['STUDENT#*']);
+        expect(flat(/pipelineapipatch/i)).toEqual([
+          { actions: ['dynamodb:Query'], keys: ['FAMILY#*'] },
+          { actions: ['dynamodb:UpdateItem'], keys: ['STUDENT#*'] },
+        ]);
         expect(own(/pipelineapipatch/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual([]);
       });
-      it('folders-api: role dedie, pas de S3 / Bedrock / Step Functions, 30 s, FAMILY# et STUDENT# seulement', () => {
+      it('folders-api: BatchWriteItem (ports.remove) et non DeleteItem; pas de S3 / Bedrock / Step Functions; 30 s minimum', () => {
         expect(fnRole('folders-api').role).toMatch(/pipelineapifolders/i);
-        expect(fnRole('folders-api').timeout).toBe(30);
-        const as = own(/pipelineapifolders/i);
-        expect(as.filter((a) => /^(s3|bedrock|states|cloudwatch):/.test(a))).toEqual([]);
-        expect([...new Set(as)].sort()).toEqual(['dynamodb:DeleteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem']);
-        expect(leadingOf(ddbStatements(/pipelineapifolders/i)[0])).toEqual(['FAMILY#*', 'STUDENT#*']);
+        expect(fnRole('folders-api').timeout).toBeGreaterThanOrEqual(30);
+        expect(own(/pipelineapifolders/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual([]);
+        expect(flat(/pipelineapifolders/i)).toEqual([{ actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['FAMILY#*', 'STUDENT#*'] }]);
       });
-      it('cours-api: GET avec un role en lecture seule, DELETE avec le seul role qui supprime; parent sans droit (pas de FAMILY#)', () => {
+      it('cours: GET sur une fonction en lecture seule, DELETE sur cours-delete (seul role qui supprime, signalements FAMILY# compris), 30 s minimum', () => {
         expect(fnRole('cours-api').role).toMatch(/pipelineapicoursread/i);
         expect(fnRole('cours-delete').role).toMatch(/^pipelineapicoursrole/i);
-        expect(fnRole('cours-delete').role).not.toMatch(/read/i);
-        expect(fnRole('cours-delete').timeout).toBe(30);
-        const read = ddbStatements(/pipelineapicoursread/i);
-        expect([...new Set(actions(read))].sort()).toEqual(['dynamodb:GetItem', 'dynamodb:Query']);
-        expect(leadingOf(read[0])).toEqual(['STUDENT#*']);
-        const del = ddbStatements(/^pipelineapicoursrole/i);
-        expect([...new Set(actions(del))].sort()).toEqual(['dynamodb:BatchWriteItem', 'dynamodb:DeleteItem', 'dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem']);
-        expect(leadingOf(del[0])).toEqual(['STUDENT#*', 'DOC#*', 'JOB#*']);
-        expect(own(/^pipelineapicoursrole/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual([]);
-        for (const re of [/pipelineapicoursread/i, /^pipelineapicoursrole/i, /pipelineapipatch/i]) expect(JSON.stringify(statements(t, re)), String(re)).not.toContain('FAMILY#');
+        expect(fnRole('cours-api').timeout).toBeGreaterThanOrEqual(30);
+        expect(fnRole('cours-delete').timeout).toBeGreaterThanOrEqual(30);
+        expect(flat(/pipelineapicoursread/i)).toEqual([
+          { actions: ['dynamodb:Query'], keys: ['FAMILY#*'] },
+          { actions: ['dynamodb:GetItem', 'dynamodb:Query'], keys: ['STUDENT#*'] },
+        ]);
+        expect(flat(/^pipelineapicoursrole/i)).toEqual([
+          { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['STUDENT#*', 'DOC#*', 'JOB#*'] },
+          { actions: ['dynamodb:BatchWriteItem', 'dynamodb:Query'], keys: ['FAMILY#*'] },
+        ]);
+        for (const re of [/pipelineapicoursread/i, /^pipelineapicoursrole/i]) expect(own(re).filter((a) => !a.startsWith('dynamodb:') || a === 'dynamodb:PutItem')).toEqual([]);
       });
-      it("jobs-confirm (writeRole) lit FOLDER# et ecrit le cours sans pouvoir supprimer; l'etape fail (pipeline-role) supprime", () => {
-        expect(fnRole('jobs-confirm').role).toMatch(/pipelineapiwrite/i);
+      it("jobs-confirm: role propre = droits d'ecriture + suppression du cours durable (STUDENT#, JOB#); le role d'ecriture ne supprime rien; l'etape fail supprime", () => {
+        expect(fnRole('jobs-confirm').role).toMatch(/pipelineapiconfirm/i);
+        for (const h of ['scans-create', 'jobs-cancel', 'docs-report']) expect(fnRole(h).role, h).toMatch(/pipelineapiwrite/i);
         const w = actions(ddbStatements(/pipelineapiwrite/i));
-        expect(w).toEqual(expect.arrayContaining(['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem']));
         expect(w.filter((a) => /Delete|BatchWrite/.test(a))).toEqual([]);
-        const w1 = ddbStatements(/pipelineapiwrite/i).find((x) => actions([x]).includes('dynamodb:PutItem'))!;
-        expect(leadingOf(w1)).toEqual(expect.arrayContaining(['STUDENT#*']));
+        const c = flat(/pipelineapiconfirm/i);
+        expect(c).toContainEqual({ actions: ['dynamodb:BatchWriteItem'], keys: ['STUDENT#*', 'JOB#*'] });
+        const c1 = c.find((x) => x.actions.includes('dynamodb:PutItem'))!;
+        expect(c1.keys).toEqual(expect.arrayContaining(['STUDENT#*']));
+        expect(c.some((x) => x.actions.includes('dynamodb:DeleteItem'))).toBe(false);
         expect(fnRole('pipeline-fail').role).toMatch(/^pipelinerole/i);
         expect(actions(statements(t, /^pipelinerole/i))).toEqual(expect.arrayContaining(['dynamodb:DeleteItem', 'dynamodb:BatchWriteItem', 'dynamodb:Query']));
       });
@@ -310,4 +322,116 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
       });
     });
   }
+});
+
+// Une fonction `qcm-<env>-<handler>` ne peut etre creee qu'une fois dans tout l'assemblage: sinon CloudFormation echoue (nom deja pris).
+describe('FEAT-A (lot I): assemblage', () => {
+  for (const env of ENVS) {
+    const app = buildApp(env, 'test@example.invalid');
+    const stacks = app.node.children.filter((c) => 'templateOptions' in c) as unknown as Parameters<typeof Template.fromStack>[0][];
+    const templates = stacks.map((st) => ({ name: st.stackName, t: Template.fromStack(st) }));
+
+    it(`${env}: aucun nom de fonction n'est declare deux fois, toutes stacks`, () => {
+      const seen = new Map<string, string[]>();
+      for (const { name, t } of templates) {
+        for (const f of Object.values(t.findResources('AWS::Lambda::Function')) as { Properties: { FunctionName?: string } }[]) {
+          if (f.Properties.FunctionName) seen.set(f.Properties.FunctionName, [...(seen.get(f.Properties.FunctionName) ?? []), name]);
+        }
+      }
+      expect([...seen].filter(([, owners]) => owners.length > 1)).toEqual([]);
+      expect(seen.size).toBeGreaterThan(30);
+    });
+
+    it(`${env}: chaque route de l'API pointe vers la bonne fonction (DELETE /cours vers cours-delete, GET vers cours-api)`, () => {
+      const api = templates.find((x) => x.name === stackName(env, 'api'))!.t;
+      const res = api.toJSON().Resources as Record<string, { Type: string; Properties: Record<string, unknown> }>;
+      const target = (route: string): string => {
+        const r = Object.values(res).find((x) => x.Type === 'AWS::ApiGatewayV2::Route' && x.Properties.RouteKey === route)!;
+        const integ = /integrations\/","?\{?"?Ref"?:"?([A-Za-z0-9]+)/.exec(JSON.stringify(r.Properties.Target))?.[1] ?? '';
+        const uri = JSON.stringify(res[integ].Properties.IntegrationUri);
+        return new RegExp(`function:(qcm-${env}-[a-z-]+)`).exec(uri)![1];
+      };
+      const expected: Record<string, string> = {
+        'POST /scans': 'scans-create', 'GET /scans': 'scans-list', 'PATCH /docs/{docId}': 'docs-patch', 'GET /folders': 'folders-api', 'POST /folders': 'folders-api',
+        'PATCH /folders/{folderId}': 'folders-api', 'DELETE /folders/{folderId}': 'folders-api', 'POST /folders/{folderId}/scans': 'folders-api',
+        'DELETE /folders/{folderId}/scans/{docId}': 'folders-api', 'GET /cours/{coursId}': 'cours-api', 'DELETE /cours/{coursId}': 'cours-delete',
+      };
+      for (const [route, h] of Object.entries(expected)) expect(target(route), route).toBe(`qcm-${env}-${h}`);
+    });
+  }
+});
+
+// Les noms d'export attendus de entry.ts. Tant qu'aucun export de B2 (coursHandler, ...) n'est present dans entry.ts de cette branche, le test est saute;
+// des qu'un export de B2 est present, il exige TOUS les noms, ceux de B1 compris (sectionsPlanHandler, sectionCostHandler, finalizeHandler).
+describe('FEAT-A (lot I): exports de entry.ts', () => {
+  const entry = readFileSync(new URL('../../api/src/pipeline/entry.ts', import.meta.url), 'utf8');
+  const exported = new Set([...entry.matchAll(/export const (\w+)\s*=/g)].map((m) => m[1]));
+  const wanted = [...new Set([...Object.values(API_FUNCTIONS), ...Object.values(STEP_FUNCTIONS).map((x) => x[1])])];
+  const b2Merged = ['coursHandler', 'scansListHandler', 'foldersHandler', 'docsPatchHandler'].some((n) => exported.has(n));
+  it('la liste attendue contient les 12 exports de FEAT-A et du pipeline', () => {
+    expect(wanted).toEqual(expect.arrayContaining(['scansListHandler', 'docsPatchHandler', 'foldersHandler', 'coursHandler', 'sectionsPlanHandler', 'sectionCostHandler', 'finalizeHandler']));
+    expect(wanted.length).toBe(Object.keys(API_FUNCTIONS).length + Object.keys(STEP_FUNCTIONS).length - 1); // coursHandler sert deux fonctions
+  });
+  it.skipIf(!b2Merged)('chaque fonction de API_FUNCTIONS et STEP_FUNCTIONS a son export dans entry.ts', () => {
+    expect(wanted.filter((n) => !exported.has(n))).toEqual([]);
+  });
+});
+
+// Machine d'etats rejouee avec des handlers simules (B1 simule): ordre des appels, une seule consommation de quota, section vide, rejet, defaut.
+describe('FEAT-A (lot I): machine rejouee avec des handlers simules', () => {
+  const t = stack('dev');
+  const def = definition(t) as unknown as Def;
+  type In = Record<string, unknown>;
+  const base = (over: Handlers = {}): Handlers => ({
+    AttenteEnvoi: () => undefined, ControleFichier: () => ({ ok: true }), Transcription: () => ({ ok: true }), AttenteConfirmation: () => undefined,
+    PlanSections: () => ({ indices: [0, 1] }),
+    Extraction: (i: In) => ({ ok: true, docId: `d${i.index}`, claims: 5, budgetRestantCentimes: 40 }),
+    Verification: () => ({ coutCentimes: 3 }), CoutSection: () => ({ addedMicros: 1 }),
+    ConsommationQuota: () => ({ ok: true }), Generation: () => undefined, Finalisation: () => ({ docIds: ['d0', 'd1'] }), MarquerEchec: () => undefined,
+    ...over,
+  });
+  const go = (h: Handlers) => run(def, { jobId: 'j1', sid: 's1' }, h);
+  const names = (r: { calls: { state: string }[] }) => r.calls.map((c) => c.state);
+
+  it('2 sections avec fiche: extraction, verification, cout par section, quota une fois, generation par section, finalisation', async () => {
+    const r = await go(base());
+    expect(r.end).toBe('Fiche-publiee');
+    expect(names(r)).toEqual(['AttenteEnvoi', 'ControleFichier', 'Transcription', 'AttenteConfirmation', 'PlanSections', 'Extraction', 'Verification', 'CoutSection', 'Extraction', 'Verification', 'CoutSection', 'ConsommationQuota', 'Generation', 'Generation', 'Finalisation']);
+    expect(r.calls.filter((c) => c.state === 'Extraction').map((c) => c.input.index)).toEqual([0, 1]);
+    expect(r.calls.filter((c) => c.state === 'Generation').map((c) => c.input.index)).toEqual([0, 1]);
+    expect(r.calls.find((c) => c.state === 'Verification')!.input).toEqual({ jobId: 'j1', docId: 'd0', budgetRestantCentimes: 40 });
+  });
+  it('une section sans affirmation (claims 0) passe a la suivante sans verify-run ni cout', async () => {
+    const r = await go(base({ Extraction: (i: In) => ({ ok: true, docId: `d${i.index}`, claims: i.index === 0 ? 0 : 4, budgetRestantCentimes: i.index === 0 ? 0 : 40 }) }));
+    expect(r.end).toBe('Fiche-publiee');
+    expect(r.calls.filter((c) => c.state === 'Verification').map((c) => c.input.docId)).toEqual(['d1']);
+    expect(names(r).filter((n) => n === 'CoutSection')).toHaveLength(1);
+  });
+  it("aucune section avec fiche: B1 rend {ok:false} au quota, la machine s'arrete sans generation ni finalisation", async () => {
+    const r = await go(base({ Extraction: () => ({ ok: true, claims: 0 }), ConsommationQuota: () => ({ ok: false }) }));
+    expect(r.end).toBe('Termine-sans-fiche');
+    for (const n of ['Generation', 'Finalisation', 'Verification']) expect(names(r)).not.toContain(n);
+  });
+  it("quota sans {ok} (ancien retour vide): Default vers Termine-sans-fiche, pas d'erreur States.Runtime", async () => {
+    for (const out of [undefined, null, {}]) {
+      const r = await go(base({ ConsommationQuota: () => out }));
+      expect(r.end, JSON.stringify(out)).toBe('Termine-sans-fiche');
+      expect(names(r)).not.toContain('Generation');
+    }
+  });
+  it("echec d'une section: MarquerEchec puis Echec, sans quota ni generation", async () => {
+    const r = await go(base({ Extraction: (i: In) => { if (i.index === 1) throw new Error('boom'); return { ok: true, docId: 'd0', claims: 5, budgetRestantCentimes: 40 }; } }));
+    expect(r.end).toBe('Echec');
+    expect(names(r)).toContain('MarquerEchec');
+    expect(names(r)).not.toContain('ConsommationQuota');
+  });
+  it("echec de la generation d'une section: MarquerEchec, pas de finalisation", async () => {
+    const r = await go(base({ Generation: (i: In) => { if (i.index === 1) throw new Error('boom'); } }));
+    expect(r.end).toBe('Echec');
+    expect(names(r)).not.toContain('Finalisation');
+  });
+  it('fichier ou cours refuse: fin sans fiche', async () => {
+    expect((await go(base({ ControleFichier: () => ({ ok: false }) }))).end).toBe('Termine-sans-fiche');
+    expect((await go(base({ Transcription: () => ({ ok: false }) }))).end).toBe('Termine-sans-fiche');
+  });
 });

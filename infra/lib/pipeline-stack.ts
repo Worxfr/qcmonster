@@ -73,12 +73,12 @@ export const API_FUNCTIONS = {
   'docs-read': 'docsReadHandler',
   'docs-delete': 'docsDeleteHandler',
   'docs-report': 'docsReportHandler',
-  // FEAT-A (lot I). Noms d'exports de entry.ts: ceux de la doc pour scans-list, docs-patch, folders-api (B2); `coursHandler` (cours-api, GET et DELETE) a confirmer par B2.
+  // FEAT-A (lot I). Exports de entry.ts: scansListHandler, docsPatchHandler, foldersHandler, coursHandler (PR B2). Un test (pipeline.test.ts) les compare au fichier.
   'scans-list': 'scansListHandler',
   'docs-patch': 'docsPatchHandler',
   'folders-api': 'foldersHandler',
   'cours-api': 'coursHandler',
-  // Meme export que cours-api, autre fonction: seule la route DELETE /cours/{coursId} y passe, avec le seul role qui peut supprimer.
+  // Meme export `coursHandler`, autre fonction: seule la route DELETE /cours/{coursId} y passe, avec le seul role qui peut supprimer (GET reste en lecture seule).
   'cours-delete': 'coursHandler',
 } as const;
 export const STEP_FUNCTIONS = {
@@ -126,6 +126,8 @@ export class PipelineStack extends Stack {
     // C2: trois roles pour les 8 fonctions HTTP (lecture, ecriture, suppression), comme game-stack.
     const readRole = mkRole('pipeline-api-read-role');
     const writeRole = mkRole('pipeline-api-write-role');
+    const confirmRole = mkRole('pipeline-api-confirm-role');
+    const listRole = mkRole('pipeline-api-list-role');
     const deleteRole = mkRole('pipeline-api-delete-role');
     // FEAT-A: roles etroits (un role par fonction qui n'a pas besoin des droits des trois roles ci-dessus).
     const patchRole = mkRole('pipeline-api-patch-role');
@@ -149,32 +151,49 @@ export class PipelineStack extends Stack {
     readRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [objects] }));
     readRole.addToPolicy(listScans);
     // Ecriture (scans-create, jobs-confirm, jobs-cancel, docs-report): ecrit des elements, signe le depot (PutObject), efface les photos d'un job annule, pilote la machine.
-    writeRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem']));
-    // scans-create lit le compteur de cout (garde de budget): lecture seule de COST#<env>, aucune ecriture. Sans cela, POST /v1/scans repond 500 (AccessDenied).
-    writeRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ['dynamodb:GetItem'],
-        resources: [tableArn],
-        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': [`COST#${envName}`] }, Null: { 'dynamodb:LeadingKeys': 'false' } },
-      }),
-    );
-    writeRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [objects] }));
-    writeRole.addToPolicy(listScans);
-    writeRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [smArn] }));
-    writeRole.addToPolicy(sendTask);
+    const grantWrite = (role: iam.Role) => {
+      role.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem']));
+      // scans-create lit le compteur de cout (garde de budget): lecture seule de COST#<env>, aucune ecriture. Sans cela, POST /v1/scans repond 500 (AccessDenied).
+      role.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['dynamodb:GetItem'],
+          resources: [tableArn],
+          conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': [`COST#${envName}`] }, Null: { 'dynamodb:LeadingKeys': 'false' } },
+        }),
+      );
+      role.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [objects] }));
+      role.addToPolicy(listScans);
+      role.addToPolicy(new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [smArn] }));
+      role.addToPolicy(sendTask);
+    };
+    grantWrite(writeRole);
+    // jobs-confirm: memes droits que l'ecriture, plus la suppression du cours durable et de la copie de travail (`deleteCoursTree`: COURS#<id>, COURS#<id>#Tnn sous STUDENT#, TEXT#nn sous JOB#),
+    // pour nettoyer si la confirmation perd la course contre l'annulation ou l'expiration. BatchWriteItem seulement: le code n'appelle jamais DeleteItem.
+    // shortcut: IAM ne filtre pas la cle de tri; ce role peut donc supprimer tout element des partitions STUDENT# et JOB#. Le code et ses tests restent la garde. A resserrer si ces elements changent de partition.
+    grantWrite(confirmRole);
     // Suppression (docs-delete): lit pour verifier l'appartenance, supprime la fiche et le texte lu. Aucune photo, aucune ecriture.
     deleteRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem']));
     // FEAT-A. Toutes les conditions portent sur la cle de partition (IAM ne filtre pas la cle de tri: le code et ses tests gardent les types d'elements).
     const leading = (actions: string[], ...pks: string[]) =>
       new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`], conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': pks } } });
-    // docs-patch (PATCH /docs/{docId}): eleve seulement, UpdateItem conditionnel `attribute_exists(PK)`. Pas de PutItem (creerait ou ecraserait une fiche), pas de Query, pas de S3, pas de FAMILY#.
-    patchRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:UpdateItem'], 'STUDENT#*'));
+    confirmRole.addToPolicy(leading(['dynamodb:BatchWriteItem'], 'STUDENT#*', 'JOB#*'));
+    // `callerOf` (api/src/pipeline/http.ts) lit FAMILY#<fid> (Query, prefixe STUDENT#) a chaque requete d'un eleve pour retrouver son identifiant: toute fonction ouverte a l'eleve a ce droit.
+    // shortcut: IAM ne filtre pas la cle de tri, donc cette Query donne aussi acces a FAMILY#/META, REPORT#, QUOTA#. Le code ne lit que STUDENT#; a resserrer si l'identite de l'eleve passe par le jeton.
+    const familyQuery = () => leading(['dynamodb:Query'], 'FAMILY#*');
+    // scans-list: lecture des elements DynamoDB seulement (ni S3, ni ecriture).
+    listRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query'], 'FAMILY#*', 'STUDENT#*'));
+    // docs-patch (PATCH /docs/{docId}): eleve seulement. `callerOf` + un seul UpdateItem conditionnel `attribute_exists(PK)` sur STUDENT#. Pas de GetItem, ni PutItem (creerait ou ecraserait une fiche), pas de S3.
+    patchRole.addToPolicy(familyQuery());
+    patchRole.addToPolicy(leading(['dynamodb:UpdateItem'], 'STUDENT#*'));
     // folders-api (5 routes): dossiers FOLDER# et fiches rangees, sous FAMILY#/STUDENT#. Ni S3, ni Bedrock, ni Step Functions.
-    foldersRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem'], 'FAMILY#*', 'STUDENT#*'));
+    // La suppression passe par `ctx.db.remove` = BatchWriteItem (ports.ts), jamais DeleteItem.
+    foldersRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*'));
     // cours-api GET: lecture seule de COURS# (partition STUDENT#). Le parent n'a aucun droit.
+    coursReadRole.addToPolicy(familyQuery());
     coursReadRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query'], 'STUDENT#*'));
-    // cours-api DELETE: supprime le cours (STUDENT#), retire coursId des fiches (DOC#, UpdateItem) et supprime la copie de travail (JOB#). Pas de PutItem, S3, Bedrock, FAMILY#.
-    coursRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem'], 'STUDENT#*', 'DOC#*', 'JOB#*'));
+    // cours-delete: supprime le cours (STUDENT#), l'arbre de chaque fiche (DOC#), la copie de travail (JOB#), retire coursId (UpdateItem) et supprime les signalements (FAMILY#: Query + BatchWriteItem). Pas de PutItem, S3, Bedrock.
+    coursRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'STUDENT#*', 'DOC#*', 'JOB#*'));
+    coursRole.addToPolicy(leading(['dynamodb:Query', 'dynamodb:BatchWriteItem'], 'FAMILY#*'));
     // Declencheur S3: compte les fichiers recus, lit le job, reprend la machine.
     triggerRole.addToPolicy(ddb(['dynamodb:GetItem', 'dynamodb:UpdateItem']));
     triggerRole.addToPolicy(sendTask);
@@ -227,10 +246,10 @@ export class PipelineStack extends Stack {
     };
 
     const apiRoleOf: Record<keyof typeof API_FUNCTIONS, iam.Role> = {
-      'scans-create': writeRole, 'jobs-confirm': writeRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
+      'scans-create': writeRole, 'jobs-confirm': confirmRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
       'jobs-get': readRole, 'jobs-transcription': readRole, 'docs-read': readRole,
       'docs-delete': deleteRole,
-      'scans-list': readRole,
+      'scans-list': listRole,
       'docs-patch': patchRole,
       'folders-api': foldersRole,
       'cours-api': coursReadRole,
@@ -310,13 +329,13 @@ export class PipelineStack extends Stack {
     const sectionCost = call('CoutSection', fns.sectionCost, { ...withIndex, docId: sfn.JsonPath.stringAt('$.ex.docId'), verify: sfn.JsonPath.objectAt('$.verify') }, '$.cost', TASK_TIMEOUT_S.sectionCost, true);
     const sectionDone = new sfn.Pass(this, 'SectionTraitee', { parameters: { index: sfn.JsonPath.numberAt('$.index'), ok: true } });
     const sectionEmpty = new sfn.Pass(this, 'SectionSansFiche', { parameters: { index: sfn.JsonPath.numberAt('$.index'), ok: false } });
-    const sectionChain = extract.next(new sfn.Choice(this, 'AffirmationsTrouvees').when(ok('$.ex.ok'), verify.next(sectionCost).next(sectionDone)).otherwise(sectionEmpty));
-    const eachSection = (id: string) => new sfn.Map(this, id, { itemsPath: '$.plan.indices', maxConcurrency: 1, itemSelector: { ...ids, index: sfn.JsonPath.objectAt('$$.Map.Item.Value') }, resultPath: '$.sections' });
-    const extractAll = eachSection('Sections-extraction').itemProcessor(sectionChain);
+    const sectionChain = extract.next(new sfn.Choice(this, 'AffirmationsTrouvees').when(sfn.Condition.and(ok('$.ex.ok'), sfn.Condition.numberGreaterThan('$.ex.claims', 0)), verify.next(sectionCost).next(sectionDone)).otherwise(sectionEmpty));
+    const eachSection = (id: string, resultPath: string) => new sfn.Map(this, id, { itemsPath: '$.plan.indices', maxConcurrency: 1, itemSelector: { ...ids, index: sfn.JsonPath.objectAt('$$.Map.Item.Value') }, resultPath });
+    const extractAll = eachSection('Sections-extraction', '$.sections').itemProcessor(sectionChain);
     // Quota consomme une seule fois pour tout le scan. `ok: false` = aucune section avec fiche: le job est rejete et le quota rendu par le pas, la machine s'arrete.
-    const consume = call('ConsommationQuota', fns.consume, { ...ids, sections: sfn.JsonPath.objectAt('$.sections') }, '$.consume', TASK_TIMEOUT_S.consume, true);
+    const consume = call('ConsommationQuota', fns.consume, ids, '$.consume', TASK_TIMEOUT_S.consume, true);
     const generate = call('Generation', fns.generate, withIndex, undefined, TASK_TIMEOUT_S.generate);
-    const generateAll = eachSection('Sections-generation').itemProcessor(generate);
+    const generateAll = eachSection('Sections-generation', sfn.JsonPath.DISCARD).itemProcessor(generate);
     const finalize = call('Finalisation', fns.finalize, ids, undefined, TASK_TIMEOUT_S.finalize, true);
 
     // Toute erreur d'etape (hors annulation et delais prevus) finit par le filet `pipeline-fail`; pas de Retry sur un appel de modele.
@@ -333,7 +352,7 @@ export class PipelineStack extends Stack {
       .next(scanCheck)
       .next(new sfn.Choice(this, 'FichierValide').when(ok('$.check.ok'), transcribe).otherwise(cancelled));
     transcribe.next(new sfn.Choice(this, 'CoursAccepte').when(ok('$.tr.ok'), awaitConfirm.next(sectionsPlan).next(extractAll).next(consume)).otherwise(cancelled));
-    consume.next(new sfn.Choice(this, 'FichesAPublier').when(ok('$.consume.ok'), generateAll.next(finalize).next(new sfn.Succeed(this, 'Fiche-publiee'))).otherwise(cancelled));
+    consume.next(new sfn.Choice(this, 'FichesAPublier').when(sfn.Condition.and(sfn.Condition.isPresent('$.consume.ok'), ok('$.consume.ok')), generateAll.next(finalize).next(new sfn.Succeed(this, 'Fiche-publiee'))).otherwise(cancelled));
 
     const smLogs = new logs.LogGroup(this, 'SmLogs', { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
     // L'ARN de la machine est reconstruit par nom (smArn) pour les fonctions: pas de dependance circulaire.

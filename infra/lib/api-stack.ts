@@ -72,7 +72,7 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   // contract-v1.3 (FEAT-A): lot I: `owner: 'pipeline'` (fonctions dans pipeline-stack)
   { route: 'GET /scans', handler: 'scans-list', owner: 'pipeline', throttle: { rate: 10, burst: 20 } },
   { route: 'PATCH /docs/{docId}', handler: 'docs-patch', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
-  { route: 'GET /folders', handler: 'folders-api' },
+  { route: 'GET /folders', handler: 'folders-api', owner: 'pipeline' },
   { route: 'POST /folders', handler: 'folders-api', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
   { route: 'PATCH /folders/{folderId}', handler: 'folders-api', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
   { route: 'DELETE /folders/{folderId}', handler: 'folders-api', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
