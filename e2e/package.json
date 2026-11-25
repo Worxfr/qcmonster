@@ -1,0 +1,19 @@
+{
+  "name": "qcmonster-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tests de bout en bout (Playwright). Paquet separe: aucune dependance de production.",
+  "scripts": {
+    "install:browser": "playwright install chromium",
+    "test": "playwright test",
+    "test:mock": "E2E_MODE=mock playwright test",
+    "test:dev": "E2E_MODE=dev playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "^22.0.0",
+    "typescript": "~5.8.0"
+  }
+}
