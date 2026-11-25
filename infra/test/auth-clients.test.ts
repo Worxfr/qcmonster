@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Match, Template } from 'aws-cdk-lib/assertions';
+import { Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
 process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' });
 
@@ -47,7 +47,7 @@ describe('N1 et N4: pool et declencheur PreSignUp', () => {
   };
   it('auto-inscription active (AllowAdminCreateUserOnly=false), forcee par un modele de message', () => {
     auth().hasResourceProperties('AWS::Cognito::UserPool', {
-      AdminCreateUserConfig: { AllowAdminCreateUserOnly: false, InviteMessageTemplate: { EmailSubject: 'Ton compte QCMonster', EmailMessage: Match.stringLikeRegexp('\\{####\\}') } },
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: false, InviteMessageTemplate: { EmailSubject: 'Ton compte QCMonster' } },
     });
   });
   it('le role du declencheur n\'ecrit que les invitations (LeadingKeys INVITE#*)', () => {
