@@ -7,7 +7,10 @@ import { costStoreFromDynamo, modelPortFromEnv } from '../../../shared/bedrock.j
 import { dynamoQuotaDb } from '../../../shared/quota.js';
 import { ENVS, type Env } from '../../../shared/names.js';
 import { log } from '../../../shared/log/index.js';
-import { docsDelete, docsRead, docsReport } from '../docs/docs.js';
+import { coursApi } from '../cours/cours.js';
+import { docsDelete, docsPatch, docsRead, docsReport } from '../docs/docs.js';
+import { foldersApi } from '../folders/folders.js';
+import { scansList } from '../scans/list.js';
 import { jobsCancel, jobsConfirm, jobsGet, jobsTranscription, scansCreate } from './api.js';
 import { ulid, type Ctx } from './ctx.js';
 import { guarded, json } from './http.js';
@@ -131,6 +134,10 @@ export const jobsCancelHandler = http('jobs-cancel', jobsCancel);
 export const docsReadHandler = http('docs-read', docsRead);
 export const docsDeleteHandler = http('docs-delete', docsDelete);
 export const docsReportHandler = http('docs-report', docsReport);
+export const scansListHandler = http('scans-list', scansList);
+export const docsPatchHandler = http('docs-patch', docsPatch);
+export const foldersHandler = http('folders-api', foldersApi);
+export const coursHandler = http('cours-api', coursApi);
 
 export const scanStartHandler = step(scanStart);
 export const awaitUploadHandler = step((c, i: WfInput & { token: string }) => awaitUpload(c, i));

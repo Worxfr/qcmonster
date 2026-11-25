@@ -1,17 +1,32 @@
 // Handlers HTTP des fiches (routes owner=pipeline): docs-read, docs-delete, docs-report. Assemble CLAIM# (L2a) et VERDICT# (L2b).
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
-import { ReportRequestSchema } from '../../../shared/contract/generated/schemas.js';
+import { DocUpdateRequestSchema, ReportRequestSchema } from '../../../shared/contract/generated/schemas.js';
 import { deleteDocTree } from '../../../shared/delete-tree.js';
 import { VerdictItemSchema, SignalementItemSchema } from '../../../shared/items.js';
 import { keys } from '../../../shared/ddb/keys.js';
+import { cleanTopic } from '../../../shared/scans.js';
 import { iso, type Ctx } from '../pipeline/ctx.js';
-import { bodyOf, callerOf, fail, json, noContent, pathId, type Caller } from '../pipeline/http.js';
+import { bodyOf, callerOf, fail, json, noContent, pathId, requireStudent, type Caller } from '../pipeline/http.js';
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { claimStatus } from '../pipeline/steps-doc.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
 
-const summary = (d: Item) => ({ docId: d.SK.slice('DOC#'.length), title: d.titre, subject: d.matiere, createdAt: d.createdAt });
+const str = (x: unknown): string | undefined => (typeof x === 'string' && x ? x : undefined);
+/** Resume d'une fiche (contrat 1.3: sujet, dossier, cours d'origine et rang de section, seulement s'ils existent). */
+const summary = (d: Item) => {
+  const topic = cleanTopic(d.sujet);
+  return {
+    docId: d.SK.slice('DOC#'.length),
+    title: d.titre,
+    subject: d.matiere,
+    createdAt: d.createdAt,
+    ...(topic ? { topic } : {}),
+    ...(str(d.dossierId) ? { folderId: str(d.dossierId) } : {}),
+    ...(str(d.coursId) ? { coursId: str(d.coursId) } : {}),
+    ...(typeof d.sectionIndex === 'number' ? { sectionIndex: d.sectionIndex } : {}),
+  };
+};
 
 /** Fiches visibles: celles de l'eleve, ou de toute la famille pour un parent (liste via GSI1, sans texte de cours). */
 async function visibleDocs(ctx: Ctx, c: Caller): Promise<Item[]> {
@@ -86,4 +101,27 @@ export async function docsReport(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const item = SignalementItemSchema.parse({ ...keys.report(c.familyId, reportId), docId, studentId: sid, ...(claimId ? { claimId } : {}), commentaire: comment.trim(), statut: 'ouvert', createdAt: iso(ctx) });
   await ctx.db.put({ ...item, reporterRole: c.role });
   return json(201, { reportId, docId, ...(claimId ? { claimId } : {}), status: 'ouvert' });
+}
+
+/** PATCH /docs/{docId}: l'eleve change la matiere et/ou le sujet de sa fiche. Le parent est refuse (403) avant toute recherche de la fiche. */
+export async function docsPatch(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
+  const c = await callerOf(ctx, event);
+  const sid = requireStudent(c);
+  const docId = pathId(event, 'docId');
+  const parsed = DocUpdateRequestSchema.safeParse(bodyOf(event));
+  if (!parsed.success || (parsed.data.subject === undefined && parsed.data.topic === undefined)) return fail('requete_invalide', 'Demande invalide');
+  const { subject, topic } = parsed.data;
+  const set: Record<string, unknown> = {};
+  const remove: string[] = [];
+  if (subject !== undefined) set.matiere = subject;
+  if (topic === null) remove.push('sujet');
+  else if (topic !== undefined) {
+    const clean = cleanTopic(topic);
+    if (!clean) return fail('requete_invalide', 'Demande invalide'); // vide apres nettoyage (espaces, chevrons, caracteres invisibles)
+    set.sujet = clean;
+  }
+  // Mise a jour conditionnelle sur la fiche DE L'ELEVE: une fiche absente ou d'un autre eleve n'est jamais creee ni modifiee.
+  const doc = await ctx.db.update(keys.doc(sid, docId), { set, remove, cond: { exists: true } });
+  if (!doc) return fail('introuvable', 'Introuvable');
+  return json(200, summary(doc));
 }
