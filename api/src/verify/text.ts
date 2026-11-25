@@ -77,6 +77,24 @@ export function buildQuery(claimText: string, maxWords = 8): string {
   return words.join(' ');
 }
 
+/**
+ * V3: requete pour Wikipédia. Les nombres en sont exclus: une erreur inseree porte un MAUVAIS nombre, qui oriente la recherche vers un article
+ * ou le fait n'est pas (mesure hors ligne: le passage contenait la bonne valeur pour 16 erreurs sur 30). Les noms propres (majuscule hors debut de phrase)
+ * passent d'abord, puis les autres mots dans l'ordre. `buildQuery` reste utilise pour les index figes (les nombres y aident).
+ * shortcut: heuristique de majuscule, sans lexique; a remplacer par un classement lexical si le rappel de la recherche stagne.
+ */
+export function buildWikiQuery(claimText: string, maxWords = 6): string {
+  const proper: string[] = [];
+  const rest: string[] = [];
+  const tokens = claimText.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  tokens.forEach((raw, i) => {
+    const w = normalize(raw);
+    if (w.length <= 2 || STOP.has(w) || /^\d+$/.test(w) || proper.includes(w) || rest.includes(w)) return;
+    (i > 0 && /^\p{Lu}/u.test(raw) ? proper : rest).push(w);
+  });
+  return [...proper, ...rest].slice(0, maxWords).join(' ');
+}
+
 /** Empreinte de cache: texte normalise (meme affirmation, meme verdict). */
 export const claimFingerprintText = (claimText: string): string => normalize(claimText);
 
@@ -86,7 +104,7 @@ export const claimFingerprintText = (claimText: string): string => normalize(cla
  * ("== X ==") sont ignores. Le resultat passe ensuite par cleanPassage (anti-injection, bornes).
  * shortcut: score par mots communs, sans lemmatisation; a remplacer par un classement lexical si le rappel stagne.
  */
-export function relevantExcerpt(article: string, query: string, maxChars: number): string {
+export function relevantExcerpt(article: string, query: string, maxChars: number, wantNumbers = false): string {
   const sentences = article
     .split(/\n+/)
     .filter((l) => l.trim() && !/^\s*=+.*=+\s*$/.test(l))
@@ -96,9 +114,10 @@ export function relevantExcerpt(article: string, query: string, maxChars: number
     const have = new Set(normalize(sent).split(' '));
     let n = 0;
     for (const w of words) if (have.has(w)) n += /^\d+$/.test(w) ? 1.5 : 1;
-    return n;
+    // V3: la requete n'a plus de nombres (celui de l'affirmation peut etre faux); une phrase qui en porte un est preferee a mots communs egaux.
+    return n > 0 && wantNumbers && /\d/.test(sent) ? n + 0.75 : n;
   };
-  const picked = new Set<number>([0, 1].filter((i) => i < sentences.length));
+  const picked = new Set<number>([0].filter((i) => i < sentences.length));
   let used = [...picked].reduce((n, i) => n + sentences[i].length + 1, 0);
   const ranked = sentences.map((t, i) => ({ i, sc: score(t) })).filter((x) => x.sc >= Math.min(2, words.size) && !picked.has(x.i)).sort((a, b) => b.sc - a.sc || a.i - b.i);
   for (const { i } of ranked) {

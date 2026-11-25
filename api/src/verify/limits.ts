@@ -20,7 +20,9 @@ export const CLAIMS_PER_CALL = 10;
 /** Relances d'un appel dont la sortie est illisible, avant de classer les affirmations en non_verifiable. */
 export const JUDGE_RETRIES = 1;
 /** Passage de l'article le mieux classe: phrases les plus proches de l'affirmation, prises dans tout l'article (V2). */
-export const EXCERPT_CHARS = 2000;
+export const EXCERPT_CHARS = 1500;
+/** V3: nombre d'articles (les mieux classes) lus en entier pour une affirmation. Chacun donne un passage de EXCERPT_CHARS au plus. */
+export const FULL_ARTICLES_PER_CLAIM = 2;
 /** Taille maximale de la reponse pour lire un article entier (la limite de 64 Ko reste la regle pour toute autre requete). */
 export const FULL_ARTICLE_MAX_BYTES = 256 * 1024;
 export const CACHE_TTL_DAYS = 30;

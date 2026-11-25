@@ -4,8 +4,8 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { guardedGetJson, FetchRefused, type FetchOptions } from './fetch.js';
-import { EXCERPT_CHARS, FULL_ARTICLE_MAX_BYTES, MAX_PASSAGES_PER_CLAIM } from './limits.js';
-import { buildQuery, cleanPassage, normalize, relevantExcerpt } from './text.js';
+import { EXCERPT_CHARS, FULL_ARTICLES_PER_CLAIM, FULL_ARTICLE_MAX_BYTES, MAX_PASSAGES_PER_CLAIM } from './limits.js';
+import { buildQuery, buildWikiQuery, cleanPassage, normalize, relevantExcerpt } from './text.js';
 import eduscol from '../../../data/indexes/eduscol.json' with { type: 'json' };
 import nist from '../../../data/indexes/nist.json' with { type: 'json' };
 
@@ -72,12 +72,16 @@ const pageUrl = (host: string, title: string): string => `https://${host}/wiki/$
  * V2: l'introduction seule ne contient pas toujours le fait (dates et chiffres absents dans 26 a 37 % des cas, E1). Pour l'article le mieux
  * classe, on lit l'article entier et on garde les phrases les plus proches de l'affirmation (relevantExcerpt). Echec (taille, reseau): on garde l'introduction.
  */
-async function topArticleExcerpt(src: WikiSource, title: string, query: string, o: FetchOptions, note: (e: unknown) => void): Promise<string | undefined> {
+async function topArticleExcerpt(src: WikiSource, title: string, query: string, wantNumbers: boolean, o: FetchOptions, note: (e: unknown) => void, cache: Map<string, string | undefined>): Promise<string | undefined> {
   try {
-    const parsed = FullResponse.safeParse(await guardedGetJson(fullArticleUrl(src.host, title), { ...o, maxBytes: FULL_ARTICLE_MAX_BYTES }));
-    const article = parsed.success ? parsed.data.query?.pages[0]?.extract : undefined;
+    const key = `${src.host}/${title}`;
+    if (!cache.has(key)) {
+      const parsed = FullResponse.safeParse(await guardedGetJson(fullArticleUrl(src.host, title), { ...o, maxBytes: FULL_ARTICLE_MAX_BYTES }));
+      cache.set(key, parsed.success ? parsed.data.query?.pages[0]?.extract : undefined);
+    }
+    const article = cache.get(key);
     if (!article) return undefined;
-    const text = cleanPassage(relevantExcerpt(article, query, EXCERPT_CHARS), EXCERPT_CHARS).text;
+    const text = cleanPassage(relevantExcerpt(article, query, EXCERPT_CHARS, wantNumbers), EXCERPT_CHARS).text;
     return text.length >= 40 ? text : undefined;
   } catch (e) {
     note(e);
@@ -85,23 +89,27 @@ async function topArticleExcerpt(src: WikiSource, title: string, query: string, 
   }
 }
 
-async function searchWiki(src: WikiSource, query: string, o: FetchOptions, note: (e: unknown) => void): Promise<Passage[]> {
+async function searchWiki(src: WikiSource, query: string, excerptQuery: string, wantNumbers: boolean, fullCount: number, full: Set<string>, o: FetchOptions, note: (e: unknown) => void, cache: Map<string, string | undefined>): Promise<Passage[]> {
   const raw = await guardedGetJson(mediaWikiUrl(src.host, query), o);
   const parsed = WikiResponse.safeParse(raw);
   if (!parsed.success) return [];
   const out: Passage[] = [];
-  let topTitle: string | undefined;
+  const titles: string[] = [];
   for (const p of [...(parsed.data.query?.pages ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))) {
     const texte = cleanPassage(p.extract ?? '').text;
     if (texte.length < 40) continue;
     const url = pageUrl(src.host, p.title);
-    if (!out.length) topTitle = p.title;
+    titles.push(p.title);
     out.push({ id: passageId(url, texte), texte, url, site: src.site, titre: cleanPassage(p.title).text.slice(0, 200), niveau: src.niveau });
   }
-  if (src === PRIMARY && out.length && topTitle) {
-    const top = out[0];
-    const ex = await topArticleExcerpt(src, topTitle, query, o, note);
-    if (ex) out[0] = { ...top, texte: ex, id: passageId(top.url, ex) };
+  if (src === PRIMARY) {
+    for (let i = 0; i < Math.min(fullCount, out.length); i++) {
+      const ex = await topArticleExcerpt(src, titles[i], excerptQuery, wantNumbers, o, note, cache);
+      if (ex) {
+        out[i] = { ...out[i], texte: ex, id: passageId(out[i].url, ex) };
+        full.add(out[i].id);
+      }
+    }
   }
   return out;
 }
@@ -139,6 +147,7 @@ export interface SearchToolOptions extends FetchOptions {
 /** Outil reel. Une requete reseau echouee ou refusee n'arrete pas la verification: la source est ignoree (jamais d'URL a la place). */
 export function createSearchTool(o: SearchToolOptions = {}): SearchPort & { refusals: Record<string, number> } {
   const refusals: Record<string, number> = {};
+  const articles = new Map<string, string | undefined>(); // articles deja lus pendant cette verification (plusieurs affirmations partagent le meme article)
   const note = (e: unknown) => {
     const r = e instanceof FetchRefused ? e.reason : 'format';
     refusals[r] = (refusals[r] ?? 0) + 1;
@@ -148,18 +157,28 @@ export function createSearchTool(o: SearchToolOptions = {}): SearchPort & { refu
     async search(claimText) {
       const query = buildQuery(claimText);
       if (!query) return [];
+      // V3: deux requetes (6 mots, puis les 3 premiers) pour ne pas dependre d'un seul classement; la 2e lit 1 article entier de plus.
+      const wikiQueries = [...new Set([buildWikiQuery(claimText), buildWikiQuery(claimText, 3)].filter(Boolean))];
+      if (!wikiQueries.length) wikiQueries.push(query);
+      const full = new Set<string>();
       const found: Passage[] = [...searchIndexes(query, o.indexes)];
       const wiki: Passage[] = [];
       for (const src of [PRIMARY, ...SECONDARY]) {
         if (wiki.length) break; // sources secondaires seulement si la principale ne donne rien
-        try {
-          wiki.push(...(await searchWiki(src, query, o, note)));
-        } catch (e) {
-          note(e);
+        for (const [k, q] of wikiQueries.entries()) {
+          if (k > 0 && src !== PRIMARY) break;
+          try {
+            wiki.push(...(await searchWiki(src, q, buildQuery(claimText, 12), /\d/.test(claimText), k === 0 ? FULL_ARTICLES_PER_CLAIM : 1, full, o, note, articles)));
+          } catch (e) {
+            note(e);
+          }
         }
       }
+      // Passages lus en entier d'abord (ils ont le plus de chances de porter le fait), puis introductions; une seule fois par page.
+      const seenUrl = new Set<string>();
       const seen = new Set<string>();
-      return [...found, ...wiki].filter((p) => !seen.has(p.id) && seen.add(p.id)).slice(0, MAX_PASSAGES_PER_CLAIM);
+      const ordered = [...wiki.filter((p) => full.has(p.id)), ...wiki.filter((p) => !full.has(p.id))].filter((p) => !seenUrl.has(p.url) && seenUrl.add(p.url));
+      return [...found, ...ordered].filter((p) => !seen.has(p.id) && seen.add(p.id)).slice(0, MAX_PASSAGES_PER_CLAIM);
     },
   };
 }
