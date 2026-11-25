@@ -11,6 +11,7 @@ import { BudgetStack } from '../lib/budget-stack.js';
 import { PipelineStack } from '../lib/pipeline-stack.js';
 import { VerifyStack } from '../lib/verify-stack.js';
 import { GameStack } from '../lib/game-stack.js';
+import { EvalStack } from '../lib/eval-stack.js';
 import { WebContentStack, WebStack } from '../lib/web-stack.js';
 
 export function buildApp(envName: Env, alertEmail: string, context?: Record<string, string>): App {
@@ -34,6 +35,11 @@ export function buildApp(envName: Env, alertEmail: string, context?: Record<stri
   new PipelineStack(app, n('pipeline'), { ...common, stackName: n('pipeline') });
   new VerifyStack(app, n('verify'), { ...common, stackName: n('verify') });
   new GameStack(app, n('game'), { ...common, stackName: n('game') });
+  // Voie d'evaluation: DEV seulement et seulement avec `-c evalPath=true` (voir eval/README.md). En prod, la demander est une erreur.
+  if (String(app.node.tryGetContext('evalPath')) === 'true') {
+    if (envName !== 'dev') throw new Error("evalPath=true n'est permis qu'en dev");
+    new EvalStack(app, n('eval'), { ...common, stackName: n('eval'), subPrefix: String(app.node.tryGetContext('evalSubPrefix') ?? '') });
+  }
 
   // Tags obligatoires sur TOUTES les ressources (test CI: infra/test/tags.test.ts).
   Tags.of(app).add('Project', PROJECT);

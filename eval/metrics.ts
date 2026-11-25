@@ -12,6 +12,14 @@ export interface PageRun {
   costEur?: number;
   /** Tout texte produit (fiche, QCM), pour chercher le canari d'injection. */
   outputText?: string;
+  /** Mesures par étape (voie `lambda`): appels, durée, jetons, coût. */
+  steps?: { step: string; calls: number; durationMs: number; inputTokens: number; outputTokens: number; costEur: number }[];
+  /** Voie `lambda`: état final du job, classe de l'erreur éventuelle (jamais son message), appels non comptés, compteurs avant/après. */
+  state?: string;
+  errorClass?: string;
+  uncounted?: number;
+  costBefore?: { monthEur: number; totalEur: number };
+  costAfter?: { monthEur: number; totalEur: number };
 }
 
 export const CANARY = 'INJECTION-OK';

@@ -12,6 +12,7 @@ process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.exampl
 
 const { buildApp } = await import('../bin/app.js');
 const { EU_REGIONS, SYSTEM_PROFILES } = await import('../lib/models-stack.js');
+const { evalRunRoleNames } = await import('../lib/eval-stack.js');
 import { ENVS, processingRoleNames, type Env } from '../../shared/names.js';
 
 type Json = Record<string, unknown>;
@@ -79,6 +80,9 @@ function checkGrant(env: Env, s: Stmt): string[] {
   return out;
 }
 
+/** Roles autorises a ouvrir Bedrock: traitement (L2a/L2b) et, en dev seulement, `eval-run` (voie d'evaluation, E1). Jamais en prod. */
+const bedrockRoles = (env: Env): string[] => [...processingRoleNames(env), ...evalRunRoleNames(env)];
+
 const stmtsOf = (doc: unknown): Stmt[] => list((doc as { Statement?: unknown } | undefined)?.Statement) as Stmt[];
 
 /** Audit M2 de templates synthetises: renvoie la liste des violations (vide = conforme) et le nombre de declarations qui ouvrent Bedrock. */
@@ -102,7 +106,7 @@ function audit(env: Env, tpls: Tpl[]): { violations: string[]; grants: Set<strin
         if (principals.length === 0) violations.push(`${where}: politique qui ouvre Bedrock sans role identifie (jointe plus tard?)`);
         for (const p of principals) {
           grants.add(p);
-          if (!processingRoleNames(env).includes(p)) violations.push(`${p} ne figure pas dans processingRoleNames mais ouvre Bedrock (${where})`);
+          if (!bedrockRoles(env).includes(p)) violations.push(`${p} ne figure pas dans processingRoleNames (ni parmi les roles d'evaluation dev) mais ouvre Bedrock (${where})`);
         }
         for (const reason of checkGrant(env, s)) violations.push(`${where}: ${reason}`);
       }
@@ -128,8 +132,10 @@ function audit(env: Env, tpls: Tpl[]): { violations: string[]; grants: Set<strin
 }
 
 const toTpls = (stacks: { name: string; t: Template }[]): Tpl[] => stacks.map(({ name, t }) => ({ name, json: t.toJSON() }));
+// En dev, la voie d'evaluation est synthetisee aussi (`-c evalPath=true`): son role d'execution est audite comme les autres.
+const EVAL_CTX = { evalPath: 'true', evalSubPrefix: 'repo:Exemple@1/depot@2' };
 const realTemplates = (env: Env): Tpl[] => {
-  const app = buildApp(env, 'test@example.invalid');
+  const app = buildApp(env, 'test@example.invalid', env === 'dev' ? EVAL_CTX : undefined);
   return toTpls(app.node.children.filter((c) => c.node.id.startsWith(`qcm-${env}-`)).map((s) => ({ name: s.node.id, t: Template.fromStack(s as never) })));
 };
 const synth = (build: (s: Stack) => void): Tpl[] => {
@@ -142,7 +148,7 @@ describe.each(ENVS)('M2: aucune identite ne peut invoquer Bedrock hors du garde 
   it('stacks reelles: seuls les roles de traitement invoquent Bedrock, sur les profils QCMonster, sans joker', () => {
     const { violations, grants } = audit(env, realTemplates(env));
     expect(violations).toEqual([]);
-    expect([...grants].sort()).toEqual([...processingRoleNames(env)].sort()); // non vacuite: les deux roles sont vus
+    expect([...grants].sort()).toEqual([...bedrockRoles(env)].sort()); // non vacuite: tous les roles attendus sont vus (eval-run en dev seulement)
   });
 
   describe('test negatif sur de vrais templates (le detecteur echoue quand il le faut)', () => {
@@ -186,6 +192,17 @@ describe.each(ENVS)('M2: aucune identite ne peut invoquer Bedrock hors du garde 
       bad(synth((s) => new iam.Group(s, 'G').addToPrincipalPolicy(new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [profile] }))), /group|G/);
       bad(synth((s) => void new iam.Role(s, 'R', { roleName: 'autre-role', assumedBy: lambda, inlinePolicies: { p: new iam.PolicyDocument({ statements: [new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [profile] })] }) } })), /autre-role/);
       bad(synth((s) => void new iam.ManagedPolicy(s, 'MP', { statements: [new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [profile] })] })), /sans role identifie/);
+    });
+    it("eval-run: autorise en dev seulement; en prod le meme role est refuse", () => {
+      const evalRole = `qcm-${env}-eval-run-role`;
+      const t = roleWith(evalRole, { actions: ['bedrock:InvokeModel'], resources: [profile] });
+      if (env === 'dev') expect(audit(env, t).violations).toEqual([]);
+      else bad(t, /eval-run-role ne figure pas/);
+    });
+    it('eval-run avec un joker ou une action en trop: refuse (le role d\'evaluation n\'est pas exempte des regles)', () => {
+      const evalRole = `qcm-${env}-eval-run-role`;
+      bad(roleWith(evalRole, { actions: ['bedrock:InvokeModel'], resources: ['*'] }), /joker dans la ressource/);
+      bad(roleWith(evalRole, { actions: ['bedrock:Converse'], resources: [profile] }), /seule bedrock:InvokeModel/);
     });
     it('NotAction sur Allow: refuse', () => {
       bad(roleWith(proc, { notActions: ['s3:*'], resources: [profile] }), /NotAction/);

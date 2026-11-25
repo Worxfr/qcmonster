@@ -1,19 +1,37 @@
 name: eval
 # Evaluation manuelle (design-v2 10.1). Appel mince: tout est dans `npm run eval` (eval/run.ts).
 # - oracle / mock: aucun appel Bedrock, aucun cout (pour essayer l'outil, mesures sans valeur).
-# - real: appelle l'API deployee en dev, donc Bedrock. Garde cout: le compteur COST#dev bloque tout appel au-dela de 50 EUR
-#   (shared/bedrock.ts, docs/cost-guard.md). Lancement explicite seulement, jamais sur push ni sur pull request.
-# Les pages cachees ne sont JAMAIS evaluees ici (elles ne quittent pas le coffre prive).
+# - deploy-eval / destroy-eval: cree / supprime la stack DEV `qcm-dev-eval` (Lambda eval-run + role QCMonster-Eval-dev), jamais en prod.
+# - lambda: invoque eval-run en dev (pipeline reel, Claude via Bedrock, pages synthetiques PUBLIQUES du depot). Garde de cout: le compteur
+#   COST#dev bloque tout appel au-dela de 50 EUR (shared/bedrock.ts, docs/cost-guard.md); le lancement s'arrete en plus a `max_eur`.
+# Lancement explicite seulement, jamais sur push ni sur pull request. Les pages cachees et privees ne sont JAMAIS evaluees ici.
+# Aucun contenu de cours dans les journaux: l'outil n'affiche que des identifiants de page et des nombres.
 on:
   workflow_dispatch:
     inputs:
       mode:
         description: Mode d'evaluation
         type: choice
-        options: [oracle, mock, real]
+        options: [oracle, mock, deploy-eval, lambda, destroy-eval]
         default: oracle
+      limit:
+        description: "lambda: nombre de pages de reglage (les N premieres du manifeste)"
+        type: string
+        default: '3'
+      pages:
+        description: "lambda: identifiants de pages separes par des virgules (remplace limit), ex. synth-fr-01,synth-svt-02"
+        type: string
+        default: ''
+      negatives:
+        description: "lambda: ajouter les 2 pages a refuser"
+        type: boolean
+        default: false
+      max_eur:
+        description: "lambda: depense maximale de ce lancement en EUR (0 < x <= 25)"
+        type: string
+        default: '1'
       confirm_cost:
-        description: "Pour 'real' seulement: ecrire exactement 'depenser-des-euros-en-dev'"
+        description: "Pour 'lambda' seulement: ecrire exactement 'depenser-des-euros-en-dev'"
         type: string
         default: ''
 permissions:
@@ -23,7 +41,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   eval-local:
-    if: inputs.mode != 'real'
+    if: inputs.mode == 'oracle' || inputs.mode == 'mock'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -46,30 +64,115 @@ jobs:
         with:
           name: eval-report
           path: eval/report.json
-  eval-real:
-    if: inputs.mode == 'real' && inputs.confirm_cost == 'depenser-des-euros-en-dev' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+  # Cree ou met a jour la voie d'evaluation DEV avec le role de deploiement existant (OIDC, environnement dev). Seule la stack eval est touchee (--exclusively).
+  deploy-eval:
+    if: inputs.mode == 'deploy-eval' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      QCM_ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      # Prefixe du claim `sub` du depot (forme immuable avec identifiants numeriques), le meme que celui du role de deploiement.
+      SUB_PREFIX: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: API de dev et jeton presents
-        env:
-          EVAL_API_URL: ${{ vars.EVAL_API_URL }}
-          EVAL_API_TOKEN: ${{ secrets.EVAL_API_TOKEN }}
-        run: test -n "$EVAL_API_URL" && test -n "$EVAL_API_TOKEN" || { echo "Variable EVAL_API_URL ou secret EVAL_API_TOKEN (environnement dev) manquant"; exit 1; }
+      # --ignore-scripts: ce job a id-token: write, aucun script d'installation tiers ne doit s'y executer.
+      - run: npm ci --ignore-scripts
+      - name: Secret de depot AWS_ACCOUNT_ID present
+        run: test -n "$AWS_ACCOUNT_ID" || { echo "Secret de depot AWS_ACCOUNT_ID manquant"; exit 1; }
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/QCMonster-GitHubActions-Deploy
+          aws-region: eu-west-3
+      - name: cdk deploy qcm-dev-eval
+        run: |
+          cd infra
+          npx cdk deploy qcm-dev-eval --exclusively -c env=dev -c evalPath=true -c "evalSubPrefix=$SUB_PREFIX" --require-approval never
+  destroy-eval:
+    if: inputs.mode == 'destroy-eval' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      QCM_ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      SUB_PREFIX: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Secret de depot AWS_ACCOUNT_ID present
+        run: test -n "$AWS_ACCOUNT_ID" || { echo "Secret de depot AWS_ACCOUNT_ID manquant"; exit 1; }
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/QCMonster-GitHubActions-Deploy
+          aws-region: eu-west-3
+      - name: cdk destroy qcm-dev-eval
+        run: |
+          cd infra
+          npx cdk destroy qcm-dev-eval --exclusively -c env=dev -c evalPath=true -c "evalSubPrefix=$SUB_PREFIX" --force
+  # Evaluation reelle: le role QCMonster-Eval-dev (OIDC, sub environment:dev) ne peut qu'invoquer la Lambda eval-run.
+  eval-lambda:
+    if: inputs.mode == 'lambda' && inputs.confirm_cost == 'depenser-des-euros-en-dev' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      IN_LIMIT: ${{ inputs.limit }}
+      IN_PAGES: ${{ inputs.pages }}
+      IN_NEGATIVES: ${{ inputs.negatives }}
+      IN_MAX_EUR: ${{ inputs.max_eur }}
+    steps:
+      - name: Entrees valides
+        run: |
+          [[ "$IN_LIMIT" =~ ^[0-9]{1,2}$ ]] || { echo "limit invalide"; exit 1; }
+          [[ "$IN_PAGES" =~ ^(synth-(fr|hist|maths|phys|svt)-[0-9]{2})?(,synth-(fr|hist|maths|phys|svt)-[0-9]{2})*$ ]] || { echo "pages invalide (pages publiques de reglage seulement)"; exit 1; }
+          [[ "$IN_MAX_EUR" =~ ^[0-9]{1,2}(\.[0-9]{1,2})?$ ]] || { echo "max_eur invalide"; exit 1; }
+          awk -v x="$IN_MAX_EUR" 'BEGIN { exit !(x > 0 && x <= 25) }' || { echo "max_eur doit etre dans ]0, 25]"; exit 1; }
+          test -n "$AWS_ACCOUNT_ID" || { echo "Secret de depot AWS_ACCOUNT_ID manquant"; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      # --ignore-scripts: ce job a id-token: write, aucun script d'installation tiers ne doit s'y executer.
+      - run: npm ci --ignore-scripts
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/QCMonster-Eval-dev
+          aws-region: eu-west-3
+          role-duration-seconds: 10800
       - name: Evaluation reelle (pages publiques seulement)
         env:
-          EVAL_MODE: real
-          EVAL_API_URL: ${{ vars.EVAL_API_URL }}
-          EVAL_API_TOKEN: ${{ secrets.EVAL_API_TOKEN }}
-        run: npm run eval
+          EVAL_MODE: lambda
+          EVAL_MAX_EUR: ${{ inputs.max_eur }}
+        run: |
+          args=()
+          if [ -n "$IN_PAGES" ]; then args+=("--pages=$IN_PAGES"); else args+=("--limit=$IN_LIMIT"); fi
+          if [ "$IN_NEGATIVES" = "true" ]; then args+=(--negatives); fi
+          npm run eval -- "${args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
         with:
           name: eval-report
           path: eval/report.json
+          retention-days: 14
+          if-no-files-found: ignore
