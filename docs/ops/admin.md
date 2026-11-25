@@ -13,6 +13,8 @@ aws cognito-idp admin-add-user-to-group --region eu-west-3 \
 - `<ID_POOL>`: sortie `UserPoolId` de la stack `qcm-<env>-auth` (ou paramètre SSM `/qcm/<env>/auth/userPoolId`).
 - `<identifiant>`: le nom d'utilisateur Cognito du compte (l'identifiant choisi à l'inscription).
 - Le groupe figure dans le jeton à la connexion suivante: se déconnecter puis se reconnecter après la commande.
+- Le front envoie le **jeton d'identité** (ID token), qui porte `cognito:groups`; le serveur lit ce groupe dans le jeton validé par API Gateway.
+- Un jeton déjà émis reste valable jusqu'à son expiration (1 h pour le jeton d'identité) après un retrait du groupe: le droit disparaît à l'expiration, ou plus tôt en révoquant les sessions (`aws cognito-idp admin-user-global-sign-out`).
 - Pour retirer le droit: `aws cognito-idp admin-remove-user-from-group` avec les mêmes paramètres.
 - Un compte élève ne peut jamais être administrateur (le serveur refuse un jeton qui porte aussi le groupe `eleve`).
 

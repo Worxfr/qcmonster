@@ -105,6 +105,7 @@ describe('handler admin-invitations: refus avant tout appel AWS', () => {
     const r = await h(ev('[admin parent]'));
     vi.restoreAllMocks();
     expect(r.statusCode).toBe(201);
+    expect((r as { headers?: Record<string, string> }).headers?.['cache-control']).toBe('no-store');
     const body = JSON.parse(r.body as string) as { code: string };
     expect(body.code).toMatch(/^[0-9a-f]{32}$/);
     expect(lines.length).toBeGreaterThan(0);
