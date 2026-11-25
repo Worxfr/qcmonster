@@ -1,5 +1,5 @@
 // Lambda `verify-run` (design-v2 4.1 etapes 7 a 10). Configuration par variables posees par CDK: TABLE_NAME, QCM_ENV, QCM_MODEL_SONNET_ARN.
-// QCM_BEDROCK absent = faux modele (aucun appel reel).
+// QCM_BEDROCK absent ou mock = faux modele (aucun appel reel); la stack Verify le pose selon -c bedrock=real.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { costStoreFromDynamo, modelPortFromEnv } from '../../../shared/bedrock.js';

@@ -29,9 +29,12 @@ export function levelOf(xp: number): number {
 /** Stade de la mascotte: 1 oeuf (niveau 0), 2 bebe (1-4), 3 jeune (5-9), 4 confirme (10-19), 5 legendaire (20+). */
 export const stageOf = (level: number): 1 | 2 | 3 | 4 | 5 => (level >= 20 ? 5 : level >= 10 ? 4 : level >= 5 ? 3 : level >= 1 ? 2 : 1);
 
-/** Comparaison du texte a trous: minuscules, sans accents, espaces et ponctuation de bord retires (aucune tolerance de faute). */
+/** Comparaison du texte a trous: minuscules, sans accents, ligatures (œ, æ) et apostrophes typographiques unifiees, espaces et ponctuation de bord retires (aucune tolerance de faute). */
 export const normalizeGap = (s: string): string =>
   s
+    .replace(/[œŒ]/g, 'oe')
+    .replace(/[æÆ]/g, 'ae')
+    .replace(/[’‘`´]/g, "'")
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()

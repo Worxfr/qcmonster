@@ -16,12 +16,14 @@ import { ModelOutputError, normalize, parseModelJson } from './text.js';
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
 export const MAX_CLAIMS = 60;
 export const MAX_QUESTIONS = 5;
+/** Nombre de questions (QCM, et trous) selon le nombre de faits verifies: environ une pour deux faits, de 1 a MAX_QUESTIONS. */
+export const questionCap = (verified: number): number => Math.min(MAX_QUESTIONS, Math.max(1, Math.ceil(verified / 2)));
 
 const ExtractOut = z.object({
   titre: z.string().max(300),
   matiere: z.string(),
   affirmations: z
-    .array(z.object({ phraseId: z.string(), extrait: z.string(), texte: z.string(), type: z.enum(['factuelle', 'non_factuelle']), aRisque: z.boolean() }))
+    .array(z.object({ phraseId: z.string(), extrait: z.string(), texte: z.string(), type: z.enum(['factuelle', 'non_factuelle', 'consigne']), aRisque: z.boolean() }))
     .max(200),
 });
 const SUBJECTS = ['maths', 'physique', 'svt', 'histoire_geo', 'francais', 'autre'] as const;
@@ -30,12 +32,12 @@ export interface RawClaim {
   phraseId: string;
   extrait: string;
   texte: string;
-  type: 'factuelle' | 'non_factuelle';
+  type: 'factuelle' | 'non_factuelle' | 'consigne';
   aRisque: boolean;
 }
 /**
  * Controle d'ancrage PAR CODE (etape 6): le phraseId existe et l'extrait (2 mots au moins) est bien dans cette phrase
- * (comparaison normalisee). Sinon l'affirmation est supprimee. Textes en double retires; MAX_CLAIMS au plus.
+ * (comparaison normalisee). Sinon l'affirmation est supprimee. Une `consigne` d'exercice n'est jamais une affirmation (T3 B2/B3). Textes en double retires; MAX_CLAIMS au plus.
  */
 export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>): { kept: (RawClaim & { page: number })[]; dropped: number } {
   const seen = new Set<string>();
@@ -44,10 +46,10 @@ export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>): {
     const src = sentences.get(c.phraseId);
     const ex = normalize(c.extrait);
     const texte = c.texte.trim();
-    const ok = src !== undefined && ex.split(' ').length >= 2 && normalize(src).includes(ex) && texte.length >= 5 && texte.length <= 1000;
+    const ok = c.type !== 'consigne' && src !== undefined && ex.split(' ').length >= 2 && normalize(src).includes(ex) && texte.length >= 5 && texte.length <= 1000;
     if (!ok || seen.has(normalize(texte)) || kept.length >= MAX_CLAIMS) continue;
     seen.add(normalize(texte));
-    kept.push({ ...c, texte, page: Number(/^p([0-9]+)-/.exec(c.phraseId)![1]), extrait: c.extrait.trim().slice(0, 300) });
+    kept.push({ ...c, type: c.type as 'factuelle' | 'non_factuelle', texte, page: Number(/^p([0-9]+)-/.exec(c.phraseId)![1]), extrait: c.extrait.trim().slice(0, 300) });
   }
   return { kept, dropped: raw.length - kept.length };
 }
@@ -164,14 +166,15 @@ export function claimStatus(claim: Item, verdict: Item | undefined): 'verifiee' 
   return claim.type === 'non_factuelle' ? 'non_factuelle' : 'non_verifiable';
 }
 
-async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, EligibleClaim>) {
+async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, EligibleClaim>, forSummary: Map<string, EligibleClaim & { verifiee: boolean }>) {
+  const cap = questionCap(eligible.size);
   const qcm: GenQcm[] = [];
   const gaps: GenGap[] = [];
   let resume = '';
-  const raw = await callModel(ctx, i, 'generation', 'haiku', { system: SYSTEM_JSON, prompt: generatePrompt([...eligible.values()]), maxTokens: 4000 });
+  const raw = await callModel(ctx, i, 'generation', 'haiku', { system: SYSTEM_JSON, prompt: generatePrompt([...forSummary.values()], cap), maxTokens: 4000 });
   const gen = parseModelJson(raw, GenOut);
   resume = gen.resume.trim();
-  const cand = gen.qcm.filter((q) => validQcm(q, eligible)).slice(0, MAX_QUESTIONS);
+  const cand = gen.qcm.filter((q) => validQcm(q, eligible)).slice(0, MAX_QUESTIONS); // le plafond `cap` s'applique apres le controle a l'aveugle
   if (cand.length) {
     // Resolution a l'aveugle: un second appel repond sans voir la cle; une reponse differente rejette la question.
     const prompt = solvePrompt(cand.map((q, k) => ({ n: k + 1, claim: eligible.get(q.claimId)!.texte, enonce: q.enonce, choix: q.choix })));
@@ -181,12 +184,13 @@ async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, Eligibl
       cand.forEach((q, k) => {
         if (answers.get(k + 1) === q.cle) qcm.push(q);
       });
+      qcm.splice(cap);
     } catch (e) {
       // Controle illisible: aucun QCM non controle n'est publie (les trous, controles par code, restent).
       if (!(e instanceof ModelOutputError)) throw e;
     }
   }
-  gaps.push(...gen.trous.filter((g) => validGap(g, eligible)).slice(0, MAX_QUESTIONS));
+  gaps.push(...gen.trous.filter((g) => validGap(g, eligible)).slice(0, cap));
   return { resume, qcm, gaps };
 }
 
@@ -197,18 +201,22 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
   if (job.state === 'termine') return { docId, qcm: (job.nbQcm as number) ?? 0, gaps: (job.nbTrous as number) ?? 0, doublon: job.doublon === true };
   const part = await ctx.db.query(`DOC#${docId}`);
   const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
+  // Questions: faits verifies seulement. Resume: faits verifies ou non verifiables (jamais une erreur). Une affirmation `non_factuelle`
+  // (consigne, methode, opinion) n'entre ni dans le resume ni dans les questions (T3 B2/B3).
   const eligible = new Map<string, EligibleClaim>();
+  const forSummary = new Map<string, EligibleClaim & { verifiee: boolean }>();
   for (const c of part.filter((x) => x.SK.startsWith('CLAIM#'))) {
     const nn = c.SK.slice('CLAIM#'.length);
     const st = claimStatus(c, verdicts.get(nn));
-    if (st === 'verifiee' || st === 'non_factuelle') eligible.set(nn, { id: nn, texte: c.texte as string });
+    if (st === 'verifiee') eligible.set(nn, { id: nn, texte: c.texte as string });
+    if (st === 'verifiee' || st === 'non_verifiable') forSummary.set(nn, { id: nn, texte: c.texte as string, verifiee: st === 'verifiee' });
   }
 
   await clearDoc(ctx, docId, ['QCM#', 'GAP#']);
   let made: { resume: string; qcm: GenQcm[]; gaps: GenGap[] } = { resume: '', qcm: [], gaps: [] };
-  if (eligible.size > 0) {
+  if (forSummary.size > 0) {
     try {
-      made = await makeQuestions(ctx, i, eligible);
+      made = await makeQuestions(ctx, i, eligible, forSummary);
     } catch (e) {
       // Plafond du job ou budget atteint: on publie la fiche sans questions plutot que de tout perdre.
       // Idem si le modele renvoie une sortie illisible (erreur courante): le travail deja paye n'est pas perdu.

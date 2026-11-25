@@ -22,6 +22,7 @@ export function Game() {
             <Bar pct={lp.pct} label="Progression vers le niveau suivant" />
             <p className="muted">Encore {lp.remaining} XP pour le niveau {progress.level + 1}.</p>
             <p><span className="chip">🔥 Série : {progress.streakDays} j</span> <span className="chip">🧊 Gels : {progress.freezes}</span></p>
+            <p className="muted" id="streak-rule">Un jour compte dans ta série dès que tu gagnes 30 XP dans la journée. Un gel 🧊 sauve ta série si tu rates un jour (tu en reçois 2 par mois, et tu peux en garder 2 au maximum).</p>
           </div>
         </div>
       </Card>

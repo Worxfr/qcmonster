@@ -154,6 +154,7 @@ describe('parcours eleve contre l\'API simulee', () => {
     expect(await screen.findByText('Les stades du monstre')).toBeInTheDocument();
     expect(await screen.findByText('Lila-7k2f')).toBeInTheDocument();
     expect(screen.getByText('310 XP')).toBeInTheDocument();
+    expect(screen.getByText(/dès que tu gagnes 30 XP/)).toBeInTheDocument(); // B4: règle de la série expliquée (docs/game-rules.md §3)
     expect(screen.getByRole('heading', { name: /Mes badges/ })).toBeInTheDocument();
     await a11y(view.container);
   });

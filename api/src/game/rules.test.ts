@@ -24,6 +24,10 @@ describe('texte a trous', () => {
   it('minuscules, accents, espaces et ponctuation de bord', () => {
     expect(normalizeGap('  Énergie. ')).toBe('energie');
     expect(normalizeGap('«Photo   synthèse»!')).toBe('photo synthese');
+    // B5: casse, accents (precomposes ou decomposes), ligatures et apostrophes typographiques
+    expect(normalizeGap('CŒUR')).toBe(normalizeGap('coeur'));
+    expect(normalizeGap('e\u0301nergie')).toBe(normalizeGap('ÉNERGIE'));
+    expect(normalizeGap("l’eau")).toBe(normalizeGap("l'eau"));
     expect(normalizeGap('énergies')).not.toBe(normalizeGap('energie')); // aucune tolerance de faute
   });
 });

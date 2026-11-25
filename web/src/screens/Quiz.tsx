@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useApp } from '../app-context';
 import { Card, ErrorBox, Loading } from '../components/ui';
@@ -17,6 +17,11 @@ export function Quiz({ docId }: { docId: string }) {
   const [good, setGood] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  // B6: sur mobile, le retour (et son bouton « Suivant ») doit rester au-dessus de la barre du bas.
+  useEffect(() => {
+    if (result) feedbackRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [result]);
 
   if (s.loading) return <Loading />;
   if (!s.data) return <ErrorBox message={s.error} />;
@@ -77,7 +82,7 @@ export function Quiz({ docId }: { docId: string }) {
       )}
       <ErrorBox message={error} />
       {result && (
-        <div role="status" className={result.correct ? 'feedback ok' : 'feedback ko'}>
+        <div ref={feedbackRef} role="status" className={result.correct ? 'feedback ok' : 'feedback ko'}>
           <p><strong>{result.correct ? '✓ Bravo !' : '✗ Pas tout à fait.'}</strong> {result.xpGained > 0 && `+${result.xpGained} XP`}</p>
           {!result.correct && result.correctAnswer && <p>La bonne réponse : <strong>{result.correctAnswer}</strong></p>}
           {result.badges.map((b) => <p key={b}>🏅 Nouveau badge : {badgeLabel(b)}</p>)}
