@@ -31,3 +31,8 @@ Pas de compte Cognito ni de secret: le workflow `eval` (`mode: lambda`) prend le
 - **Mesures**: coût réel par étape (mêmes prix que le compteur), durée, jetons, compteurs avant/après (action `cost`), appels non comptés. `eval/report.json` (artefact) ne contient aucun texte de cours: comptes, coûts, délais, classes d'erreur.
 - **Arrêts**: `max_eur` (dépense du lancement, défaut 1 EUR, 25 au plus), `EVAL_STOP_AT_TOTAL_EUR` (cumul dev, défaut 40 EUR), plafond de dev 50 EUR dans le code. La CLI n'a aucun nouvel essai (`AWS_MAX_ATTEMPTS=1`): un essai de plus serait une facture de plus.
 - **Limites** (`shortcut`): le cache de verdicts n'est pas partagé entre pages (coût mesuré = pire cas); l'étape de quota n'est pas jouée; pages cachées non prises en charge par cette voie; la recherche de sources va réellement sur Wikipédia/Wikimedia.
+
+## Causes du rappel (V3)
+
+`report.json` contient `causes` (aucun texte de cours): `insertedErrors` (pour chaque erreur insérée: `detectee`, `affirmation_absente` = l'extraction n'a pas repris la phrase, `jugee_verifiee`, ou la cause tracée par le pipeline), `nonVerifiable` (causes des affirmations non vérifiables), `correctClaims` (idem pour les phrases justes) et le détail par page.
+Causes: `aucun_passage`, `passage_sans_le_fait` (le juge dit non_verifiable et moins de 60 % des mots-clés hors nombres figurent dans le meilleur passage; proxy), `juge_prudent` (non_verifiable alors que le passage couvre les mots-clés), `citation_rejetee` (verdict erreur/verifiee sans citation valide: moins de 15 caractères ou absente du passage), `regle_niveau`, `seconde_lecture_desaccord`, `seconde_citation_rejetee`, `sortie_illisible`, `verdict_absent`, `appel_ignore` (budget), `cache`.

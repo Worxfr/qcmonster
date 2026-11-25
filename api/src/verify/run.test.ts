@@ -346,4 +346,27 @@ describe('V2: observabilite et relance du juge', () => {
     await verifyRun({ ...deps, onTrace: (t) => traces.push(t) }, input);
     expect(traces.map((t) => t.expected)).toEqual([CLAIMS_PER_CALL, 1]);
   });
+  it('V3: une cause par affirmation (aucun passage, erreur, verifiee, seconde lecture discordante, citation rejetee, juge prudent)', async () => {
+    const ABSENT = 'Phrase sans aucun passage connu.';
+    const PRUDENT = 'La peste noire a touche toute la Mediterranee orientale.';
+    const OFF = 'Le theoreme de Pythagore concerne les triangles rectangles.';
+    const map = { [OK]: [mkPassage('Molière est mort en 1673.')], [BAD]: [mkPassage('Molière est né en 1622.', 2, 'b')], [PRUDENT]: [mkPassage('Le sceptre du roi des Francs pesait trois kilos.', 2, 'c')], [OFF]: [mkPassage('Le theoreme de Pythagore concerne les triangles rectangles.', 2, 'd')] };
+    const { deps, model } = setup([claim('doc1', 1, OK), claim('doc1', 2, BAD), claim('doc1', 3, ABSENT), claim('doc1', 4, PRUDENT), claim('doc1', 5, OFF)], fixed(map));
+    const first = model.converse.bind(model);
+    let n = 0;
+    model.converse = async (r) => {
+      const res = await first(r);
+      n++;
+      // appel 1 (juge): citation inventee pour C4 (= OFF, 4e affirmation avec passage) ; appel 2 (seconde lecture de l'erreur): desaccord
+      if (n === 1) return { ...res, text: res.text.replace(/("id":"C4","verdict":"verifiee","citations":\[\{"passage":"P1","citation":")[^"]*/, '$1phrase inventee absente du passage') };
+      return n === 2 ? { ...res, text: res.text.replace('"erreur"', '"verifiee"') } : res;
+    };
+    const causes = new Map<number, string>();
+    await verifyRun({ ...deps, onClaim: (c) => causes.set(c.nn, c.cause) }, input);
+    expect(causes.get(1)).toBe('verifiee');
+    expect(causes.get(2)).toBe('seconde_lecture_desaccord');
+    expect(causes.get(3)).toBe('aucun_passage');
+    expect(causes.get(4)).toBe('passage_sans_le_fait');
+    expect(causes.get(5)).toBe('citation_rejetee');
+  });
 });

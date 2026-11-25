@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadAnnotation, loadManifest } from './golden.js';
-import { computeReport, matchedWords, norm, type PageInput, type PageRun } from './metrics.js';
+import { causeBreakdown, computeReport, matchedWords, norm, type PageInput, type PageRun } from './metrics.js';
 import { oracleRunner } from './runners.js';
 import { drawSample } from './sample.js';
 import { quantile, wilson } from './stats.js';
@@ -132,5 +132,25 @@ describe("ancrage: l'extrait copié, pas le texte réécrit (V2)", () => {
     expect(j.judge).toEqual({ calls: 2, unreadable: 1, retried: 1, skipped: 0, claimsExpected: 20, verdictsReceived: 9, citationsRejected: 3 });
     expect(j.total.citationsRejected).toBe(4);
     expect(j.second.calls).toBe(1);
+  });
+});
+
+describe('décomposition des causes (V3)', () => {
+  it("classe chaque erreur insérée: détectée, affirmation absente, jugée vérifiée ou cause tracée", () => {
+    const page = { id: 'p', hidden: false } as PageInput['page'];
+    const ann = { id: 'p', transcription: '', sentences: [
+      { text: 'alpha beta gamma delta', kind: 'error' }, { text: 'epsilon zeta eta theta', kind: 'error' },
+      { text: 'iota kappa lambda mu', kind: 'error' }, { text: 'nu xi omicron pi', kind: 'error' }, { text: 'rho sigma tau upsilon', kind: 'correct' },
+    ] } as unknown as PageInput['ann'];
+    const run: PageRun = { refused: false, transcript: '', claims: [
+      { text: 'alpha beta gamma delta', status: 'erreur', cause: 'erreur' },
+      { text: 'epsilon zeta eta theta', status: 'verifiee', cause: 'verifiee' },
+      { text: 'iota kappa lambda mu', status: 'non_verifiable', cause: 'juge_prudent' },
+      { text: 'rho sigma tau upsilon', status: 'non_verifiable', cause: 'aucun_passage' },
+    ] };
+    const b = causeBreakdown([{ page, ann, run }]);
+    expect(b.insertedErrors).toEqual({ detectee: 1, jugee_verifiee: 1, juge_prudent: 1, affirmation_absente: 1 });
+    expect(b.nonVerifiable).toEqual({ juge_prudent: 1, aucun_passage: 1 });
+    expect(b.correctClaims).toEqual({ aucun_passage: 1 });
   });
 });

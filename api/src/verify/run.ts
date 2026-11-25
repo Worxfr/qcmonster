@@ -5,7 +5,7 @@ import { JOB_COST_CAP_EUR } from '../../../shared/names.js';
 import { costEur } from '../../../shared/pricing.js';
 import { log } from '../../../shared/log/index.js';
 import type { VerifyInput, VerifyOutput } from '../../../shared/items.js';
-import { checkVerdict, countRejectedCitations, judgePrompt, mergeSecondRead, needsSecondRead, parseVerdictsDetailed, secondReadPrompt, type Checked, type JudgeClaim, type RawVerdict } from './judge.js';
+import { checkVerdict, countRejectedCitations, explainFirstRead, explainSecondRead, judgePrompt, mergeSecondRead, needsSecondRead, parseVerdictsDetailed, secondReadPrompt, type Cause, type Checked, type JudgeClaim, type RawVerdict } from './judge.js';
 import { CLAIMS_PER_CALL, JUDGE_RETRIES } from './limits.js';
 import type { Passage, SearchPort } from './search.js';
 import { fingerprint, type ClaimItem, type VerdictBody, type VerifyStore } from './store.js';
@@ -16,6 +16,16 @@ export interface VerifyDeps {
   model: { port: ModelPort; costStore: CostStore; arn: string };
   /** Recoit la trace de chaque appel de jugement (en plus du journal). Sans contenu de cours. */
   onTrace?: (t: JudgeTrace) => void;
+  /** V3: cause finale de chaque affirmation factuelle (categorie seulement, aucun texte). */
+  onClaim?: (c: ClaimTrace) => void;
+}
+
+export interface ClaimTrace {
+  nn: number;
+  cause: Cause;
+  statut: 'verifiee' | 'erreur' | 'non_verifiable';
+  /** Nombre de passages trouves pour l'affirmation. */
+  passages: number;
 }
 
 /** Observabilite d'un appel de jugement (V2). Que des nombres et des booleens: aucun texte de cours. */
@@ -46,6 +56,7 @@ interface Work {
   passages: Passage[];
   checked?: Checked;
   secondRead?: boolean;
+  cause?: Cause;
   final?: Final;
 }
 
@@ -84,7 +95,7 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     }
   };
 
-  const judged = async (p: { system: string; prompt: string }, step: JudgeTrace['step'], jc: JudgeClaim[]): Promise<{ raw: Map<string, RawVerdict>; called: boolean }> => {
+  const judged = async (p: { system: string; prompt: string }, step: JudgeTrace['step'], jc: JudgeClaim[]): Promise<{ raw: Map<string, RawVerdict>; called: boolean; trace: JudgeTrace }> => {
     let text = await call(p, step, jc.length);
     const trace: JudgeTrace = { step, expected: jc.length, received: 0, readable: false, retried: false, skipped: text === null, rejectedCitations: 0 };
     let parsed = text === null ? undefined : parseVerdictsDetailed(text);
@@ -100,7 +111,7 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     for (const c of jc) trace.rejectedCitations += countRejectedCitations(c, verdicts.get(c.alias));
     log({ jobId: input.jobId, step, status: trace.readable ? 'ok' : 'error', outputReadable: trace.readable, claimsExpected: trace.expected, verdictsReceived: trace.received, citationsRejected: trace.rejectedCitations, retried: trace.retried });
     deps.onTrace?.(trace);
-    return { raw: verdicts, called: !trace.skipped };
+    return { raw: verdicts, called: !trace.skipped, trace };
   };
 
   const claims = (await store.listClaims(input.docId)).filter((c) => !existing.has(c.nn));
@@ -117,11 +128,14 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     const hit = await cacheHit(store, w.claim);
     if (hit) {
       early.push([w.nn, hit]);
+      deps.onClaim?.({ nn: w.nn, cause: 'cache', statut: hit.statut as ClaimTrace['statut'], passages: hit.sources.length });
       continue;
     }
     w.passages = await search.search(w.claim.texte);
-    if (w.passages.length === 0) early.push([w.nn, nonVerifiable]);
-    else toJudge.push(w);
+    if (w.passages.length === 0) {
+      early.push([w.nn, nonVerifiable]);
+      deps.onClaim?.({ nn: w.nn, cause: 'aucun_passage', statut: 'non_verifiable', passages: 0 });
+    } else toJudge.push(w);
   }
   for (const [nn, v] of early) await store.putVerdict(input.docId, nn, v);
 
@@ -133,9 +147,10 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
     const before = spent;
     const jc = asJudge(batch);
     // Etape 8 puis 9 (controle par code).
-    const { raw } = await judged(judgePrompt(jc), 'verify-judge', jc);
+    const { raw, trace: t1 } = await judged(judgePrompt(jc), 'verify-judge', jc);
     batch.forEach((w, i) => {
       w.checked = checkVerdict(jc[i], raw.get(jc[i].alias));
+      w.cause = explainFirstRead(jc[i], raw.get(jc[i].alias), w.checked, t1) ?? (w.checked.statut as Cause);
     });
     // Etape 10: seconde lecture des `erreur` et des `verifiee` a risque. Si elle echoue, ce qui est acquis est ecrit, puis l'erreur est relancee.
     let failure: unknown;
@@ -145,16 +160,22 @@ export async function verifyClaims(deps: VerifyDeps, input: VerifyInput): Promis
         const sj = asJudge(second);
         const { raw: raw2, called } = await judged(secondReadPrompt(sj), 'verify-second', sj);
         second.forEach((w, i) => {
-          w.checked = mergeSecondRead(w.checked!, checkVerdict(sj[i], raw2.get(sj[i].alias)));
+          const c2 = checkVerdict(sj[i], raw2.get(sj[i].alias));
+          w.cause = explainSecondRead(sj[i], w.checked!, c2, raw2.get(sj[i].alias), called);
+          w.checked = mergeSecondRead(w.checked!, c2);
           w.secondRead = called; // vrai seulement si l'appel a eu lieu
         });
       } catch (e) {
         failure = e;
         // Lecture non confirmee: non_verifiable (jamais en cache). Ces affirmations ne seront pas rejouees par un Retry.
-        for (const w of second) w.checked = { statut: 'non_verifiable', sources: [] };
+        for (const w of second) {
+          w.checked = { statut: 'non_verifiable', sources: [] };
+          w.cause = 'appel_ignore';
+        }
       }
     }
     await persistBatch(store, input.docId, batch, Math.round((spent - before) * 1e6));
+    for (const w of batch) deps.onClaim?.({ nn: w.nn, cause: w.cause ?? 'verdict_absent', statut: w.final!.statut as ClaimTrace['statut'], passages: w.passages.length });
     if (failure) throw failure;
   }
   return { costEur: spent };

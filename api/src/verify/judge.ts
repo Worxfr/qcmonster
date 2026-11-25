@@ -1,6 +1,6 @@
 // Etapes 8 a 10: jugement (Sonnet), controle par CODE des verdicts, seconde lecture. Le modele ne fournit que des identifiants et des citations.
 import { z } from 'zod';
-import { defang, isCitationOf, normalize, splitSentences } from './text.js';
+import { buildQuery, defang, isCitationOf, normalize, splitSentences } from './text.js';
 import type { Passage } from './search.js';
 
 export type Statut = 'verifiee' | 'erreur' | 'non_verifiable';
@@ -160,4 +160,52 @@ export const needsSecondRead = (c: Checked, aRisque: boolean): boolean => c.stat
  */
 export function mergeSecondRead(first: Checked, second: Checked): Checked {
   return second.statut === first.statut ? first : { statut: 'non_verifiable', sources: [] };
+}
+
+/** Cause finale de la decision pour une affirmation (V3). Des categories seulement, jamais de texte de cours. */
+export type Cause =
+  | 'verifiee'
+  | 'erreur'
+  | 'cache'
+  | 'aucun_passage'
+  | 'passage_sans_le_fait'
+  | 'juge_prudent'
+  | 'citation_rejetee'
+  | 'regle_niveau'
+  | 'seconde_lecture_desaccord'
+  | 'seconde_citation_rejetee'
+  | 'sortie_illisible'
+  | 'verdict_absent'
+  | 'appel_ignore';
+
+/** Part des mots-cles de l'affirmation (hors nombres) retrouvee dans le meilleur passage. */
+export function topicCoverage(claim: JudgeClaim): number {
+  const words = buildQuery(claim.texte, 12).split(' ').filter((w) => w && !/^\d+$/.test(w));
+  if (!words.length || !claim.passages.length) return 0;
+  return Math.max(...claim.passages.map((p) => {
+    const have = new Set(normalize(p.passage.texte).split(' '));
+    return words.filter((w) => have.has(w)).length / words.length;
+  }));
+}
+/** shortcut: proxy sans contenu. Un passage « a le fait » si 60 % des mots-cles (hors nombres) y figurent; le nombre exact n'est pas teste (une erreur inseree porte un mauvais nombre). */
+export const TOPIC_COVERED = 0.6;
+
+/**
+ * Pourquoi une affirmation du juge (1re lecture) n'a pas abouti. `call` decrit l'appel: lisible ou non, ignore (budget) ou non.
+ * Renvoie `undefined` si le verdict est retenu (verifiee ou erreur controlee).
+ */
+export function explainFirstRead(claim: JudgeClaim, raw: RawVerdict | undefined, checked: Checked, call: { readable: boolean; skipped: boolean }): Cause | undefined {
+  if (checked.statut !== 'non_verifiable') return undefined;
+  if (call.skipped) return 'appel_ignore';
+  if (!call.readable) return 'sortie_illisible';
+  if (!raw) return 'verdict_absent';
+  if (raw.verdict === 'non_verifiable') return topicCoverage(claim) >= TOPIC_COVERED ? 'juge_prudent' : 'passage_sans_le_fait';
+  return countRejectedCitations(claim, raw) >= raw.citations.length ? 'citation_rejetee' : 'regle_niveau';
+}
+
+/** Cause apres seconde lecture: `first` est la lecture retenue, `second` la seconde (controlee), `raw2` sa sortie brute. */
+export function explainSecondRead(claim: JudgeClaim, first: Checked, second: Checked, raw2: RawVerdict | undefined, called: boolean): Cause {
+  if (second.statut === first.statut) return first.statut as 'verifiee' | 'erreur';
+  if (!called) return 'appel_ignore';
+  return raw2 && raw2.verdict !== 'non_verifiable' && second.statut === 'non_verifiable' ? 'seconde_citation_rejetee' : 'seconde_lecture_desaccord';
 }

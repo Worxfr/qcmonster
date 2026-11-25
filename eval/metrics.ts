@@ -7,7 +7,7 @@ export type Status = 'verifiee' | 'erreur' | 'non_verifiable' | 'non_factuelle';
 export interface PageRun {
   refused: boolean;
   transcript: string;
-  claims: { text: string; status: Status; excerpt?: string }[];
+  claims: { text: string; status: Status; excerpt?: string; /** V3: cause finale (voie lambda), une catégorie. */ cause?: string; passages?: number }[];
   durationSec?: number;
   costEur?: number;
   /** Tout texte produit (fiche, QCM), pour chercher le canari d'injection. */
@@ -121,6 +121,32 @@ export function judgeSummary(inputs: PageInput[]) {
   return { total: one(all), judge: one(by('verify-judge')), second: one(by('verify-second')), pagesWithTrace: inputs.filter((i) => i.run.judge?.length).length };
 }
 
+/**
+ * V3: décomposition des causes, sans aucun texte. `insertedErrors`: pour chaque erreur insérée, `detectee` ou la cause de l'échec
+ * (`affirmation_absente`: l'extraction n'a pas repris la phrase; `jugee_verifiee`: verdict final `verifiee`; sinon la cause tracée).
+ * `nonVerifiable`: les affirmations produites en `non_verifiable`, par cause. `correctClaims`: les phrases justes, par cause (même lecture).
+ */
+export function causeBreakdown(inputs: PageInput[]) {
+  const add = (m: Record<string, number>, k: string) => { m[k] = (m[k] ?? 0) + 1; };
+  const insertedErrors: Record<string, number> = {}, nonVerifiable: Record<string, number> = {}, correctClaims: Record<string, number> = {};
+  const perPage: { id: string; insertedErrors: Record<string, number> }[] = [];
+  for (const { page, ann, run } of inputs) {
+    const mine: Record<string, number> = {};
+    for (const s of ann.sentences) {
+      if (s.kind !== 'error' && s.kind !== 'correct') continue;
+      const m = run.refused ? null : matchClaim(s.text, run.claims);
+      const k = m === null ? (run.refused ? 'page_refusee' : 'affirmation_absente')
+        : m.status === 'erreur' ? 'detectee'
+        : m.status === 'verifiee' ? 'jugee_verifiee'
+        : (m.cause ?? 'non_verifiable_sans_trace');
+      if (s.kind === 'error') { add(insertedErrors, k); add(mine, k); } else add(correctClaims, k);
+    }
+    for (const c of run.claims) if (c.status === 'non_verifiable') add(nonVerifiable, c.cause ?? 'non_verifiable_sans_trace');
+    perPage.push({ id: page.id, insertedErrors: mine });
+  }
+  return { insertedErrors, nonVerifiable, correctClaims, perPage };
+}
+
 export function computeReport(inputs: PageInput[], negatives: { refused: boolean }[], review: Review = {}) {
   // Une page refusée reste au dénominateur: ses erreurs comptent comme manquées.
   const ok = inputs.filter((i) => !i.run.refused);
@@ -163,6 +189,7 @@ export function computeReport(inputs: PageInput[], negatives: { refused: boolean
     anchoring,
     anchoringBasis: { claimsWithExcerpt: withExcerpt, claims: prod, anchoringOfRewrittenText: wilson(anchText, prod) },
     judgeCalls: judgeSummary(inputs),
+    causes: causeBreakdown(inputs),
     errorRecall: { tuning: dt.recall, hidden: dh.recall, gap },
     falsePositives: { tuning: dt.falsePositives, hidden: dh.falsePositives },
     qcmValid: qcm,
