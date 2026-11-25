@@ -42,6 +42,13 @@ export const TRIAL_TUNING_PAGES = 10;
 export const TRIAL_MAX_FULL_RUNS_PER_LOT = 2;
 /** Plafond par job (design-v2 4.1): au-dela, les affirmations restantes sont non_verifiable. */
 export const JOB_COST_CAP_EUR = 0.25;
+/** Plafond par page au-dela d'une page et demie (decision du 2026-11-25, docs/cost-guard.md): cout mesure ~0,09 EUR par page, p95 0,12. */
+export const JOB_COST_CAP_PER_PAGE_EUR = 0.15;
+/** Plafond d'un job de `pages` pages: max(0,25 ; 0,15 x pages) EUR, arrondi au centime. 1 page: 0,25; 3 pages: 0,45; 10 pages: 1,50. `pages` hors 1..10 est ramene dans cet intervalle. */
+export const jobCapEur = (pages: number): number => {
+  const n = Number.isFinite(pages) ? Math.min(10, Math.max(1, Math.trunc(pages))) : 1;
+  return Math.max(JOB_COST_CAP_EUR, Math.round(JOB_COST_CAP_PER_PAGE_EUR * n * 100) / 100);
+};
 
 /** Role d'evaluation: seul a lire le coffre du jeu cache (cree par la stack Data). */
 export const evalRoleName = (env: Env) => `qcm-${env}-eval-role`;

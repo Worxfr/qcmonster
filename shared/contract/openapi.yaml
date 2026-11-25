@@ -75,17 +75,17 @@ paths:
         Les filtres se combinent (ET). `facets` et `inProgress` portent sur tous les scans visibles, sans les filtres, pour construire les menus.
         **Scans a relire**: un scan `a_confirmer` reste ouvert jusqu'a `status.expiresAt` (12 h apres la fin de la lecture). L'eleve le reprend par `scanId` (= `jobId`) avec `GET /jobs/{jobId}/transcription` puis `POST /jobs/{jobId}/confirm`, depuis n'importe quel appareil connecte au meme compte, apres rechargement ou changement d'ecran: le front n'a rien a retenir. `toReview` compte ces scans, `status=a_confirmer` les liste, `sort=date&order=asc` donne en premier le plus ancien (le plus proche de l'expiration). Passe l'echeance, le scan devient `echec` (`Job.state: expire`) avec un message lisible, visible 7 jours.
         Le front interroge cette route toutes les 3 s tant qu'un scan est `en_cours` (voir docs/scan-screens.md), sans nouvelle ressource AWS.
-        Aucun texte de cours dans la reponse, sauf le titre et le sujet (courts).
+        Aucun texte de cours dans la reponse, sauf le titre et le sujet (courts, `title` et `topic`). Le parent voit donc l'etape, les pages, le titre et le sujet des scans de ses eleves, y compris en cours, jamais le texte lu.
       parameters:
-        - { name: studentId, in: query, required: false, description: "Parent seulement: un eleve de la famille. Un eleve qui passe un autre identifiant que le sien recoit 403.", schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: studentId, in: query, required: false, description: "Parent seulement: un eleve de la famille. Un eleve qui passe un identifiant, le sien excepte, recoit 404 (comme un parent dont l'eleve n'est pas de sa famille: jamais de 403 qui confirmerait l'existence).", schema: { type: string, minLength: 1, maxLength: 64 } }
         - { name: subject, in: query, required: false, description: "Matiere, ou `none` pour les scans sans matiere (job en cours de lecture)", schema: { type: string, enum: [maths, physique, svt, histoire_geo, francais, autre, none] } }
         - { name: topic, in: query, required: false, description: "Sujet, comparaison sans casse ni accents (egalite exacte apres normalisation)", schema: { type: string, minLength: 1, maxLength: 80 } }
         - { name: folderId, in: query, required: false, description: "Un dossier de l'eleve, ou `none` pour les scans hors dossier. Un dossier inconnu (ou d'un autre eleve) repond 404.", schema: { type: string, minLength: 1, maxLength: 64 } }
         - { name: status, in: query, required: false, description: "`en_cours` = tout ce qui n'est pas termine ni en echec (y compris `a_confirmer`)", schema: { type: string, enum: [en_cours, a_confirmer, termine, echec] } }
         - { name: sort, in: query, required: false, description: "Tri principal (defaut `date`). `subject` puis `topic` puis date; `topic` puis date; `status` = ordre des etapes. Les valeurs absentes passent en dernier.", schema: { type: string, enum: [date, subject, topic, status], default: date } }
-        - { name: order, in: query, required: false, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: order, in: query, required: false, description: "Sens du tri principal. Defaut selon `sort`: `desc` pour `date` et `status`, `asc` pour `subject` et `topic`. A egalite, la date decroissante departage toujours.", schema: { type: string, enum: [asc, desc] } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
-        - { name: cursor, in: query, required: false, description: "Valeur opaque `nextCursor` de la page precedente", schema: { type: string, maxLength: 200 } }
+        - { name: cursor, in: query, required: false, description: "Valeur opaque `nextCursor` de la page precedente. Valable seulement avec les memes filtres et le meme tri; sinon la page peut avoir des doublons ou des trous. Un curseur invalide repond 400.", schema: { type: string, maxLength: 200 } }
       responses:
         '200':
           description: Scans
@@ -96,6 +96,7 @@ paths:
                 items:
                   - scanId: 01JEXAMPLE0JOB0000000000AA
                     studentId: 01JEXAMPLE0STU0000000000AA
+                    state: termine
                     docId: 01JEXAMPLE0DOC0000000000AA
                     title: La Revolution francaise
                     subject: histoire_geo
@@ -106,11 +107,13 @@ paths:
                     status: { stage: termine, pagesDone: 2, pagesTotal: 2, startedAt: '2026-12-01T10:00:00Z', finishedAt: '2026-12-01T10:03:00Z' }
                   - scanId: 01JEXAMPLE0JOB0000000000AB
                     studentId: 01JEXAMPLE0STU0000000000AA
+                    state: transcription
                     pages: 3
                     createdAt: '2026-12-01T11:00:00Z'
                     status: { stage: lecture, pagesDone: 1, pagesTotal: 3, startedAt: '2026-12-01T11:00:00Z' }
                   - scanId: 01JEXAMPLE0JOB0000000000AC
                     studentId: 01JEXAMPLE0STU0000000000AA
+                    state: a_confirmer
                     subject: svt
                     topic: La photosynthese
                     pages: 1
@@ -124,6 +127,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /jobs/{jobId}:
     get:
       operationId: getJob
@@ -383,9 +387,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Folder' }
               example: { folderId: 01JEXAMPLE0FLD0000000000AA, name: Controle de juin, createdAt: '2026-12-01T09:00:00Z', scanCount: 0 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400':
+          description: "Requete invalide: nom vide apres nettoyage (`requete_invalide`) ou 50 dossiers atteints (`dossiers_limite`)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                limite: { summary: 50 dossiers, value: { code: dossiers_limite, message: Tu as atteint 50 dossiers } }
+                nom: { summary: Nom vide apres nettoyage, value: { code: requete_invalide, message: Demande invalide } }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '409':
+          description: "Nom de dossier deja pris (sans tenir compte de la casse ni des accents)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: dossier_nom_pris, message: Tu as deja un dossier avec ce nom }
   /folders/{folderId}:
     patch:
       operationId: renameFolder
@@ -408,7 +424,12 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '409':
+          description: "Nom de dossier deja pris (sans tenir compte de la casse ni des accents)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: dossier_nom_pris, message: Tu as deja un dossier avec ce nom }
     delete:
       operationId: deleteFolder
       tags: [folders]
@@ -721,6 +742,9 @@ components:
     NotFound:
       description: Introuvable
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: introuvable, message: Introuvable } } }
+    TooManyRequests:
+      description: "Limite de debit de la route depassee (la limite est globale a la route, voir infra). Le client reessaie apres quelques secondes, en espacant son interrogation. Corps produit par API Gateway, pas par le contrat Error."
+      content: { application/json: { schema: { type: object, properties: { message: { type: string } } }, example: { message: Too Many Requests } } }
     Conflict:
       description: Etat incompatible
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Le job n'est pas a confirmer } } }
@@ -732,7 +756,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise] }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite], description: "`dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -780,8 +804,9 @@ components:
         message: { type: string, maxLength: 500, description: "Message lisible pour l'eleve, present a l'etape echec (ex. Le texte est trop court pour faire une fiche)" }
     ScanSummary:
       type: object
-      required: [scanId, studentId, pages, createdAt, status]
+      required: [scanId, studentId, state, pages, createdAt, status]
       properties:
+        state: { $ref: '#/components/schemas/JobState', description: "Etat precis du job (distingue rejete, echec, expire; un job annule est `rejete` avec le message « Annule par l'eleve »). Une fiche dont le job a expire est `termine`." }
         scanId: { type: string, description: "= jobId. Pour une fiche ancienne dont le job a expire: jobId de la fiche, ou docId si elle n'en a pas" }
         studentId: { type: string }
         docId: { type: string, description: Present quand la fiche existe (etape termine) }
@@ -913,7 +938,7 @@ components:
       properties:
         corrections: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/Sentence' } }
         subject: { $ref: '#/components/schemas/Subject' }
-        topic: { $ref: '#/components/schemas/Topic' }
+        topic: { $ref: '#/components/schemas/Topic', description: "Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle." }
         folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation" }
     DocSummary:
       type: object

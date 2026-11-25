@@ -128,4 +128,18 @@ describe('contrat OpenAPI', () => {
     const ex = spec.paths['/scans'].get.responses['200'].content['application/json'].example;
     expect(ex.items.some((i: { status: { stage: string; expiresSoon?: boolean } }) => i.status.stage === 'a_confirmer' && i.status.expiresSoon === false)).toBe(true);
   });
+  it('contrat 1.3 apres revue: codes dossier, 429, etat du scan, defauts', () => {
+    expect(spec.components.schemas.Error.properties.code.enum).toEqual(expect.arrayContaining(['dossier_nom_pris', 'dossiers_limite']));
+    expect(zodSchemas.ErrorSchema.safeParse({ code: 'dossier_nom_pris', message: 'x' }).success).toBe(true);
+    expect(Object.keys(spec.paths['/scans'].get.responses)).toContain('429');
+    expect(spec.components.schemas.ScanSummary.required).toContain('state');
+    expect(spec.components.schemas.ScanSummary.properties.state.$ref).toBe('#/components/schemas/JobState');
+    const f409 = spec.paths['/folders'].post.responses['409'].content['application/json'].example;
+    expect(f409.code).toBe('dossier_nom_pris');
+    expect(spec.paths['/folders'].post.responses['400'].content['application/json'].examples.limite.value.code).toBe('dossiers_limite');
+    const names = (spec.paths['/scans'].get.parameters as { name: string; schema: { default?: string }; description?: string }[]);
+    expect(names.find((p) => p.name === 'order')!.schema.default).toBeUndefined(); // defaut dependant de `sort`, ecrit dans la description
+    expect(names.find((p) => p.name === 'order')!.description).toMatch(/asc.*subject/);
+    expect(names.find((p) => p.name === 'cursor')!.description).toMatch(/memes filtres/);
+  });
 });

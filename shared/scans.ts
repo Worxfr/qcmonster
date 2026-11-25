@@ -41,13 +41,16 @@ export function labelKey(s: string): string {
 /** Nettoie un libelle saisi ou propose par le modele: sans caracteres de controle ni chevrons, espaces ecrases. Vide => undefined. */
 export function cleanLabel(raw: unknown, max: number): string | undefined {
   if (typeof raw !== 'string') return undefined;
+  // Controles C0 et C1, marques bidirectionnelles et invisibles (\u200b-\u200f, \u202a-\u202e, \u2066-\u2069, \ufeff), chevrons.
   // eslint-disable-next-line no-control-regex
-  const t = raw.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
+  const t = raw.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
   return t || undefined;
 }
 export const cleanTopic = (raw: unknown) => cleanLabel(raw, MAX_TOPIC);
 export const cleanFolderName = (raw: unknown) => cleanLabel(raw, MAX_FOLDER_NAME);
 
+const JOB_STATES = ['en_attente_envoi', 'verification_fichier', 'transcription', 'a_confirmer', 'verification', 'generation', 'termine', 'rejete', 'echec', 'expire'] as const;
+const isJobState = (x: unknown): x is (typeof JOB_STATES)[number] => (JOB_STATES as readonly unknown[]).includes(x);
 const isSubject = (x: unknown): x is Subject => (SUBJECTS as readonly string[]).includes(x as string);
 
 /** Item DynamoDB lu par la liste (champs facultatifs: les anciens elements n'ont pas les champs 1.3). */
@@ -87,7 +90,8 @@ export function statusOfJob(job: ScanItem, now: Date = new Date()): components['
   const total = Math.min(MAX_PAGES_PER_SCAN, Math.max(1, num(job.pages) ?? 1));
   const stage = stageOf(job);
   const uploaded = Array.isArray(job.uploadedKeys) ? job.uploadedKeys.length : 0;
-  const done = stage === 'envoi' ? uploaded : stage === 'lecture' ? (num(job.pagesRead) ?? 0) : total;
+  const read = Array.isArray(job.readPages) ? new Set(job.readPages).size : 0; // ensemble: une reprise de l'etape ne compte pas deux fois
+  const done = stage === 'envoi' ? uploaded : stage === 'lecture' ? read : total;
   const createdAt = str(job.createdAt) ?? new Date(0).toISOString();
   return {
     stage,
@@ -144,7 +148,7 @@ export function listScans(input: ListInput): ScanList {
   const anyFolder = (id: string) => input.folders.some((f) => f.folderId === id);
   if (q.folderId && q.folderId !== 'none' && !anyFolder(q.folderId)) throw new UnknownFolderError();
 
-  const docsById = new Map(input.docs.map((d) => [d.SK.slice('DOC#'.length), d]));
+  const docsById = new Map(input.docs.map((d) => [`${sidOf(d)}/${d.SK.slice('DOC#'.length)}`, d])); // sid/docId: plusieurs partitions (parent)
   const usedDocs = new Set<string>();
   const entries: Entry[] = [];
   const folderOf = (sid: string, id: unknown): string | undefined => (typeof id === 'string' && knownFolders.has(`${sid}/${id}`) ? id : undefined); // dossier supprime ou inconnu => hors dossier
@@ -153,11 +157,11 @@ export function listScans(input: ListInput): ScanList {
     const sid = sidOf(job);
     const jobId = job.SK.slice('JOB#'.length);
     const docId = str(job.docId);
-    const doc = docId ? docsById.get(docId) : undefined;
+    const doc = docId ? docsById.get(`${sid}/${docId}`) : undefined;
     const status = statusOfJob(job, input.now);
     // Job termine dont la fiche a ete supprimee: on ne montre pas un fantome.
     if (status.stage === 'termine' && !doc) continue;
-    if (doc) usedDocs.add(docId!);
+    if (doc) usedDocs.add(`${sid}/${docId}`);
     const subjectRaw = doc ? doc.matiere : (job.subjectChoice ?? job.suggestedSubject ?? job.draftSubject);
     const topic = cleanTopic(doc ? doc.sujet : (job.topicChoice ?? job.suggestedTopic));
     const title = str(doc ? doc.titre : job.draftTitle);
@@ -165,6 +169,7 @@ export function listScans(input: ListInput): ScanList {
     entries.push({
       scanId: jobId,
       studentId: sid,
+      state: isJobState(job.state) ? job.state : 'echec',
       ...(doc ? { docId } : {}),
       ...(title ? { title: title.slice(0, 200) } : {}),
       ...(isSubject(subjectRaw) ? { subject: subjectRaw } : {}),
@@ -177,9 +182,10 @@ export function listScans(input: ListInput): ScanList {
     });
   }
 
-  for (const [docId, doc] of docsById) {
-    if (usedDocs.has(docId)) continue;
+  for (const [dkey, doc] of docsById) {
+    if (usedDocs.has(dkey)) continue;
     const sid = sidOf(doc);
+    const docId = doc.SK.slice('DOC#'.length);
     const createdAt = str(doc.createdAt) ?? new Date(0).toISOString();
     const pages = Math.min(MAX_PAGES_PER_SCAN, Math.max(1, num(doc.pages) ?? num(doc.pagesConsommees) ?? 1));
     const topic = cleanTopic(doc.sujet);
@@ -187,6 +193,7 @@ export function listScans(input: ListInput): ScanList {
     entries.push({
       scanId: str(doc.jobId) ?? docId,
       studentId: sid,
+      state: 'termine',
       docId,
       ...(str(doc.titre) ? { title: str(doc.titre)!.slice(0, 200) } : {}),
       ...(isSubject(doc.matiere) ? { subject: doc.matiere } : {}),
@@ -230,7 +237,8 @@ export function listScans(input: ListInput): ScanList {
     return true;
   });
 
-  const dir = q.order === 'asc' ? 1 : -1;
+  // Sens par defaut: croissant pour matiere et sujet (ordre alphabetique), decroissant pour date et statut.
+  const dir = (q.order ?? (q.sort === 'subject' || q.sort === 'topic' ? 'asc' : 'desc')) === 'asc' ? 1 : -1;
   const dateDesc = (a: Entry, b: Entry) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.scanId < b.scanId ? -1 : 1);
   const absentLast = (a: number | string | undefined, b: number | string | undefined, cmp: (x: never, y: never) => number): number =>
     a === undefined && b === undefined ? 0 : a === undefined ? 1 : b === undefined ? -1 : dir * cmp(a as never, b as never);
@@ -250,8 +258,9 @@ export function listScans(input: ListInput): ScanList {
   const limit = Math.min(LIST_MAX_LIMIT, Math.max(1, Math.trunc(q.limit ?? LIST_DEFAULT_LIMIT)));
   let offset = 0;
   if (q.cursor !== undefined) {
-    const m = /^o(\d{1,6})$/.exec(Buffer.from(q.cursor, 'base64url').toString('utf8'));
-    if (!m) throw new BadCursorError();
+    const raw = Buffer.from(q.cursor, 'base64url').toString('utf8');
+    const m = /^o(\d{1,6})$/.exec(raw);
+    if (!m || Buffer.from(raw).toString('base64url') !== q.cursor) throw new BadCursorError(); // refuse les caracteres en trop que base64url ignore
     offset = Number(m[1]);
   }
   const page = kept.slice(offset, offset + limit);

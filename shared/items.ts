@@ -27,7 +27,7 @@ export const JobItemSchema = z.object({
   ttl: z.number().int(),
   // Contrat 1.3 (FEAT-A), tous facultatifs: un job cree avant 1.3 reste valide.
   stage: z.enum(['fiche', 'verification']).optional(),
-  pagesRead: z.number().int().min(0).max(10).optional(),
+  readPages: z.array(z.number().int().min(1).max(10)).max(10).optional(), // ensemble des pages lues (idempotent)
   contentTypes: z.array(z.enum(['image/jpeg', 'image/png'])).min(1).max(10).optional(),
   folderId: z.string().optional(),
   suggestedSubject: z.enum(SUBJECTS).optional(),

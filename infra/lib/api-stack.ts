@@ -70,7 +70,7 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   // contract-v1.2 (A1): reserve au groupe Cognito `admin`, verifie par le handler
   { route: 'POST /admin/invitations', handler: 'admin-invitations', owner: 'game', throttle: { rate: 1, burst: 3 } },
   // contract-v1.3 (FEAT-A): squelettes 501 tant que le lot back n'a pas change `owner`
-  { route: 'GET /scans', handler: 'scans-list', throttle: { rate: 3, burst: 10 } },
+  { route: 'GET /scans', handler: 'scans-list', throttle: { rate: 10, burst: 20 } },
   { route: 'PATCH /docs/{docId}', handler: 'docs-patch', throttle: { rate: 2, burst: 5 } },
   { route: 'GET /folders', handler: 'folders-api' },
   { route: 'POST /folders', handler: 'folders-api', throttle: { rate: 2, burst: 5 } },

@@ -14,7 +14,7 @@ export interface paths {
          *     Les filtres se combinent (ET). `facets` et `inProgress` portent sur tous les scans visibles, sans les filtres, pour construire les menus.
          *     **Scans a relire**: un scan `a_confirmer` reste ouvert jusqu'a `status.expiresAt` (12 h apres la fin de la lecture). L'eleve le reprend par `scanId` (= `jobId`) avec `GET /jobs/{jobId}/transcription` puis `POST /jobs/{jobId}/confirm`, depuis n'importe quel appareil connecte au meme compte, apres rechargement ou changement d'ecran: le front n'a rien a retenir. `toReview` compte ces scans, `status=a_confirmer` les liste, `sort=date&order=asc` donne en premier le plus ancien (le plus proche de l'expiration). Passe l'echeance, le scan devient `echec` (`Job.state: expire`) avec un message lisible, visible 7 jours.
          *     Le front interroge cette route toutes les 3 s tant qu'un scan est `en_cours` (voir docs/scan-screens.md), sans nouvelle ressource AWS.
-         *     Aucun texte de cours dans la reponse, sauf le titre et le sujet (courts).
+         *     Aucun texte de cours dans la reponse, sauf le titre et le sujet (courts, `title` et `topic`). Le parent voit donc l'etape, les pages, le titre et le sujet des scans de ses eleves, y compris en cours, jamais le texte lu.
          */
         get: operations["listScans"];
         put?: never;
@@ -491,8 +491,11 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Error: {
-            /** @enum {string} */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise";
+            /**
+             * @description `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @enum {string}
+             */
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite";
             message: string;
             /**
              * Format: date
@@ -555,6 +558,8 @@ export interface components {
             message?: string;
         };
         ScanSummary: {
+            /** @description Etat precis du job (distingue rejete, echec, expire; un job annule est `rejete` avec le message « Annule par l'eleve »). Une fiche dont le job a expire est `termine`. */
+            state: components["schemas"]["JobState"];
             /** @description = jobId. Pour une fiche ancienne dont le job a expire: jobId de la fiche, ou docId si elle n'en a pas */
             scanId: string;
             studentId: string;
@@ -667,6 +672,7 @@ export interface components {
         ConfirmRequest: {
             corrections: components["schemas"]["Sentence"][];
             subject?: components["schemas"]["Subject"];
+            /** @description Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle. */
             topic?: components["schemas"]["Topic"];
             /** @description Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation */
             folderId?: string;
@@ -953,6 +959,22 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Limite de debit de la route depassee (la limite est globale a la route, voir infra). Le client reessaie apres quelques secondes, en espacant son interrogation. Corps produit par API Gateway, pas par le contrat Error. */
+        TooManyRequests: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Too Many Requests"
+                 *     }
+                 */
+                "application/json": {
+                    message?: string;
+                };
+            };
+        };
         /** @description Etat incompatible */
         Conflict: {
             headers: {
@@ -1000,7 +1022,7 @@ export interface operations {
     listScans: {
         parameters: {
             query?: {
-                /** @description Parent seulement: un eleve de la famille. Un eleve qui passe un autre identifiant que le sien recoit 403. */
+                /** @description Parent seulement: un eleve de la famille. Un eleve qui passe un identifiant, le sien excepte, recoit 404 (comme un parent dont l'eleve n'est pas de sa famille: jamais de 403 qui confirmerait l'existence). */
                 studentId?: string;
                 /** @description Matiere, ou `none` pour les scans sans matiere (job en cours de lecture) */
                 subject?: "maths" | "physique" | "svt" | "histoire_geo" | "francais" | "autre" | "none";
@@ -1012,9 +1034,10 @@ export interface operations {
                 status?: "en_cours" | "a_confirmer" | "termine" | "echec";
                 /** @description Tri principal (defaut `date`). `subject` puis `topic` puis date; `topic` puis date; `status` = ordre des etapes. Les valeurs absentes passent en dernier. */
                 sort?: "date" | "subject" | "topic" | "status";
+                /** @description Sens du tri principal. Defaut selon `sort`: `desc` pour `date` et `status`, `asc` pour `subject` et `topic`. A egalite, la date decroissante departage toujours. */
                 order?: "asc" | "desc";
                 limit?: number;
-                /** @description Valeur opaque `nextCursor` de la page precedente */
+                /** @description Valeur opaque `nextCursor` de la page precedente. Valable seulement avec les memes filtres et le meme tri; sinon la page peut avoir des doublons ou des trous. Un curseur invalide repond 400. */
                 cursor?: string;
             };
             header?: never;
@@ -1035,6 +1058,7 @@ export interface operations {
                      *         {
                      *           "scanId": "01JEXAMPLE0JOB0000000000AA",
                      *           "studentId": "01JEXAMPLE0STU0000000000AA",
+                     *           "state": "termine",
                      *           "docId": "01JEXAMPLE0DOC0000000000AA",
                      *           "title": "La Revolution francaise",
                      *           "subject": "histoire_geo",
@@ -1053,6 +1077,7 @@ export interface operations {
                      *         {
                      *           "scanId": "01JEXAMPLE0JOB0000000000AB",
                      *           "studentId": "01JEXAMPLE0STU0000000000AA",
+                     *           "state": "transcription",
                      *           "pages": 3,
                      *           "createdAt": "2026-12-01T11:00:00Z",
                      *           "status": {
@@ -1065,6 +1090,7 @@ export interface operations {
                      *         {
                      *           "scanId": "01JEXAMPLE0JOB0000000000AC",
                      *           "studentId": "01JEXAMPLE0STU0000000000AA",
+                     *           "state": "a_confirmer",
                      *           "subject": "svt",
                      *           "topic": "La photosynthese",
                      *           "pages": 1,
@@ -1103,6 +1129,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     createScan: {
@@ -1704,9 +1731,31 @@ export interface operations {
                     "application/json": components["schemas"]["Folder"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Requete invalide: nom vide apres nettoyage (`requete_invalide`) ou 50 dossiers atteints (`dossiers_limite`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             403: components["responses"]["Forbidden"];
-            409: components["responses"]["Conflict"];
+            /** @description Nom de dossier deja pris (sans tenir compte de la casse ni des accents) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "dossier_nom_pris",
+                     *       "message": "Tu as deja un dossier avec ce nom"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     deleteFolder: {
@@ -1771,7 +1820,21 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
+            /** @description Nom de dossier deja pris (sans tenir compte de la casse ni des accents) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "dossier_nom_pris",
+                     *       "message": "Tu as deja un dossier avec ce nom"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     addScansToFolder: {

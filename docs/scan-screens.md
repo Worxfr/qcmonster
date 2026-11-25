@@ -1,6 +1,6 @@
 # Ecrans des scans (contrat 1.3): specification pour le front
 
-Public: eleves de 11 a 17 ans, mobile d'abord (390 px), interface claire et joyeuse (pas de theme sombre), textes courts et accentues. Tout passe par `web/src/api.ts`; aucun nouvel appel en dehors du contrat 1.3. Le parent voit les memes listes en lecture seule (pas de selection, pas de modification).
+Public: eleves de 11 a 17 ans, mobile d'abord (390 px), interface claire et joyeuse (pas de theme sombre), textes courts et accentues. Tout passe par `web/src/api.ts`. Le front **n'importe pas `shared/scans.ts`** (il utilise `Buffer`, du Node): types depuis `shared/contract/generated/types.ts` seulement; libelles et normalisation sont refaits cote client si besoin; aucun nouvel appel en dehors du contrat 1.3. Le parent voit les memes listes en lecture seule (pas de selection, pas de modification).
 
 Libelles des matieres: `maths` Maths, `physique` Physique-chimie, `svt` SVT, `histoire_geo` Histoire-geo, `francais` Francais, `autre` Autre.
 
@@ -21,6 +21,7 @@ Libelles des matieres: `maths` Maths, `physique` Physique-chimie, `svt` SVT, `hi
 - Frise des etapes, dans l'ordre: Envoi, Lecture, A confirmer, Fiche, Verification, QCM, Termine. Etape courante en evidence (`aria-current="step"`), etapes passees cochees.
 - Sous la frise, pour `envoi` et `lecture`: « Pages lues 2 sur 5 » (`pagesDone`, `pagesTotal`) et une barre. Heure de debut « Commence a 10:00 » (`startedAt`), duree ecoulee mise a jour chaque seconde cote client.
 - `a_confirmer`: affiche « Il reste 9 h pour relire » (`expiresAt`) et l'ecran de confirmation actuel, avec en plus une zone « Matiere » (liste fermee, preselectionnee sur `suggestedSubject`) et « Sujet » (texte, 80 caracteres, prerempli par `suggestedTopic`), puis « Dossier ». Envoyes dans `POST /jobs/{jobId}/confirm` (`subject`, `topic`, `folderId`; champs omis si non modifies). Les photos s'affichent page par page (`photoUrls` dans l'ordre), avec « Page 2 sur 5 ».
+- Scan annule: `state: rejete` avec le message « Annule par l'eleve » (`status.message`): afficher « Annule » et non « Pas reussi » (distinguer par `state` et ce message). `rejete` autrement = « Document refuse », `expire` = « Delai depasse », `echec` = « Pas reussi ».
 - `echec`: `status.message` tel quel dans un cadre calme (pas de rouge agressif), bouton « Recommencer » vers `/scan`, rappel « Tes pages ont ete rendues ». Selon `Job.state`: `rejete` = document refuse, `expire` = delai depasse.
 - `termine`: « Ta fiche est prete » et bouton vers `/doc/<docId>`.
 - « Annuler et recuperer mes pages » reste visible a `envoi` et `a_confirmer` seulement (le serveur refuse ailleurs: 409).
@@ -44,6 +45,7 @@ Un scan `a_confirmer` n'est plus perdu quand l'eleve quitte la page: il vit cote
 - Bandeau « En cours » en haut tant que `inProgress > 0`: une ligne par scan non final avec etape et « 2 sur 5 pages ». Interrogation toutes les 3 s tant que `inProgress > 0` et l'onglet visible, sinon arret. Une ligne `a_confirmer` a un bouton « Verifier » (vers `/job/<scanId>`).
 - Carte de scan: titre, pastille matiere (couleur par matiere), sujet, nombre de pages, date. Scan sans matiere (en lecture): pastille grise « En cours ». Scan `echec`: pastille « Pas reussi » et message (ouvre l'ecran de statut).
 - Filtres (barre repliable sur mobile): matiere (menu: `facets.subjects` avec effectifs), sujet (menu: `facets.topics`), dossier (menu des dossiers + « Sans dossier »), statut (« Tout », « En cours », « Termines », « Pas reussis »). Les filtres vont dans l'URL (`?subject=...`) pour qu'un retour arriere garde l'etat.
+- Reponse `429` (limite de debit): ne pas afficher d'erreur, doubler l'intervalle d'interrogation (3 s puis 6 s, 12 s au plus) et reprendre le rythme normal au prochain succes. Un curseur `nextCursor` ne se reutilise qu'avec les memes filtres et le meme tri: changer un filtre repart de la premiere page.
 - Tri: « Plus recents » (defaut), « Plus anciens », « Par matiere », « Par sujet ». Pour « Par matiere » et « Par sujet », afficher des en-tetes de groupe (matiere puis sujet) construits cote client en parcourant la liste triee: le serveur renvoie l'ordre, pas de groupes.
 - Etats vides: aucun cours (« Scanne ton premier cours »), aucun resultat pour ces filtres (« Aucun cours ne correspond », bouton « Effacer les filtres »), dossier vide (« Ce dossier est vide »).
 
@@ -51,14 +53,15 @@ Un scan `a_confirmer` n'est plus perdu quand l'eleve quitte la page: il vit cote
 
 - Appui long sur une carte, ou bouton « Choisir »: mode selection (cases a cocher, barre basse « 3 choisis »). Cartes `en cours` non selectionnables (pas de `docId`).
 - Barre d'actions: « Ranger dans un dossier » (menu des dossiers + « Nouveau dossier ») = `POST /folders/{folderId}/scans { docIds }` (50 au plus par appel; decouper au-dela). « Sortir du dossier » = `DELETE /folders/{folderId}/scans/{docId}` pour chaque fiche. « Supprimer » = existant (`DELETE /docs/{docId}`, confirmation).
+- Un parent ou un eleve qui passe un `studentId` etranger recoit 404.
 - Une fiche deja rangee ailleurs est deplacee: le dire dans la confirmation (« 2 cours seront deplaces »).
-- Ecran « Mes dossiers » (`/folders`): liste (`GET /folders`) avec nombre de cours, creer (nom, 60 caracteres, 50 dossiers au plus), renommer, supprimer. Suppression: « Les cours restent, ils sortent du dossier » (nom deja pris: `409`, « Tu as deja un dossier avec ce nom »; plus de 50 dossiers: `400`). Toucher un dossier ouvre `/docs?folderId=<id>`.
+- Ecran « Mes dossiers » (`/folders`): liste (`GET /folders`) avec nombre de cours, creer (nom, 60 caracteres, 50 dossiers au plus), renommer, supprimer. Suppression: « Les cours restent, ils sortent du dossier » (nom deja pris: `409` code `dossier_nom_pris`; 50 dossiers atteints: `400` code `dossiers_limite`; le front lit le **code**, pas le texte). Toucher un dossier ouvre `/docs?folderId=<id>`.
 - Modifier matiere et sujet d'une fiche (ecran fiche et carte): `PATCH /docs/{docId} { subject?, topic? }`; effacer le sujet: `topic: null`.
 
 ## 5. Parent (lecture seule)
 
 - Tableau de bord: lien « Les cours de <pseudo> » qui appelle `GET /scans?studentId=<sid>` et `GET /folders?studentId=<sid>`; memes filtres et memes cartes, sans selection ni modification (un `403` serait un bug d'ecran).
-- Le parent voit les scans en cours et leur etape (pas le texte des cours).
+- Le parent voit les scans en cours avec leur etape, leurs pages, leur **titre et leur sujet** (courts), jamais le texte lu ni les photos. Decision du 2026-11-25 (corrige la decision Q3).
 
 ## Accessibilite et tests
 

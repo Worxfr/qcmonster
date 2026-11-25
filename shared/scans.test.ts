@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CONFIRM_TIMEOUT_S, EXPIRES_SOON_S, BadCursorError, cleanFolderName, cleanTopic, labelKey, listScans, statusOfJob, stageOf, UnknownFolderError, type ScanItem, type ScanQuery } from './scans.js';
 import { FicheItemSchema, FolderItemSchema, JobItemSchema } from './items.js';
 import { keys } from './ddb/keys.js';
+import { jobCapEur } from './names.js';
 import { deleteStudentTree, type TreeDb, type TreeKey } from './delete-tree.js';
 
 const S1 = 's1';
@@ -29,8 +30,9 @@ describe('statut', () => {
   });
   it('pages recues pendant l\'envoi, pages lues pendant la lecture, borne au total', () => {
     expect(statusOfJob(job('a', { pages: 3, uploadedKeys: ['k0', 'k1'] }))).toMatchObject({ stage: 'envoi', pagesDone: 2, pagesTotal: 3 });
-    expect(statusOfJob(job('a', { pages: 3, state: 'transcription', pagesRead: 1 }))).toMatchObject({ stage: 'lecture', pagesDone: 1 });
-    expect(statusOfJob(job('a', { pages: 3, state: 'transcription', pagesRead: 9 })).pagesDone).toBe(3);
+    expect(statusOfJob(job('a', { pages: 3, state: 'transcription', readPages: [1] }))).toMatchObject({ stage: 'lecture', pagesDone: 1 });
+    expect(statusOfJob(job('a', { pages: 3, state: 'transcription', readPages: [1, 1, 1, 2] })).pagesDone).toBe(2); // une page lue deux fois ne compte qu'une fois
+    expect(statusOfJob(job('a', { pages: 2, state: 'transcription', readPages: [1, 2, 3] })).pagesDone).toBe(2); // borne au total
     expect(statusOfJob(job('a', { pages: 3, state: 'generation' })).pagesDone).toBe(3);
   });
   it('echec: message lisible, avec repli si le job n\'en porte pas', () => {
@@ -142,7 +144,7 @@ describe('elements DynamoDB 1.3', () => {
   it('un job et une fiche sans champ 1.3 restent valides', () => {
     const j = { PK: 'STUDENT#s', SK: 'JOB#j', familyId: 'f', state: 'termine', pages: 1, createdAt: 'x', ttl: 1 };
     expect(JobItemSchema.safeParse(j).success).toBe(true);
-    expect(JobItemSchema.safeParse({ ...j, pages: 3, stage: 'fiche', pagesRead: 2, contentTypes: ['image/jpeg', 'image/png', 'image/png'], folderId: 'f1' }).success).toBe(true);
+    expect(JobItemSchema.safeParse({ ...j, pages: 3, stage: 'fiche', readPages: [1, 2], contentTypes: ['image/jpeg', 'image/png', 'image/png'], folderId: 'f1' }).success).toBe(true);
     expect(JobItemSchema.safeParse({ ...j, stage: 'qcm' }).success).toBe(false);
     const f = { PK: 'STUDENT#s', SK: 'DOC#d', titre: 'T', matiere: 'svt', empreinteMinHash: Array(64).fill(1), pagesConsommees: 0, createdAt: 'x' };
     expect(FicheItemSchema.safeParse(f).success).toBe(true);
@@ -194,5 +196,49 @@ describe('scans a relire: echeance de confirmation', () => {
     const r = listScans({ jobs: [job('j', { state: 'expire', message: 'Pas de confirmation apres 12 heures, la photo est supprimee' })], docs: [], folders: [], query: {}, now: NOW });
     expect(r.toReview).toBe(0);
     expect(r.items[0].status).toMatchObject({ stage: 'echec', message: expect.stringMatching(/12 heures/) });
+  });
+});
+
+describe('revue PR 40', () => {
+  it('cleanLabel retire controles C1, marques bidirectionnelles et invisibles', () => {
+    expect(cleanTopic('a\u0085b\u200bc\u202ed\u2066e\ufefff')).toBe('a b c d e f');
+    expect(cleanTopic('\u200b\u202e \ufeff <>')).toBeUndefined();
+    expect(cleanFolderName('\u202eBrevet\u202c')).toBe('Brevet');
+  });
+  it('ScanSummary.state distingue annule (rejete), echec, expire; fiche = termine', () => {
+    const jobs = [job('a', { state: 'rejete', message: 'Annule par l\'eleve' }), job('b', { state: 'echec' }), job('c', { state: 'expire' }), job('d', { state: 'bizarre' })];
+    const r = run(jobs, [doc('x')]);
+    const by = Object.fromEntries(r.items.map((i) => [i.scanId, i.state]));
+    expect(by).toMatchObject({ a: 'rejete', b: 'echec', c: 'expire', d: 'echec', x: 'termine' });
+  });
+  it('sens par defaut: croissant pour matiere et sujet, decroissant pour date', () => {
+    const docs = [doc('d1', { matiere: 'svt', sujet: 'b', createdAt: '2026-12-01T10:00:00Z' }), doc('d2', { matiere: 'maths', sujet: 'a', createdAt: '2026-12-02T10:00:00Z' }), doc('d3', { matiere: 'autre', sujet: 'c', createdAt: '2026-12-03T10:00:00Z' })];
+    expect(run([], docs, { sort: 'subject' }).items.map((i) => i.docId)).toEqual(['d2', 'd1', 'd3']);
+    expect(run([], docs, { sort: 'topic' }).items.map((i) => i.docId)).toEqual(['d2', 'd1', 'd3']);
+    expect(run([], docs, { sort: 'date' }).items.map((i) => i.docId)).toEqual(['d3', 'd2', 'd1']);
+  });
+  it('meme docId dans deux partitions (parent): ni fusion ni perte', () => {
+    const a = doc('same', { titre: 'A' });
+    const b = { ...doc('same', { titre: 'B' }), PK: 'STUDENT#s2' };
+    const jobB = { ...job('jb', { state: 'termine', docId: 'same' }), PK: 'STUDENT#s2' };
+    const r = run([jobB], [a, b]);
+    expect(r.items.map((i) => `${i.studentId}:${i.title}`).sort()).toEqual(['s1:A', 's2:B']);
+  });
+  it('curseur avec caracteres en trop refuse', () => {
+    const p1 = run([], [doc('d1'), doc('d2')], { limit: 1 });
+    expect(() => run([], [doc('d1'), doc('d2')], { cursor: `${p1.nextCursor}!` })).toThrow(BadCursorError);
+  });
+});
+
+describe('plafond de cout par traitement', () => {
+  it('max(0,25 ; 0,15 x pages), arrondi au centime', () => {
+    expect([1, 2, 3, 4, 10].map(jobCapEur)).toEqual([0.25, 0.3, 0.45, 0.6, 1.5]);
+  });
+  it('pages hors limites ramenees entre 1 et 10', () => {
+    expect(jobCapEur(0)).toBe(0.25);
+    expect(jobCapEur(-3)).toBe(0.25);
+    expect(jobCapEur(99)).toBe(1.5);
+    expect(jobCapEur(Number.NaN)).toBe(0.25);
+    expect(jobCapEur(2.9)).toBe(0.3);
   });
 });

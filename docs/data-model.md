@@ -10,7 +10,7 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | pseudo, niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub`, `quotaPages` (L2a le lit pour `reservePages`; defaut `quotaDefaults(env)`) | L3 |
 | Quota mensuel (eleve) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#<sid>` | `limite`, `utilise`, `reserve`, `bonus`, `restant` | `shared/quota.ts` (L1); lu par L2a, L3 |
 | Quota mensuel (famille) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#FAMILY` | memes attributs, `limite` = plafond famille | `shared/quota.ts` (L1) |
-| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, `stage` fin (`fiche`, `verification`), `pagesRead`, `contentTypes`, `folderId`, choix et suggestions de matiere/sujet (voir FEAT-A), nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |
+| Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, `stage` fin (`fiche`, `verification`), `readPages`, `contentTypes`, `folderId`, choix et suggestions de matiere/sujet (voir FEAT-A), nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |
 | Transcription | `JOB#<jobId>` | `TEXT#<page>` | phrases numerotees. TTL 7 jours | L2a |
 | Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, `sujet`, `dossierId`, `pages` (FEAT-A), `empreinteMinHash` (64 entiers), `pagesConsommees`, `doublon`, date, GSI1 | L2a |
 | Dossier (FEAT-A) | `STUDENT#<sid>` | `FOLDER#<folderId>` | `nom`, `nomCle` (`labelKey(nom)`), `createdAt`. Aucune liste de fiches: l'appartenance est portee par `DOC#.dossierId` | `api/src/folders/` (lot back B2) seul |
@@ -73,7 +73,7 @@ Aucune donnee existante n'est modifiee ni migree: tous les attributs ci-dessous 
 | Job | `suggestedSubject`, `suggestedTopic` | proposes par l'appel de transcription (meme appel, quelques tokens en plus, pas d'appel de plus) | `transcribe` |
 | Job | `subjectChoice`, `topicChoice` | choix de l'eleve a la confirmation; priment sur la suggestion et sur `draftSubject` | `jobs-confirm` |
 | Job | `confirmExpiresAt` | echeance de la confirmation (ISO), `awaitingSince` + `CONFIRM_TIMEOUT_S` (12 h, `shared/scans.ts`). Absent: pas d'echeance affichee | `awaitConfirm` |
-| Job | `pagesRead` | pages lues (compteur, `ADD 1` par page transcrite) | `transcribe` |
+| Job | `readPages` | **ensemble** de numeros des pages lues (`ADD` d'un ensemble de nombres, comme `uploadedKeys`): une reprise de `transcribe` ne compte pas deux fois. L'affichage utilise la taille de l'ensemble, bornee a `pages` | `transcribe` |
 | Job | `stage` | `fiche` (extraction) puis `verification`; `generation` vient de l'etat. Absent: deduit de l'etat | `extract` |
 | Fiche | `sujet`, `dossierId`, `pages` | sujet (80 car. max), dossier, nombre de pages. `pages` absent: `max(1, pagesConsommees)` | `generate` (copie du job), `docs-patch`, `folders-api` |
 | Dossier | `nom`, `nomCle`, `createdAt` | voir tableau | `folders-api` |
