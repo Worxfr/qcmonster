@@ -57,7 +57,7 @@ describe('inscription parent (mock)', () => {
     await fillForm(user, 'invalide-' + 'z'.repeat(12));
     await user.click(screen.getByRole('checkbox', { name: /politique/i }));
     await user.click(screen.getByRole('button', { name: 'Créer mon compte' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent("Code d'invitation invalide ou expiré.");
+    expect(await screen.findByRole('alert')).toHaveTextContent("Ce code d'invitation est invalide ou déjà utilisé. Demande-en un nouveau.");
   });
 
   it('mot de passe oublié: même écran que le compte existe ou non, puis nouveau mot de passe', async () => {
