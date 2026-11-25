@@ -154,7 +154,7 @@ export async function realModelPort(): Promise<ModelPort> {
           modelId: req.modelArn,
           system: req.system ? [{ text: req.system }] : undefined,
           messages: [{ role: 'user', content: content as never }],
-          inferenceConfig: { maxTokens: req.maxTokens, temperature: 0 },
+          inferenceConfig: { maxTokens: req.maxTokens }, // pas de temperature: le modele la refuse (ValidationException)
         }),
       );
       const text = (r.output?.message?.content ?? []).map((c) => c.text ?? '').join('');
