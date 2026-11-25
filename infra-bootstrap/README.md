@@ -64,7 +64,7 @@ Note: si le job utilise `environment: Production`, c'est la forme `environment:*
 ## Trust policy et `sub` immuable (depots recents)
 
 Un depot recree recemment emet un `sub` de la forme `repo:Worxfr@<idProprietaire>/qcmonster@<idDepot>:environment:dev`.
-Pour mettre a jour la trust policy d'un role existant (seul changement, rien d'autre n'est touche):
+Pour mettre a jour la trust policy d'un role existant (seul changement, rien d'autre n'est touche). `REPO_SUB_PREFIX` est obligatoire: le script s'arrete s'il est absent.:
 
 ```bash
 export EXPECTED_ACCOUNT=<ID_COMPTE>
