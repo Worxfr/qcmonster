@@ -37,6 +37,7 @@ export const MSG = {
   expiredConfirm: `Pas de confirmation après ${CONFIRM_TIMEOUT_S / 3600} heures, la photo est supprimée`,
   budget: 'Le service est en pause pour le moment, réessaie plus tard',
   failed: 'Le traitement a échoué, rescanne ton cours',
+  unreadable: 'Le cours est trop dense pour être lu en une fois : rescanne-le en deux parties (moins de pages à la fois)',
 } as const;
 
 // ---------------------------------------------------------------- 1. attente d'envoi
@@ -274,7 +275,7 @@ export async function failJob(ctx: Ctx, i: WfInput & { error?: { Error?: string 
     const docIds = new Set<string>([...(typeof job.docId === 'string' ? [job.docId] : []), ...((job.docIds as string[] | undefined) ?? [])]);
     for (const docId of docIds) await addVerifyCostOnce(ctx, i.sid, i.jobId, docId);
   }
-  const msg = i.error?.Error === 'CostBlockedError' ? MSG.budget : MSG.failed;
+  const msg = i.error?.Error === 'CostBlockedError' ? MSG.budget : i.error?.Error === 'ModelOutputError' ? MSG.unreadable : MSG.failed;
   // Meme regle: si le rendu des pages echoue (endWithoutDoc leve), le cours et les fiches sont quand meme supprimes, puis l'erreur est relevee (la relance rend).
   const ended = await endWithoutDoc(ctx, i.sid, i.jobId, ALL_OPEN, 'echec', msg).then(() => undefined, (e: unknown) => ({ e }));
   await purgeScan(ctx, i.sid, i.jobId, job);

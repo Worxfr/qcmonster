@@ -30,7 +30,10 @@ export function splitSentences(text: string): string[] {
 export const sentenceId = (page: number, n: number): string => `p${page}-s${n}`;
 
 /** Sortie du modele illisible (pas de JSON, JSON invalide ou hors schema). */
-export class ModelOutputError extends Error {}
+export class ModelOutputError extends Error {
+  // Le nom voyage dans l'erreur Step Functions (`error.Error`): `failJob` s'en sert pour un message precis a l'eleve.
+  override name = 'ModelOutputError';
+}
 
 /** Premier objet JSON de la sortie d'un modele (ignore le texte autour et les blocs ```), valide par `schema`. */
 export function parseModelJson<T>(raw: string, schema: ZodType<T>): T {
@@ -46,6 +49,39 @@ export function parseModelJson<T>(raw: string, schema: ZodType<T>): T {
   const r = schema.safeParse(parsed);
   if (!r.success) throw new ModelOutputError('sortie du modele: schema invalide');
   return r.data;
+}
+
+/**
+ * Sortie coupee par la limite de jetons (JSON jamais referme): recupere les objets COMPLETS du tableau `key`.
+ * Ne renvoie que ce que `JSON.parse` accepte objet par objet; `undefined` si aucun objet entier n'a ete recu.
+ * shortcut: une chaine contenant des accolades est geree (guillemets suivis), mais pas un tableau imbrique dans un objet de la liste.
+ */
+export function salvageTruncatedList(raw: string, key: string): unknown[] | undefined {
+  const m = new RegExp(`"${key}"\\s*:\\s*\\[`).exec(raw);
+  if (!m) return undefined;
+  const items: unknown[] = [];
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let from = -1;
+  for (let k = m.index + m[0].length; k < raw.length; k++) {
+    const c = raw[k];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === '{') {
+      if (depth++ === 0) from = k;
+    } else if (c === '}' && depth > 0 && --depth === 0) {
+      try {
+        items.push(JSON.parse(raw.slice(from, k + 1)));
+      } catch {
+        /* objet abime: ignore */
+      }
+    } else if (c === ']' && depth === 0) break;
+  }
+  return items.length > 0 ? items : undefined;
 }
 
 // ---------------------------------------------------------------- lecture d'un scan comme un seul document (FEAT-A, lot B1)
