@@ -27,3 +27,14 @@ aws cognito-idp confirm-sign-up --region eu-west-3 --client-id <SignupClientId> 
 
 ## Invitation et confirmation (N13)
 Le déclencheur `PreSignUp` consomme l'invitation à l'envoi du formulaire, pas à la confirmation. Choix assumé: une invitation ne peut ainsi donner qu'un seul compte, sans condition de course ni droit d'administration Cognito pour le déclencheur. Les restitutions possibles (réservation puis consommation par un déclencheur `PostConfirmation`, ou suppression des comptes non confirmés) exigent un second déclencheur ou `AdminDeleteUser`, et rouvrent la possibilité qu'un compte confirmé tardivement n'ait plus d'invitation valable. Conséquence: une faute de frappe dans l'e-mail, ou un code non reçu, brûle l'invitation; le propriétaire en génère une nouvelle. Le front permet de renvoyer le code (même e-mail) avant d'abandonner.
+
+## Messages d'erreur de l'inscription (D1)
+| Message affiché | Cause |
+|---|---|
+| « Ce code d'invitation est invalide ou déjà utilisé » | Le déclencheur PreSignUp a répondu `invitation_invalide` (code absent, inconnu ou déjà consommé). Générer un nouveau code. |
+| « L'inscription n'est pas disponible pour le moment » | `NotAuthorizedException` (« SignUp is not permitted »: auto-inscription coupée sur le pool, le déclencheur n'est pas atteint et le code n'est **pas** consommé) ou panne du déclencheur. |
+| « Mot de passe refusé » | Politique du pool (12 caractères, majuscule, minuscule, chiffre). |
+| « Cette adresse e-mail est déjà utilisée » | Un autre compte porte déjà cet e-mail (alias). |
+| « Ça n'a pas marché… » | Erreur non prévue: ouvrir la console du navigateur (onglet Réseau) et lire `__type` de la réponse Cognito. |
+
+Contrôle sans compte AWS: un `SignUp` non authentifié avec un faux code doit répondre `UserLambdaValidationException ... invitation_invalide`. Un `NotAuthorizedException` signifie que `AllowAdminCreateUserOnly` est redevenu vrai sur le pool (dérive hors CDK).

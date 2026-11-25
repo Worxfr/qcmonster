@@ -103,11 +103,16 @@ export function signOut(): void {
 }
 
 // --- Inscription du parent et mot de passe oublie (client -signup, sans secret, sans flux de connexion) ---
-// Les messages ne disent jamais si un compte existe, ni pourquoi un code d'invitation est refuse (« invalide ou expire »).
+// Un code d'invitation refuse a un seul message (absent, inconnu ou utilise). L'identifiant etant aleatoire, « e-mail deja utilise » ne vient que de la confirmation (alias).
 export class AuthFlowError extends Error {}
 const fail = (m: string) => new AuthFlowError(m);
 const codeOf = (e: unknown) => (e as { code?: string; name?: string } | null)?.code ?? (e as { name?: string } | null)?.name ?? '';
 const GENERIC = "Ça n'a pas marché. Vérifie ce que tu as écrit et réessaie dans un instant.";
+const msgOf = (e: unknown) => String((e as { message?: unknown } | null)?.message ?? '');
+const UNAVAILABLE = "L'inscription n'est pas disponible pour le moment. Réessaie plus tard. Si ça continue, préviens la personne qui t'a invité.";
+const BAD_INVITE = "Ce code d'invitation est invalide ou déjà utilisé. Demande-en un nouveau.";
+const EMAIL_TAKEN = 'Cette adresse e-mail est déjà utilisée. Connecte-toi, ou utilise « Mot de passe oublié ».';
+const OFFLINE = 'Pas de connexion au serveur. Vérifie ta connexion Internet et réessaie.';
 const WAIT = 'Trop d\'essais. Attends quelques minutes avant de réessayer.';
 const BAD_CODE = 'Code incorrect ou expiré.';
 const BAD_PASSWORD = 'Mot de passe refusé : 12 caractères ou plus, avec une majuscule, une minuscule et un chiffre.';
@@ -133,15 +138,20 @@ function newUsername(): string {
 export async function signUpParent(email: string, password: string, inviteCode: string): Promise<string> {
   const username = newUsername();
   if (MOCK_AUTH) {
-    if (inviteCode.startsWith(MOCK_BAD_INVITE)) throw fail("Code d'invitation invalide ou expiré.");
+    if (inviteCode.startsWith(MOCK_BAD_INVITE)) throw fail(BAD_INVITE);
   } else {
     await new Promise<void>((resolve, reject) => {
       getSignupPool().signUp(username, password, [new CognitoUserAttribute({ Name: 'email', Value: email })], [], (err) => (err ? reject(err) : resolve()), { inviteCode });
     }).catch((e) => {
       const c = codeOf(e);
-      if (c === 'UserLambdaValidationException' || c === 'UnexpectedLambdaException') throw fail("Code d'invitation invalide ou expiré.");
-      if (c === 'InvalidPasswordException') throw fail(BAD_PASSWORD);
+      // Le declencheur PreSignUp leve `invitation_invalide` pour tout refus de code (absent, inconnu, deja utilise): une autre erreur du declencheur est une panne.
+      if (c === 'UserLambdaValidationException') throw fail(msgOf(e).includes('invitation_invalide') ? BAD_INVITE : UNAVAILABLE);
+      // NotAuthorizedException: auto-inscription coupee sur le pool (le declencheur n'est alors pas atteint, le code n'est pas consomme).
+      if (c === 'NotAuthorizedException' || c === 'UnexpectedLambdaException' || c === 'InternalErrorException') throw fail(UNAVAILABLE);
+      if (c === 'InvalidPasswordException' || (c === 'InvalidParameterException' && /password/i.test(msgOf(e)))) throw fail(BAD_PASSWORD);
+      if (c === 'UsernameExistsException') throw fail(EMAIL_TAKEN);
       if (c === 'TooManyRequestsException' || c === 'LimitExceededException') throw fail(WAIT);
+      if (/network/i.test(c) || /network/i.test(msgOf(e))) throw fail(OFFLINE);
       throw fail(GENERIC);
     });
   }
@@ -158,6 +168,7 @@ export async function confirmSignUpParent(username: string, code: string): Promi
     }).catch((e) => {
       const c = codeOf(e);
       if (c === 'CodeMismatchException' || c === 'ExpiredCodeException') throw fail(BAD_CODE);
+      if (c === 'AliasExistsException') throw fail(EMAIL_TAKEN);
       if (c === 'TooManyRequestsException' || c === 'LimitExceededException' || c === 'TooManyFailedAttemptsException') throw fail(WAIT);
       throw fail(GENERIC);
     });

@@ -21,19 +21,26 @@ describe('inscription (client -signup)', () => {
     expect(u).toMatch(/^p[0-9a-f]{20}$/);
     expect(auth.pendingSignup()).toBe(u);
   });
-  it("ne distingue pas les causes d'un refus d'invitation", async () => {
-    for (const code of ['UserLambdaValidationException', 'UnexpectedLambdaException']) {
-      state.err = { code };
-      await expect(auth.signUpParent('a@example.org', 'Motdepasse12', 'c'.repeat(32))).rejects.toThrow("Code d'invitation invalide ou expiré.");
-    }
+  it("traduit chaque erreur d'inscription en message précis, sans message brut de Cognito", async () => {
+    const run = (e: object) => { state.err = e as { code: string }; return auth.signUpParent('a@example.org', 'Motdepasse12', 'c'.repeat(32)); };
+    await expect(run({ code: 'UserLambdaValidationException', message: 'PreSignUp failed with error invitation_invalide.' })).rejects.toThrow("Ce code d'invitation est invalide ou déjà utilisé");
+    await expect(run({ code: 'UserLambdaValidationException', message: 'PreSignUp failed with error AccessDeniedException: arn:x' })).rejects.toThrow("pas disponible");
+    await expect(run({ code: 'NotAuthorizedException', message: 'SignUp is not permitted for this user pool' })).rejects.toThrow("pas disponible");
+    await expect(run({ code: 'UnexpectedLambdaException' })).rejects.toThrow("pas disponible");
+    await expect(run({ code: 'InvalidPasswordException' })).rejects.toThrow(/Mot de passe refusé/);
+    await expect(run({ code: 'InvalidParameterException', message: 'Password did not conform with policy' })).rejects.toThrow(/Mot de passe refusé/);
+    await expect(run({ code: 'UsernameExistsException' })).rejects.toThrow(/déjà utilisée/);
+    await expect(run({ code: 'TooManyRequestsException' })).rejects.toThrow(/Trop d'essais/);
+    await expect(run({ code: 'NetworkError', message: 'Network error' })).rejects.toThrow(/connexion/i);
+    await expect(run({ code: 'InvalidParameterException', message: 'autre' })).rejects.toThrow(/Ça n'a pas marché/);
     expect(auth.pendingSignup()).toBeNull();
   });
-  it("n'énumère pas les comptes et ne laisse pas passer les messages bruts de Cognito", async () => {
-    state.err = { code: 'UsernameExistsException' };
-    await expect(auth.signUpParent('a@example.org', 'Motdepasse12', 'c'.repeat(32))).rejects.toThrow(/Ça n'a pas marché/);
+  it('confirmation: e-mail déjà pris par un autre compte, code faux, erreur inconnue', async () => {
     state.err = { code: 'CodeMismatchException' };
     await expect(auth.confirmSignUpParent('p1', '000000')).rejects.toThrow('Code incorrect ou expiré.');
     state.err = { code: 'AliasExistsException' };
+    await expect(auth.confirmSignUpParent('p1', '000000')).rejects.toThrow(/déjà utilisée/);
+    state.err = { code: 'Autre' };
     await expect(auth.confirmSignUpParent('p1', '000000')).rejects.toThrow(/Ça n'a pas marché/);
   });
   it('mot de passe oublié: un compte inconnu ou non vérifié répond comme un succès', async () => {
