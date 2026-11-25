@@ -37,6 +37,21 @@ Le scan est lu comme un seul document: une phrase coupee par un saut de page est
 - Sauvegarde locale (`sessionStorage`): cle par `id` de phrase, inchangee. Phrase absente de `pages` (ancien scan) : comportement actuel.
 - Tests front: phrase `pages: [1, 2]` listee une fois, corrigee une fois, envoyee une fois; page 2 vide hors phrase a cheval (message dedie); lien entre onglets; 10 pages (onglets 1 a 10 dans l'ordre, pas 1, 10, 2).
 
+### Retirer des phrases a la relecture
+
+Objectif: l'eleve enleve ce qui n'est pas dans son cours: le debut d'une page (fin du sujet precedent) ou la fin d'une page (debut d'un nouveau sujet). Envoye dans `POST /jobs/{jobId}/confirm` par `removed: string[]` (identifiants reels `p<page>-s<n>`, par exemple `p2-s1`; l'exemple « p2-1 » de la demande est le meme concept, le format du contrat est `p2-s1`). Le serveur ne connait pas de plage: l'ecran la transforme en liste d'identifiants.
+- **Par phrase**: bouton « Retirer » sur chaque carte. La carte devient grisee et barree, texte lisible, avec « Annuler le retrait ». Une phrase retiree n'a plus de zone de saisie active (ses corrections eventuelles sont ignorees et jamais envoyees: une phrase ne part jamais dans `corrections` ET `removed`).
+- **Par plage**: menu de la carte: « Retirer jusqu'ici » (de la premiere phrase de la page a celle-ci, incluse) et « Retirer a partir d'ici » (de celle-ci a la derniere de la page, incluse). Portee = la page de l'onglet; on ne retire pas plusieurs pages d'un geste (utiliser les onglets). Une confirmation courte nomme le nombre: « Retirer 4 phrases ? », annulable.
+- **Annulation avant envoi**: « Annuler le retrait » sur une carte, et « Tout remettre » dans l'en-tete. Rien n'est supprime cote serveur avant le bouton « C'est bon, vérifie ! ».
+- **Compteur**: en tete, « 24 phrases, 3 corrigées, 5 retirées » (`aria-live`), pastille « 5 retirées » dans l'onglet de la page, et dans la barre d'action « 19 phrases gardées ».
+- **Au moins une phrase doit rester**: quand tout est retire, le bouton principal est desactive avec le message « Garde au moins une phrase » (le serveur repond 400 sinon, meme texte).
+- **Phrase a cheval sur deux pages** (`pages: [1, 2]`): « Retirer » retire toute la phrase, y compris sa suite sur la page suivante; avertissement avant: « Cette phrase continue page 2, elle sera retiree en entier ». Sur la page 2, « Retirer jusqu'ici » au debut de la page ne peut pas retirer la suite sans la phrase de la page 1: proposer « Retirer la phrase de la page 1 qui continue ici » (meme confirmation).
+- **Page vide apres retrait**: « Tout est retire sur cette page » avec « Remettre ». Le scan garde toutes ses pages (quota inchange): le dire dans l'aide: « Retirer des phrases ne rend pas de pages ».
+- **Confidentialite**: dire une fois, sobrement: « Les phrases retirees sont effacees quand tu valides ». Rien n'est garde ensuite.
+- **Sauvegarde locale** (`sessionStorage`, cle `qcm.confirm.<job>`): ajouter la liste `removed`, effacee comme le reste apres envoi ou changement d'etat du job.
+- **Erreurs**: `400` « Il doit rester au moins une phrase » et « Phrase inconnue » (liste relue, saisies gardees), `409` etat change (comportement actuel).
+- **Tests front**: retrait d'une phrase puis annulation (rien d'envoye), « jusqu'ici » et « a partir d'ici » (bons identifiants, bornes incluses), retrait + correction de la meme phrase (la correction n'est pas envoyee), tout retire (bouton desactive), phrase a cheval (retrait entier, avertissement), page vide apres retrait, compteur « N retirées », rechargement (retraits restaures), 10 pages dans l'ordre numerique. **FEAT-E (PR #41) ne le fait pas dans son perimetre: il suit dans le lot F, apres la fusion de ce contrat.** Decouper un scan en deux fiches de sujets differents n'est pas dans ce lot (parque).
+
 ## 2 bis. Scans a relire: reprise, echeance, accueil
 
 Un scan `a_confirmer` n'est plus perdu quand l'eleve quitte la page: il vit cote serveur (`jobId` = `scanId`) et reste ouvert jusqu'a `status.expiresAt` (12 h apres la fin de la lecture, au lieu de 30 min). Le front ne retient rien (ni `localStorage` ni URL): tout vient de `GET /scans`.

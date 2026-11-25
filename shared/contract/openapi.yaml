@@ -181,14 +181,17 @@ paths:
     post:
       operationId: confirmJob
       tags: [scans]
-      summary: Texte corrige, reprend le workflow (handler jobs-confirm, L2a)
+      summary: Texte corrige, phrases retirees, reprend le workflow (handler jobs-confirm, L2a)
+      description: |
+        `corrections` remplace le texte de phrases existantes; `removed` (v1.3) **retire** des phrases: elles sont exclues de l'extraction, de la fiche, des QCM et du resume, et leur texte est supprime du job a la confirmation (comme la photo). Le client ne voit pas de plage: « retirer jusqu'ici » ou « a partir d'ici » sont deux ecrans qui envoient la liste des identifiants.
+        Regles (400 `requete_invalide`, aucune modification): un identifiant inconnu (dans `corrections` ou `removed`); un identifiant dans `corrections` ET `removed`; plus aucune phrase apres retrait (au moins une doit rester). Un retrait ne change pas le quota: les pages reservees restent consommees comme avant. Retirer une phrase a cheval sur deux pages retire la phrase entiere.
       parameters: [{ $ref: '#/components/parameters/JobId' }]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ConfirmRequest' }
-            example: { corrections: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }], subject: svt, topic: La photosynthese, folderId: 01JEXAMPLE0FLD0000000000AA }
+            example: { corrections: [{ id: p1-s1, text: La photosynthese produit du dioxygene. }], removed: [p2-s1, p2-s2], subject: svt, topic: La photosynthese, folderId: 01JEXAMPLE0FLD0000000000AA }
       responses:
         '200':
           description: Job repris
@@ -200,6 +203,15 @@ paths:
                 state: verification
                 pages: 2
                 createdAt: '2026-12-01T10:00:00Z'
+        '400':
+          description: "Demande invalide. Cas propres aux retraits: identifiant de phrase inconnu, identifiant present dans `corrections` et `removed`, aucune phrase restante, `topic` vide apres nettoyage."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                inconnu: { summary: Identifiant inconnu, value: { code: requete_invalide, message: Phrase inconnue } }
+                double: { summary: Corrigee et retiree, value: { code: requete_invalide, message: Une phrase ne peut pas etre corrigee et retiree } }
+                rien: { summary: Tout retire, value: { code: requete_invalide, message: Il doit rester au moins une phrase } }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /jobs/{jobId}/cancel:
@@ -948,6 +960,12 @@ components:
       required: [corrections]
       properties:
         corrections: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/Sentence' } }
+        removed:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+          description: "Facultatif (v1.3): identifiants des phrases retirees (ex. p2-s1). Voir la description de la route pour les regles: inconnu, en double avec `corrections` ou plus aucune phrase = 400. Absent ou vide: rien n'est retire (client 1.2 inchange)."
         subject: { $ref: '#/components/schemas/Subject' }
         topic: { $ref: '#/components/schemas/Topic', description: "Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle." }
         folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation" }

@@ -156,4 +156,20 @@ describe('contrat OpenAPI', () => {
     expect(ex.pages.map((p: { page: number }) => p.page)).toEqual([1, 2]);
     expect(zodSchemas.TranscriptionSchema.safeParse(ex).success).toBe(true);
   });
+  it('contrat 1.3: retrait de phrases a la confirmation (ConfirmRequest.removed)', () => {
+    const z = zodSchemas.ConfirmRequestSchema;
+    expect(z.safeParse({ corrections: [] }).success).toBe(true); // client 1.2 inchange
+    expect(spec.components.schemas.ConfirmRequest.required).toEqual(['corrections']);
+    expect(z.safeParse({ corrections: [], removed: ['p2-s1', 'p2-s2'] }).success).toBe(true);
+    expect(z.safeParse({ corrections: [], removed: [] }).success).toBe(true);
+    expect(z.safeParse({ corrections: [], removed: ['p2-1'] }).success).toBe(false); // format reel: p<page>-s<n>
+    expect(z.safeParse({ corrections: [], removed: ['p2-s1', 'p2-s1'] }).success).toBe(false); // doublon
+    expect(z.safeParse({ corrections: [], removed: Array.from({ length: 501 }, (_, i) => `p1-s${i}`) }).success).toBe(false);
+    const op = spec.paths['/jobs/{jobId}/confirm'].post;
+    expect(op.description).toMatch(/au moins une doit rester/);
+    expect(op.description).toMatch(/ne change pas le quota/);
+    expect(Object.keys(op.responses)).toContain('400');
+    expect(Object.keys(op.responses['400'].content['application/json'].examples)).toEqual(['inconnu', 'double', 'rien']);
+    expect(zodSchemas.ConfirmRequestSchema.safeParse(op.requestBody.content['application/json'].example).success).toBe(true);
+  });
 });

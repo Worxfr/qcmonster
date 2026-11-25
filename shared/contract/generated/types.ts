@@ -72,7 +72,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Texte corrige, reprend le workflow (handler jobs-confirm, L2a) */
+        /**
+         * Texte corrige, phrases retirees, reprend le workflow (handler jobs-confirm, L2a)
+         * @description `corrections` remplace le texte de phrases existantes; `removed` (v1.3) **retire** des phrases: elles sont exclues de l'extraction, de la fiche, des QCM et du resume, et leur texte est supprime du job a la confirmation (comme la photo). Le client ne voit pas de plage: « retirer jusqu'ici » ou « a partir d'ici » sont deux ecrans qui envoient la liste des identifiants.
+         *     Regles (400 `requete_invalide`, aucune modification): un identifiant inconnu (dans `corrections` ou `removed`); un identifiant dans `corrections` ET `removed`; plus aucune phrase apres retrait (au moins une doit rester). Un retrait ne change pas le quota: les pages reservees restent consommees comme avant. Retirer une phrase a cheval sur deux pages retire la phrase entiere.
+         */
         post: operations["confirmJob"];
         delete?: never;
         options?: never;
@@ -678,6 +682,8 @@ export interface components {
         };
         ConfirmRequest: {
             corrections: components["schemas"]["Sentence"][];
+            /** @description Facultatif (v1.3): identifiants des phrases retirees (ex. p2-s1). Voir la description de la route pour les regles: inconnu, en double avec `corrections` ou plus aucune phrase = 400. Absent ou vide: rien n'est retire (client 1.2 inchange). */
+            removed?: string[];
             subject?: components["schemas"]["Subject"];
             /** @description Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle. */
             topic?: components["schemas"]["Topic"];
@@ -1343,6 +1349,10 @@ export interface operations {
                  *           "text": "La photosynthese produit du dioxygene."
                  *         }
                  *       ],
+                 *       "removed": [
+                 *         "p2-s1",
+                 *         "p2-s2"
+                 *       ],
                  *       "subject": "svt",
                  *       "topic": "La photosynthese",
                  *       "folderId": "01JEXAMPLE0FLD0000000000AA"
@@ -1367,6 +1377,15 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Demande invalide. Cas propres aux retraits: identifiant de phrase inconnu, identifiant present dans `corrections` et `removed`, aucune phrase restante, `topic` vide apres nettoyage. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             404: components["responses"]["NotFound"];
