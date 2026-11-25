@@ -2,11 +2,13 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
+import { signOut } from '../../auth';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
 const sent: unknown[] = [];
 let jobAfter: Record<string, unknown> | null = null;
 let confirmStatus = 200;
+let trFails = 0;
 
 function tr(pages: string[][]) {
   return {
@@ -23,7 +25,7 @@ function stub(t: unknown) {
     const url = String(input instanceof Request ? input.url : input);
     if (url.endsWith('/me')) return json({ userId: 'u1', role: 'eleve', familyId: 'f1', studentId: 's1', pseudo: 'Test' });
     if (url.endsWith('/me/progress')) return json({ xp: 0, level: 0, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 5, pagesLimit: 10, resetDate: '2026-12-01' });
-    if (url.endsWith('/transcription')) return json(t);
+    if (url.endsWith('/transcription')) return trFails-- > 0 ? json({ code: 'erreur', message: 'Réseau coupé' }, 500) : json(t);
     if (url.endsWith('/confirm')) {
       sent.push(JSON.parse(String(init?.body)));
       if (confirmStatus !== 200) return json({ code: 'etat_invalide', message: "Le job n'est plus a confirmer" }, confirmStatus);
@@ -43,6 +45,7 @@ beforeEach(() => {
   sent.length = 0;
   jobAfter = null;
   confirmStatus = 200;
+  trFails = 0;
   sessionStorage.clear();
   sessionStorage.setItem('qcm.mockRole', 'eleve');
 });
@@ -121,7 +124,7 @@ describe('écran de relecture', () => {
   it('page sans phrase: message clair', async () => {
     stub(tr([[]]));
     await open();
-    expect(await screen.findByText(/Je n'ai rien lu sur cette page/)).toBeInTheDocument();
+    expect(await screen.findByText(/Je n'ai rien lu sur ta photo/)).toBeInTheDocument();
   });
 
   it('photo qui ne charge pas: message et bouton pour recharger', async () => {
@@ -162,5 +165,78 @@ describe('écran de relecture', () => {
     expect(screen.getByText('125 %')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Dézoomer' }));
     expect(screen.getByText('100 %')).toBeInTheDocument();
+  });
+
+  it('déconnexion: les corrections non envoyées sont effacées', async () => {
+    stub(tr([['Une phrase.']]));
+    await open();
+    await userEvent.type(await screen.findByLabelText('Phrase 1'), ' secret.');
+    expect(sessionStorage.getItem('qcm.confirm.J1')).not.toBeNull();
+    signOut();
+    expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull();
+  });
+
+  it('plein écran: dialogue modal, focus piégé, reste de la page inerte, focus rendu à la fermeture', async () => {
+    stub(tr([['Une phrase.']]));
+    const { container } = await open();
+    const opener = await screen.findByRole('button', { name: 'Plein écran' });
+    await userEvent.click(opener);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.parentElement).toBe(document.body); // portail: hors du bloc sticky
+    expect(screen.getByRole('button', { name: 'Fermer' })).toHaveFocus();
+    expect((container as HTMLElement & { inert?: boolean }).inert).toBe(true);
+    for (let i = 0; i < 6; i++) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Plein écran' })).toHaveFocus();
+    expect((container as HTMLElement & { inert?: boolean }).inert).toBe(false);
+  });
+
+  it('aucune phrase: envoi désactivé, explication et bouton pour refaire la photo', async () => {
+    stub(tr([[]]));
+    await open();
+    expect(await screen.findByRole('button', { name: /vérifie/i })).toBeDisabled();
+    expect(screen.getByText(/aucun texte à vérifier/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Refaire la photo' }));
+    expect(window.location.hash).toBe('#/scan');
+  });
+
+  it('rechargement de la photo raté: l\'écran et les saisies restent, bouton Réessayer', async () => {
+    stub(tr([['Une phrase.']]));
+    await open();
+    await userEvent.type(await screen.findByLabelText('Phrase 1'), ' Gardée.');
+    fireEvent.error(screen.getByRole('img', { name: /Photo de ta page 1/ }));
+    trFails = 1;
+    await userEvent.click(screen.getByRole('button', { name: 'Recharger la photo' }));
+    expect(await screen.findByText(/Impossible de recharger la photo/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Phrase 1')).toHaveValue('Une phrase. Gardée.');
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(await screen.findByRole('img', { name: /Photo de ta page 1/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('Phrase 1')).toHaveValue('Une phrase. Gardée.');
+  });
+
+  it('onglets de pages: flèches du clavier, état de la phrase lié au champ', async () => {
+    stub(tr([['Un.'], ['Deux.'], ['Trois.']]));
+    await open();
+    const tab1 = await screen.findByRole('tab', { name: /Page 1/ });
+    tab1.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: /Page 2/ })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: /Page 2/ })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{End}');
+    expect(screen.getByRole('tab', { name: /Page 3/ })).toHaveAttribute('aria-selected', 'true');
+    const box = screen.getByLabelText('Phrase 3');
+    expect(box).toHaveAccessibleDescription('Inchangée');
+  });
+
+  it('petit écran: la photo est repliée par défaut', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+    stub(tr([['Une phrase.']]));
+    await open();
+    expect(await screen.findByRole('button', { name: 'Voir la photo' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('img', { name: /Photo de ta page 1/ })).toBeNull();
   });
 });

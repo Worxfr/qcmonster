@@ -107,6 +107,7 @@ purgeStrayTokens();
 
 export function signOut(): void {
   purgeStrayTokens();
+  Object.keys(sessionStorage).filter((k) => k.startsWith('qcm.confirm.')).forEach((k) => sessionStorage.removeItem(k)); // texte de cours non envoyé
   if (MOCK_AUTH) sessionStorage.removeItem(ROLE_KEY);
   else getPool().getCurrentUser()?.signOut();
   SIGNED_OUT.dispatchEvent(new Event('out'));
