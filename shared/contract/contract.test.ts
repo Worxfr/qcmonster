@@ -32,6 +32,7 @@ const EXPECTED = [
   'DELETE /scans/{scanId}', 'GET /cours/{coursId}', 'DELETE /cours/{coursId}',
   // contract-v1.4 (H1)
   'GET /me/tests', 'GET /me/tests/{testId}', 'GET /students/{sid}/progress', 'GET /students/{sid}/tests',
+  'GET /students/{sid}/tests/{testId}', 'POST /family/export/archive',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -205,13 +206,19 @@ describe('contrat OpenAPI', () => {
 });
 
 describe('contrat v1.4 (H1): historique des tests et vue parent', () => {
-  const schemas = spec.components.schemas as Record<string, { properties?: Record<string, unknown> }>;
-  it("la vue parent n'expose ni question, ni reponse, ni texte de cours", () => {
-    const keys = [schemas.StudentProgressView, schemas.TestSummary, schemas.DocProgress, schemas.ScanProgress].flatMap((s) => Object.keys(s.properties ?? {}));
-    for (const banned of ['prompt', 'choices', 'choice', 'correctAnswer', 'questions']) expect(keys).not.toContain(banned);
+  const schemas = spec.components.schemas as Record<string, { properties?: Record<string, unknown>; allOf?: unknown[] }>;
+  const BANNED = ['prompt', 'choices', 'choice', 'correctAnswer'];
+  it("la vue parent et l'archive donnent le resultat par question mais ni texte, ni reponse donnee", () => {
+    const names = ['StudentProgressView', 'TestSummary', 'TestQuestionStatus', 'TestParentDetail', 'DocProgress', 'ScanProgress'];
+    const json = JSON.stringify(names.map((n) => schemas[n]));
+    for (const banned of BANNED) expect(json).not.toContain(`"${banned}"`);
+    expect(Object.keys(schemas.TestQuestionStatus.properties ?? {})).toEqual(expect.arrayContaining(['questionId', 'rank', 'correct']));
   });
-  it("l'export des tests ne copie pas le texte des questions", () => {
-    expect(Object.keys(schemas.TestQuestionResult.properties ?? {})).not.toEqual(expect.arrayContaining(['prompt']));
-    expect(JSON.stringify(schemas.TestExport)).not.toMatch(/"(prompt|choices|correctAnswer)"/);
+  it("seul l'eleve lit la reponse donnee (TestQuestionResult.choice)", () => {
+    expect(JSON.stringify(schemas.TestQuestionResult)).toContain('"choice"');
+  });
+  it('les passages portent une annee scolaire', () => {
+    expect(schemas.TestSummary.properties).toHaveProperty('schoolYear');
+    expect(zodSchemas.TestSummarySchema.safeParse({}).success).toBe(false);
   });
 });
