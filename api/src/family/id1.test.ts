@@ -167,6 +167,16 @@ describe('ID1: renommage par le parent', () => {
     expect(names(t)).toEqual(['anouk', 'bob']);
     await expect(mk(t, 'Ana')).resolves.toBeDefined(); // l'ancien nom est libre
   });
+  it('B1: un surnom en lettres pleine largeur prend la meme reservation que sa forme ordinaire', async () => {
+    const t = testDeps();
+    await fam(t);
+    await mk(t, 'Lila');
+    const b = await mk(t, 'Bob');
+    const e = await err(updateStudent(t.deps, parentCtx, b.student.studentId, { displayName: 'Ｌｉｌａ' }));
+    expect(e.code).toBe('pseudo_pris');
+    expect((await err(updateStudent(t.deps, parentCtx, b.student.studentId, { displayName: 'ｆｕｃｋ' }))).code).toBe('pseudo_refuse');
+    expect(names(t)).toEqual(['bob', 'lila']);
+  });
   it('surnom refuse par le parent: 400 pseudo_refuse; eleve d\'une autre famille: 404', async () => {
     const t = testDeps();
     await fam(t);
@@ -296,6 +306,18 @@ describe('ID1: nouvel identifiant de connexion', () => {
     expect(e1.status).toBe(404);
     expect(t.identity.users.get(o.student.studentId)!.alias).toBe(o.student.loginId);
     expect(t.identity.signOuts.size).toBe(0);
+  });
+  it('m2: deux demandes en course: la reponse gagnante est l\'alias reel de Cognito et la base le porte aussi', async () => {
+    const t = testDeps();
+    await fam(t);
+    const a = await mk(t, 'Ana');
+    const sid = a.student.studentId;
+    const r = await Promise.allSettled([regenerateLoginId(t.deps, parentCtx, sid), regenerateLoginId(t.deps, parentCtx, sid)]);
+    const ok = r.filter((x): x is PromiseFulfilledResult<{ loginId: string }> => x.status === 'fulfilled');
+    expect(ok.length).toBeGreaterThanOrEqual(1);
+    const alias = t.identity.users.get(sid)!.alias;
+    for (const x of ok) expect(x.value.loginId).toBe(alias);
+    expect(loginIdOf((await t.store.get(keys.student(FID, sid)))!)).toBe(alias);
   });
   it('utilisateur Cognito disparu: 404', async () => {
     const t = testDeps();

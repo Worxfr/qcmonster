@@ -19,6 +19,8 @@ export function Parent() {
   const [link, setLink] = useState<Shown | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [idBusy, setIdBusy] = useState<string | null>(null); // eleve dont le nouvel identifiant est en cours de creation
   const [error, setError] = useState<string | null>(null);
 
   if (d.loading) return <Loading />;
@@ -39,9 +41,20 @@ export function Parent() {
   const newLink = (s: Student) => act(async () => { const l = await api.activationLink(s.studentId); setLink({ kind: 'link', name: s.displayName, loginId: s.loginId, ...l }); });
   const newLoginId = (s: Student) => {
     if (!window.confirm(`Ton enfant devra se reconnecter avec le nouvel identifiant. Son mot de passe reste le même. Créer un nouvel identifiant pour ${s.displayName} ?`)) return;
-    void act(async () => { const r = await api.regenerateLoginId(s.studentId); setLink({ kind: 'login', name: s.displayName, loginId: r.loginId }); });
+    setIdBusy(s.studentId); // un seul appel a la fois: deux demandes en course donneraient deux identifiants
+    void act(async () => { const r = await api.regenerateLoginId(s.studentId); setLink({ kind: 'login', name: s.displayName, loginId: r.loginId }); }).finally(() => setIdBusy(null));
   };
-  const rename = (s: Student) => act(async () => { await api.updateStudent(s.studentId, { displayName: newName.trim() }); setRenaming(null); });
+  // L'erreur (surnom deja pris, refuse) reste pres du champ, pas en haut de page.
+  const rename = async (s: Student) => {
+    setRenameError(null);
+    try {
+      await api.updateStudent(s.studentId, { displayName: newName.trim() });
+      setRenaming(null);
+      d.reload();
+    } catch (e) {
+      setRenameError(errMsg(e));
+    }
+  };
 
   return (
     <>
@@ -102,18 +115,22 @@ export function Parent() {
                   {s.status === 'actif' ? 'Suspendre' : 'Réactiver'}
                 </button>
                 <button className="btn btn-small btn-alt" onClick={() => newLink(s)}>Nouveau lien (mot de passe perdu)</button>
-                {renaming === s.studentId ? (
+                {renaming !== s.studentId && (
+                  <button className="btn btn-small btn-ghost" onClick={() => { setRenaming(s.studentId); setNewName(s.displayName); setRenameError(null); }}>Changer le surnom</button>
+                )}
+                <button className="btn btn-small btn-ghost" disabled={idBusy === s.studentId} onClick={() => newLoginId(s)}>{idBusy === s.studentId ? 'Un instant…' : 'Nouvel identifiant de connexion'}</button>
+                {renaming === s.studentId && (
                   <form className="rename" onSubmit={(e) => { e.preventDefault(); if (nicknameFormOk(newName)) void rename(s); }}>
                     <label>Nouveau surnom pour {s.displayName}
-                      <input value={newName} maxLength={20} autoComplete="off" onChange={(e) => setNewName(e.target.value)} aria-invalid={newName !== '' && !nicknameFormOk(newName)} />
+                      <input value={newName} maxLength={20} autoComplete="off" onChange={(e) => { setNewName(e.target.value); setRenameError(null); }} aria-invalid={!!renameError || (newName !== '' && !nicknameFormOk(newName))} aria-describedby="rename-err" />
                     </label>
-                    <button className="btn btn-small" disabled={!nicknameFormOk(newName)}>Enregistrer</button>
-                    <button type="button" className="btn btn-small btn-ghost" onClick={() => setRenaming(null)}>Annuler</button>
+                    <p id="rename-err" role="alert" className={renameError ? 'error' : 'sr-only'}>{renameError ?? ''}</p>
+                    <span className="btn-row">
+                      <button className="btn btn-small" disabled={!nicknameFormOk(newName)}>Enregistrer</button>
+                      <button type="button" className="btn btn-small btn-ghost" onClick={() => setRenaming(null)}>Annuler</button>
+                    </span>
                   </form>
-                ) : (
-                  <button className="btn btn-small btn-ghost" onClick={() => { setRenaming(s.studentId); setNewName(s.displayName); }}>Changer le surnom</button>
                 )}
-                <button className="btn btn-small btn-ghost" onClick={() => newLoginId(s)}>Nouvel identifiant de connexion</button>
                 <label>Niveau
                   <select value={s.schoolLevel} onChange={(e) => void act(() => api.updateStudent(s.studentId, { schoolLevel: e.target.value as Student['schoolLevel'] }))}>
                     <option value="seconde">Seconde</option>

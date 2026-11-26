@@ -182,19 +182,30 @@ describe('ID1: espace parent', () => {
     await user.clear(input);
     await user.type(input, 'Lilou');
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
-    expect(await screen.findByText(/déjà pris dans ta famille/)).toBeInTheDocument();
+    const msg = await screen.findByText(/déjà pris dans ta famille/);
+    expect(msg).toHaveAttribute('role', 'alert');
+    expect(msg.closest('form')).not.toBeNull(); // m5: l'erreur est dans le formulaire de renommage, pres du champ
     expect(calls.filter((c) => c.method === 'PATCH').at(-1)?.body).toEqual({ displayName: 'Lilou' });
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull());
   });
   it('« Nouvel identifiant de connexion » demande confirmation, puis montre le nouvel identifiant', async () => {
-    routes['POST /students/s1/login-id'] = () => json({ loginId: 'lila-m4kx7' });
+    let release: (r: Response) => void = () => undefined;
+    const pending = new Promise<Response>((res) => { release = res; });
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => (String(input).endsWith('/students/s1/login-id') ? (calls.push({ url: String(input), method: init?.method ?? 'GET', body: undefined }), pending) : real(input, init)));
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     const user = userEvent.setup();
     await enter();
     await user.click(screen.getByRole('button', { name: 'Nouvel identifiant de connexion' }));
     expect(calls.some((c) => c.url.endsWith('/login-id'))).toBe(false); // refus: rien n'est envoye
     await user.click(screen.getByRole('button', { name: 'Nouvel identifiant de connexion' }));
+    // m2: pendant l'appel le bouton est desactive, un second clic n'envoie rien
+    const busy = await screen.findByRole('button', { name: 'Un instant…' });
+    expect(busy).toBeDisabled();
+    await user.click(busy);
+    expect(calls.filter((c) => c.url.endsWith('/login-id'))).toHaveLength(1);
+    release(json({ loginId: 'lila-m4kx7' }));
     expect(await screen.findByTestId('login-id')).toHaveTextContent('lila-m4kx7');
     expect(confirm.mock.calls[0][0]).toMatch(/mot de passe reste le même/);
   });

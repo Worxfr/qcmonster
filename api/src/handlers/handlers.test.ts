@@ -37,6 +37,7 @@ describe('handlers: refus avant tout appel AWS', () => {
     ['family-admin', 'DELETE /family'],
     ['family-create', 'POST /family/policy'],
     ['family-read', 'GET /family/dashboard'],
+    ['students-login-id-post', 'POST /students/{sid}/login-id'],
   ])('%s %s: un eleve est refuse (403)', async (name, route) => {
     expect((await (await load(name))(asStudent(route))).statusCode).toBe(403);
   });

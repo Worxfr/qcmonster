@@ -174,5 +174,12 @@ export async function regenerateLoginId(deps: FamilyDeps, ctx: ParentCtx, sid: s
   // Le champ `pseudo` brut d'un ancien compte n'est jamais reecrit: il garde l'ancien alias, sans effet (loginIdOf lit `loginId` d'abord).
   if (next !== inBase && !(await deps.store.commit([{ item: { ...s, loginId: next }, when: s.v ?? 'any' }]))) throw conflict('Réessaie');
   await deps.identity.signOut(sid);
-  return { loginId: next };
+  // Deux demandes en course peuvent laisser Cognito sur l'alias de l'autre: on relit l'alias de Cognito (la source de verite pour se connecter),
+  // on aligne la base dessus et on renvoie celui-la, jamais un identifiant qui ne marcherait pas.
+  const final = (await deps.identity.getAlias(sid)) ?? next;
+  if (final !== next) {
+    const again = await studentOf(deps, ctx.familyId, sid);
+    if (loginIdOf(again) !== final) await deps.store.commit([{ item: { ...again, loginId: final }, when: again.v ?? 'any' }]);
+  }
+  return { loginId: final };
 }

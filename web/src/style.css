@@ -285,4 +285,4 @@ math mi:not(.mi-i) + mi.mi-i { margin-inline-start: .17em; } /* « sin x » */
 .login-id { text-align: center; padding: 1rem; border: 2px dashed var(--brand); }
 .login-id-label { margin: 0 0 .3rem; font-weight: 700; }
 .login-id-value { margin: .2rem 0 .6rem; font-size: 2rem; font-weight: 800; letter-spacing: .04em; color: var(--brand); font-family: ui-monospace, 'Courier New', monospace; word-break: break-all; user-select: all; }
-.rename { display: grid; gap: .4rem; }
+.actions .rename { display: grid; gap: .4rem; order: 99; flex: 1 1 100%; max-width: 28rem; margin-top: .3rem; }

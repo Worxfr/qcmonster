@@ -32,6 +32,19 @@ describe('shared/pseudo-rules', () => {
     no('Li\u202Ela', 'forme'); // marque de direction
     no('Lila\u0301\u0302\u0303', 'forme');
   });
+  it('B1: lettres pleine largeur et ligatures sont ramenees a des lettres ordinaires avant tout controle', () => {
+    expect(checkNickname('Ｌｉｌａ')).toEqual({ ok: true, value: 'Lila' });
+    expect(checkNickname('ﬁlle')).toEqual({ ok: true, value: 'fille' });
+    no('ｆｕｃｋ', 'mot');
+    no('Ａdmin', 'mot');
+    no('Ｃｏｎｎａｒｄ', 'mot');
+    expect(nameKey('Ｌｉｌａ')).toBe(nameKey('lila'));
+    expect(nameKey('ﬁlle')).toBe('fille');
+  });
+  it('m1: espaces et lettres doublees ne contournent pas la liste', () => {
+    for (const s of ['f u c k', 'fuuck', 'p u t e', 'c o n n a r d', 'Connaaard', 'a d m i n', 'p0rrn', 'Ni que']) no(s);
+    for (const s of ['Lou Lou', 'Anna', 'Hugo Lee']) ok(s);
+  });
   it('NFC et NFD donnent la meme valeur', () => {
     const r = checkNickname('Le\u0301a');
     expect(r).toEqual({ ok: true, value: 'L\u00e9a' });
