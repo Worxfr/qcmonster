@@ -157,7 +157,7 @@ describe('parcours eleve contre l\'API simulee', () => {
     const { view } = await enter('eleve');
     await goTo('/jeu');
     expect(await screen.findByText('Les stades du monstre')).toBeInTheDocument();
-    expect(await screen.findByText('Lila-7k2f')).toBeInTheDocument();
+    expect(await screen.findByText('Lila')).toBeInTheDocument();
     expect(screen.getByText('310 XP')).toBeInTheDocument();
     expect(screen.getByText(/dès que tu gagnes 30 XP/)).toBeInTheDocument(); // B4: règle de la série expliquée (docs/game-rules.md §3)
     expect(screen.getByRole('heading', { name: /Mes badges/ })).toBeInTheDocument();
@@ -189,12 +189,12 @@ describe('parcours parent', () => {
   it('tableau de bord, quotas et invitation d\'un eleve', async () => {
     const { user, view } = await enter('parent');
     expect(await screen.findByText(/12 pages utilisées sur 50/)).toBeInTheDocument();
-    const list = await screen.findByRole('heading', { name: /Lila-7k2f/ });
+    const list = await screen.findByRole('heading', { name: /Lila/ });
     expect(list).toBeInTheDocument();
     await a11y(view.container);
     const submit = screen.getByRole('button', { name: /Créer et obtenir le lien/ });
     expect(submit).toBeDisabled();
-    await user.type(screen.getByLabelText(/Pseudo \(sans nom de famille\)/), 'Lila');
+    await user.type(screen.getByLabelText(/Surnom de départ/), 'Lila');
     await user.click(screen.getByLabelText(/autorité parentale/));
     expect(submit).toBeEnabled();
     await user.click(submit);

@@ -13,6 +13,7 @@ import { CreateFamily } from './screens/CreateFamily';
 import { DocView as Doc } from './screens/Doc';
 import { ForgotPassword } from './screens/ForgotPassword';
 import { Game } from './screens/Game';
+import { Profile } from './screens/Profile';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { Parent } from './screens/Parent';
@@ -108,6 +109,7 @@ function Shell() {
   else if (seg === 'doc' && id) body = <Doc id={id} claimId={id2 || undefined} />;
   else if (seg === 'quiz' && id) body = <Quiz key={route} docId={id} size={Number(query.get('size')) || undefined} />;
   else if (seg === 'entrainement') body = <Practice key={route} docIds={query.get('docIds')?.split(',').filter(Boolean)} folderId={query.get('folderId') ?? undefined} />;
+  else if (seg === 'profil') body = <Profile />;
   else if (seg === 'jeu') body = <Game />;
   else if (seg === 'tests' && id) body = <TestDetailView id={id} />;
   else if (seg === 'tests') body = <Tests />;
@@ -148,7 +150,7 @@ function Shell() {
 /** Vue parent, lecture seule: les cours d'un eleve de la famille (jamais le texte ni les photos). */
 function ParentCourses({ sid }: { sid: string }) {
   const d = useLoad(() => api.dashboard(), []);
-  const pseudo = d.data?.students.find((s) => s.student.studentId === sid)?.student.pseudo;
+  const pseudo = d.data?.students.find((s) => s.student.studentId === sid)?.student.displayName;
   return (
     <>
       <p><a className="link" href="#/">‹ Tableau de bord</a></p>

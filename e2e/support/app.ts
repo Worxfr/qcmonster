@@ -49,7 +49,7 @@ export async function login(page: Page, role: Role) {
     return;
   }
   const c = creds[role];
-  await page.getByLabel('Pseudo ou e-mail').fill(c.user);
+  await page.getByLabel('Identifiant ou e-mail').fill(c.user);
   await page.getByLabel('Mot de passe').fill(c.password);
   await page.getByRole('button', { name: 'Se connecter' }).click();
 }

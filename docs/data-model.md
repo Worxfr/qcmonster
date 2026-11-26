@@ -7,7 +7,8 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Type | PK | SK | Attributs principaux | Ecrit par |
 |---|---|---|---|---|
 | Famille | `FAMILY#<fid>` | `META` | plafond pages famille, date de creation | L3 |
-| Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | pseudo, niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub`, `quotaPages` (L2a le lit pour `reservePages`; defaut `quotaDefaults(env)`) | L3 |
+| Eleve | `FAMILY#<fid>` | `STUDENT#<sid>` | `loginId` (identifiant de connexion, minuscules, = alias Cognito), `displayName` (surnom affiche; anciens comptes: `pseudo` seul, derive par `loginIdOf`/`displayNameOf`), niveau scolaire, `moins15`, statut (`actif`, `suspendu`), `cognitoSub`, `quotaPages` (L2a le lit pour `reservePages`; defaut `quotaDefaults(env)`) | L3 |
+| Reservation de nom | `FAMILY#<fid>` | `NAME#<nom normalise>` (`nameKey`: NFC, sans accent, minuscules, espaces et tirets unifies) | `studentId`, `creeLe`. Ecrite avec `absent` dans la meme ecriture que l'eleve (creation, activation, renommage); liberee au renommage et a la suppression de l'eleve ou de la famille (ID1) | L3 |
 | Quota mensuel (eleve) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#<sid>` | `limite`, `utilise`, `reserve`, `bonus`, `restant` | `shared/quota.ts` (L1); lu par L2a, L3 |
 | Quota mensuel (famille) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#FAMILY` | memes attributs, `limite` = plafond famille | `shared/quota.ts` (L1) |
 | Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, `stage` fin (`fiche`, `verification`), `readPages`, `contentTypes`, `folderId`, choix et suggestions de matiere/sujet (voir FEAT-A), nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |

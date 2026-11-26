@@ -73,9 +73,9 @@ describe('wrap', () => {
 });
 
 describe('aleatoire', () => {
-  it('jeton de 43 caracteres (256 bits), suffixe de 4, identifiants au format du contrat', () => {
+  it('jeton de 43 caracteres (256 bits), suffixe de 5, identifiants au format du contrat', () => {
     expect(realRandom.newToken()).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(realRandom.suffix()).toMatch(/^[a-z0-9]{4}$/);
+    expect(realRandom.suffix()).toMatch(/^[abcdefghjkmnpqrstuvwxyz2-9]{5}$/);
     expect(realRandom.newId()).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(realRandom.newToken()).not.toBe(realRandom.newToken());
   });
@@ -84,8 +84,8 @@ describe('aleatoire', () => {
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
-  it('19 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(19);
+  it('20 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
+    expect(files).toHaveLength(20);
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT

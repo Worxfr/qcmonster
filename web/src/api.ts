@@ -2,7 +2,7 @@ import { API_URL } from './env';
 import { getToken, signOut } from './auth';
 import type {
   AnswerResult, PracticeRequest, PracticeSession, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
-  Student, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
+  Student, ActivationResponse, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
   TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, ExportState,
 } from './types';
@@ -74,7 +74,7 @@ export const api = {
   answer: (questionId: string, choice: string) => call<AnswerResult>('POST', '/answers', { questionId, choice }),
   createStudent: (b: StudentCreateRequest) => call<StudentCreateResponse>('POST', '/students', b),
   activationLink: (sid: string) => call<{ url: string; expiresAt: string }>('POST', `/students/${e(sid)}/activation-link`),
-  updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: Student['schoolLevel'] }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
+  updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: Student['schoolLevel']; displayName?: string }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
   deleteStudent: (sid: string) => call<void>('DELETE', `/students/${e(sid)}`),
   dashboard: () => call<Dashboard>('GET', '/family/dashboard'),
   markRead: (docId: string) => call<ReadResult>('POST', `/docs/${e(docId)}/read`),
@@ -82,7 +82,10 @@ export const api = {
   deleteFamily: () => call<void>('DELETE', '/family'),
   exportFamily: () => call<unknown>('GET', '/family/export'),
   /** Route publique (sans JWT). Le jeton et le mot de passe ne sont ni journalises ni repris dans une erreur. */
-  activate: (token: string, password: string) => call<void>('POST', '/activation', { token, password }, false),
+  /** 200 avec l'identifiant (contrat 1.8); une ancienne API repond 204 sans corps: `undefined` (l'ecran dit alors de demander l'identifiant au parent). */
+  activate: (token: string, password: string, displayName?: string) =>
+    call<ActivationResponse | undefined>('POST', '/activation', { token, password, ...(displayName ? { displayName } : {}) }, false),
+  regenerateLoginId: (sid: string) => call<{ loginId: string }>('POST', `/students/${e(sid)}/login-id`),
   /** Administrateur seulement (403 sinon). Le code n'est renvoye qu'une fois. */
   createInvitation: () => call<InvitationCreated>('POST', '/admin/invitations'),
   /** Historique des tests (H1). Eleve: les siens. Parent: ceux d'un eleve de sa famille (resultats sans texte ni reponse). */

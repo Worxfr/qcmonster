@@ -100,8 +100,8 @@ export async function deleteCoursTree(db: TreeDb, sid: string, coursId: string, 
 
 /** Elements de la famille qui portent l'identifiant de l'eleve: lien eleve, quotas et classements, par PREFIXE explicite. */
 const FAMILY_STUDENT_PREFIXES = ['QUOTA#', 'WEEK#'] as const;
-const isFamilyStudentItem = (k: Key, sid: string): boolean =>
-  k.SK === `STUDENT#${sid}` || (FAMILY_STUDENT_PREFIXES.some((p) => k.SK.startsWith(p)) && k.SK.endsWith(`#${sid}`));
+const isFamilyStudentItem = (k: Key & { studentId?: string }, sid: string): boolean =>
+  k.SK === `STUDENT#${sid}` || (k.SK.startsWith('NAME#') && k.studentId === sid) || (FAMILY_STUDENT_PREFIXES.some((p) => k.SK.startsWith(p)) && k.SK.endsWith(`#${sid}`));
 
 /**
  * Eleve: ses fiches (arbres complets), jobs et transcriptions, profil, jours, tentatives, compteurs, puis ses quotas et classements.

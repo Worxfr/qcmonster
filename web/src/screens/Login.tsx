@@ -4,9 +4,11 @@ import { CONFIG_ERROR, MOCK_AUTH, SIGNUP_ENABLED } from '../env';
 import { Mascot } from '../components/Mascot';
 import { ErrorBox } from '../components/ui';
 import { errMsg } from '../hooks';
+import { takeRememberedLoginId } from '../activation';
+import { normalizeLoginInput } from '../loginId';
 
 export function Login({ onDone }: { onDone: () => void }) {
-  const [user, setUser] = useState('');
+  const [user, setUser] = useState(() => takeRememberedLoginId() ?? '');
   const [pass, setPass] = useState('');
   const [code, setCode] = useState('');
   const [confirm, setConfirm] = useState<((c: string) => Promise<void>) | null>(null);
@@ -27,7 +29,7 @@ export function Login({ onDone }: { onDone: () => void }) {
         await confirm(code.trim());
         onDone();
       } else {
-        const r = await signIn(user.trim(), pass);
+        const r = await signIn(normalizeLoginInput(user), pass);
         if (r.kind === 'mfa') setConfirm(() => r.confirm);
         else onDone();
       }
@@ -60,9 +62,11 @@ export function Login({ onDone }: { onDone: () => void }) {
             </label>
           ) : (
             <>
-              <label>Pseudo ou e-mail
-                <input autoComplete="username" value={user} onChange={(e) => setUser(e.target.value)} required />
+              <label>Identifiant ou e-mail
+                {/* Pas de majuscule automatique ni de correction: sur un telephone, « Lila » au lieu de « lila » ferait echouer la connexion. */}
+                <input autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={user} aria-describedby="login-help" onChange={(e) => setUser(e.target.value)} required />
               </label>
+              <p id="login-help" className="muted">Ton identifiant ressemble à lila-7k2fm. Un parent se connecte avec son e-mail.</p>
               <label>Mot de passe
                 <input type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} required />
               </label>

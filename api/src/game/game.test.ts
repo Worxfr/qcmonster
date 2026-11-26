@@ -517,7 +517,7 @@ describe('lectures: profil, tableau de bord, classement', () => {
     const t = testDeps();
     const { ctx } = await seed(t);
     expect(await getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent', familyId: FID })).toEqual({ userId: 'p', role: 'parent', familyId: FID, policyOutdated: true }) // famille de test sans version de politique enregistree;
-    expect(await getMe(t.deps, { sub: ctx.sub, username: SID, role: 'eleve', familyId: FID })).toEqual({ userId: ctx.sub, role: 'eleve', familyId: FID, studentId: SID, pseudo: 'Pseudo-1abc' });
+    expect(await getMe(t.deps, { sub: ctx.sub, username: SID, role: 'eleve', familyId: FID })).toEqual({ userId: ctx.sub, role: 'eleve', familyId: FID, studentId: SID, pseudo: 'Pseudo-1abc', loginId: 'Pseudo-1abc', displayName: 'Pseudo' });
     await rejects(getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent' }), 404);
     await rejects(getMe(t.deps, { sub: 'p', username: 'x' }), 404); // admin seul ou parent invite sans famille: profil absent
     await rejects(getMe(t.deps, { sub: 'p', username: 'x', conflicting: true }), 403); // parent + eleve
@@ -551,8 +551,8 @@ describe('lectures: profil, tableau de bord, classement', () => {
     const lb = await getLeaderboard(t.deps, FID);
     expect(lb.week).toBe('2026-W49');
     expect(lb.entries).toEqual([
-      { studentId: 'stu3', pseudo: 'Autre-9zzz', xp: 300, activeDays: 4 },
-      { studentId: SID, pseudo: 'Pseudo-1abc', xp: 100, activeDays: 3 },
+      { studentId: 'stu3', pseudo: 'Autre', xp: 300, activeDays: 4 },
+      { studentId: SID, pseudo: 'Pseudo', xp: 100, activeDays: 3 },
     ]);
   });
   it('classement: un eleve suspendu ou d\'un autre compte est refuse', async () => {
@@ -569,7 +569,7 @@ describe('lectures: profil, tableau de bord, classement', () => {
     await seed(t, { sid: 'stu3', docId: 'd3' });
     await t.store.commit([{ item: { ...keys.student(FID, 'stu3'), pseudo: 'Aaa-1111', niveau: 'seconde', statut: 'actif', cognitoSub: 'x' }, when: 'any' }]);
     for (const s of [SID, 'stu3']) await t.store.commit([{ item: { ...keys.week(FID, '2026-W49', s), xp: 50, days: ['a', 'b', 'c'] }, when: 'any' }]);
-    expect((await getLeaderboard(t.deps, FID)).entries.map((e) => e.pseudo)).toEqual(['Aaa-1111', 'Pseudo-1abc']);
+    expect((await getLeaderboard(t.deps, FID)).entries.map((e) => e.pseudo)).toEqual(['Aaa', 'Pseudo']);
   });
 });
 

@@ -8,11 +8,19 @@ import { errMsg, useLoad } from '../hooks';
 import type { ExportArchive, Student } from '../types';
 import { POLICY_VERSION } from '../../../shared/policy';
 import { PolicyLink } from './Policy';
+import { LoginIdCard } from '../components/LoginIdCard';
+import { nicknameFormOk } from '../../../shared/pseudo-rules';
+
+type Shown = { name: string; url?: string; expiresAt?: string; loginId?: string; kind: 'link' | 'login' };
 
 export function Parent() {
   const d = useLoad(() => api.dashboard(), []);
   const lb = useLoad(() => api.leaderboard(), []);
-  const [link, setLink] = useState<{ pseudo: string; url: string; expiresAt: string } | null>(null);
+  const [link, setLink] = useState<Shown | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [idBusy, setIdBusy] = useState<string | null>(null); // eleve dont le nouvel identifiant est en cours de creation
   const [error, setError] = useState<string | null>(null);
 
   if (d.loading) return <Loading />;
@@ -30,7 +38,23 @@ export function Parent() {
       setError(errMsg(e));
     }
   };
-  const newLink = (s: Student) => act(async () => { const l = await api.activationLink(s.studentId); setLink({ pseudo: s.pseudo, ...l }); });
+  const newLink = (s: Student) => act(async () => { const l = await api.activationLink(s.studentId); setLink({ kind: 'link', name: s.displayName, loginId: s.loginId, ...l }); });
+  const newLoginId = (s: Student) => {
+    if (!window.confirm(`Ton enfant devra se reconnecter avec le nouvel identifiant. Son mot de passe reste le même. Créer un nouvel identifiant pour ${s.displayName} ?`)) return;
+    setIdBusy(s.studentId); // un seul appel a la fois: deux demandes en course donneraient deux identifiants
+    void act(async () => { const r = await api.regenerateLoginId(s.studentId); setLink({ kind: 'login', name: s.displayName, loginId: r.loginId }); }).finally(() => setIdBusy(null));
+  };
+  // L'erreur (surnom deja pris, refuse) reste pres du champ, pas en haut de page.
+  const rename = async (s: Student) => {
+    setRenameError(null);
+    try {
+      await api.updateStudent(s.studentId, { displayName: newName.trim() });
+      setRenaming(null);
+      d.reload();
+    } catch (e) {
+      setRenameError(errMsg(e));
+    }
+  };
 
   return (
     <>
@@ -40,10 +64,16 @@ export function Parent() {
       </Card>
       <ErrorBox message={error} />
       {link && (
-        <Card title={`Lien d'activation de ${link.pseudo}`}>
-          <p>À donner à l'élève en main propre. Il ne marche qu'une fois et expire le {new Date(link.expiresAt).toLocaleString('fr-FR')}.</p>
-          <p><input readOnly aria-label="Lien d'activation" value={link.url} onFocus={(e) => e.target.select()} /></p>
-          <button className="btn btn-small" onClick={() => navigator.clipboard?.writeText(link.url)}>Copier le lien</button>
+        <Card title={link.kind === 'link' ? `Lien d'activation de ${link.name}` : `Nouvel identifiant de ${link.name}`}>
+          {link.loginId && <LoginIdCard loginId={link.loginId} label={link.kind === 'link' ? `Identifiant de ${link.name}` : `Nouvel identifiant de ${link.name}`} />}
+          {link.kind === 'login' && <p>À donner à ton enfant : l'ancien identifiant ne marche plus, son mot de passe reste le même.</p>}
+          {link.kind === 'link' && link.url && link.expiresAt && (
+            <>
+              <p>À donner à l'élève en main propre. Il ne marche qu'une fois et expire le {new Date(link.expiresAt).toLocaleString('fr-FR')}.</p>
+              <p><input readOnly aria-label="Lien d'activation" value={link.url} onFocus={(e) => e.target.select()} /></p>
+              <button className="btn btn-small" onClick={() => navigator.clipboard?.writeText(link.url ?? '')}>Copier le lien</button>
+            </>
+          )}
           <button className="btn btn-small btn-ghost" onClick={() => setLink(null)}>Fermer</button>
         </Card>
       )}
@@ -55,15 +85,16 @@ export function Parent() {
               <div className="hero-row">
                 <Mascot stage={p.stage} size={72} label={false} />
                 <div className="grow">
-                  <h3>{s.pseudo} {s.status === 'suspendu' && <span className="pill pill-warn">Suspendu</span>}</h3>
+                  <h3>{s.displayName} {s.status === 'suspendu' && <span className="pill pill-warn">Suspendu</span>}</h3>
+                  <p className="muted">Identifiant : <strong data-testid={`login-${s.studentId}`}>{s.loginId}</strong></p>
                   <p className="muted">Niveau {p.level} · {p.xp} XP · série {p.streakDays} j</p>
                   <p>Pages restantes ce mois-ci : {p.pagesRemaining} sur {p.pagesLimit} (quota de l'élève : {s.pageQuota})</p>
                   <p className="btn-row">
-                    <a className="btn btn-small" href={`#/suivi/${encodeURIComponent(s.studentId)}`}>📈 Suivi de {s.pseudo}</a>
-                    <a className="btn btn-small btn-ghost" href={`#/eleve/${encodeURIComponent(s.studentId)}`}>📚 Les cours de {s.pseudo}</a>
+                    <a className="btn btn-small" href={`#/suivi/${encodeURIComponent(s.studentId)}`}>📈 Suivi de {s.displayName}</a>
+                    <a className="btn btn-small btn-ghost" href={`#/eleve/${encodeURIComponent(s.studentId)}`}>📚 Les cours de {s.displayName}</a>
                   </p>
                   {(p.badges?.length ?? 0) > 0 && (
-                    <ul className="badges" aria-label={`Badges de ${s.pseudo}`}>
+                    <ul className="badges" aria-label={`Badges de ${s.displayName}`}>
                       {p.badges!.map((b) => <li key={b} className="got"><span aria-hidden="true">🏅</span> {badgeLabel(b)}</li>)}
                     </ul>
                   )}
@@ -84,6 +115,22 @@ export function Parent() {
                   {s.status === 'actif' ? 'Suspendre' : 'Réactiver'}
                 </button>
                 <button className="btn btn-small btn-alt" onClick={() => newLink(s)}>Nouveau lien (mot de passe perdu)</button>
+                {renaming !== s.studentId && (
+                  <button className="btn btn-small btn-ghost" onClick={() => { setRenaming(s.studentId); setNewName(s.displayName); setRenameError(null); }}>Changer le surnom</button>
+                )}
+                <button className="btn btn-small btn-ghost" disabled={idBusy === s.studentId} onClick={() => newLoginId(s)}>{idBusy === s.studentId ? 'Un instant…' : 'Nouvel identifiant de connexion'}</button>
+                {renaming === s.studentId && (
+                  <form className="rename" onSubmit={(e) => { e.preventDefault(); if (nicknameFormOk(newName)) void rename(s); }}>
+                    <label>Nouveau surnom pour {s.displayName}
+                      <input value={newName} maxLength={20} autoComplete="off" onChange={(e) => { setNewName(e.target.value); setRenameError(null); }} aria-invalid={!!renameError || (newName !== '' && !nicknameFormOk(newName))} aria-describedby="rename-err" />
+                    </label>
+                    <p id="rename-err" role="alert" className={renameError ? 'error' : 'sr-only'}>{renameError ?? ''}</p>
+                    <span className="btn-row">
+                      <button className="btn btn-small" disabled={!nicknameFormOk(newName)}>Enregistrer</button>
+                      <button type="button" className="btn btn-small btn-ghost" onClick={() => setRenaming(null)}>Annuler</button>
+                    </span>
+                  </form>
+                )}
                 <label>Niveau
                   <select value={s.schoolLevel} onChange={(e) => void act(() => api.updateStudent(s.studentId, { schoolLevel: e.target.value as Student['schoolLevel'] }))}>
                     <option value="seconde">Seconde</option>
@@ -91,7 +138,7 @@ export function Parent() {
                     <option value="terminale">Terminale</option>
                   </select>
                 </label>
-                <button className="btn btn-small btn-ghost" onClick={() => { if (window.confirm(`Supprimer ${s.pseudo} et toutes ses données ?`)) void act(() => api.deleteStudent(s.studentId)); }}>Supprimer</button>
+                <button className="btn btn-small btn-ghost" onClick={() => { if (window.confirm(`Supprimer ${s.displayName} et toutes ses données ?`)) void act(() => api.deleteStudent(s.studentId)); }}>Supprimer</button>
               </div>
             </li>
           ))}
@@ -126,14 +173,14 @@ export async function downloadExport() {
   URL.revokeObjectURL(url);
 }
 
-function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; expiresAt: string }) => void }) {
+function Invite({ onCreated }: { onCreated: (l: Shown) => void }) {
   const [pseudo, setPseudo] = useState('');
   const [level, setLevel] = useState<'seconde' | 'premiere' | 'terminale'>('seconde');
   const [under15, setUnder15] = useState(false);
   const [authority, setAuthority] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const valid = /^[A-Za-z][A-Za-z0-9 -]{1,19}$/.test(pseudo);
+  const valid = /^[A-Za-z][A-Za-z0-9 -]{1,19}$/.test(pseudo) && nicknameFormOk(pseudo);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -142,7 +189,7 @@ function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; e
     setError(null);
     try {
       const r = await api.createStudent({ pseudo, schoolLevel: level, under15, parentalAuthority: authority as true, policyVersion: POLICY_VERSION });
-      onCreated({ pseudo: r.student.pseudo, ...r.activationLink });
+      onCreated({ kind: 'link', name: r.student.displayName, loginId: r.student.loginId, ...r.activationLink });
       setPseudo('');
       setAuthority(false);
     } catch (x) {
@@ -155,10 +202,10 @@ function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; e
   return (
     <Card title="Inviter un élève">
       <form className="stack" onSubmit={submit}>
-        <label>Pseudo (sans nom de famille)
+        <label>Surnom de départ (l'élève pourra en choisir un autre)
           <input value={pseudo} onChange={(e) => setPseudo(e.target.value)} maxLength={20} required aria-describedby="pseudo-help" />
         </label>
-        <p id="pseudo-help" className="muted">2 à 20 caractères : lettres, chiffres, espace ou tiret. Un code est ajouté (Lila-7k2f).</p>
+        <p id="pseudo-help" className="muted">2 à 20 caractères : lettres, espace ou tiret, 2 chiffres au plus. Un surnom inventé vaut mieux qu'un prénom, et jamais de nom de famille. Le site fabrique l'identifiant de connexion (par exemple lila-7k2fm).</p>
         <label>Niveau
           <select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}>
             <option value="seconde">Seconde</option>
@@ -169,7 +216,7 @@ function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; e
         <label className="check"><input type="checkbox" checked={under15} onChange={(e) => setUnder15(e.target.checked)} /> L'élève a moins de 15 ans</label>
         <label className="check">
           <input type="checkbox" checked={authority} onChange={(e) => setAuthority(e.target.checked)} required />
-          <span>J'ai l'autorité parentale sur cet élève. J'ai lu la <PolicyLink /> et j'accepte, pour lui ou elle, que ses cours soient analysés et que son pseudo et ses résultats soient gardés. Je peux retirer mon accord à tout moment en supprimant son compte.</span>
+          <span>J'ai l'autorité parentale sur cet élève. J'ai lu la <PolicyLink /> et j'accepte, pour lui ou elle, que ses cours soient analysés et que son surnom et ses résultats soient gardés. Je peux retirer mon accord à tout moment en supprimant son compte.</span>
         </label>
         <ErrorBox message={error} />
         <button className="btn" disabled={busy || !valid || !authority}>Créer et obtenir le lien</button>

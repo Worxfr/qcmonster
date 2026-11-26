@@ -5,7 +5,7 @@ import { quotaDefaults } from '../../../shared/names.js';
 import { POLICY_VERSION } from '../../../shared/policy.js';
 import type { Deps } from '../lib/deps.js';
 import { forbidden, notFound, type Auth, type ParentCtx, type StudentCtx } from '../lib/http.js';
-import { activeStudent, studentView, type StudentView } from './access.js';
+import { activeStudent, displayNameOf, loginIdOf, studentView, type StudentView } from './access.js';
 import { LEADERBOARD_MIN_ACTIVE_DAYS } from './rules.js';
 import { progressOf, readProfile, type Progress } from './state.js';
 import { isoWeek, parisDate } from './time.js';
@@ -15,7 +15,10 @@ export interface MeView {
   role: 'parent' | 'eleve';
   familyId: string;
   studentId?: string;
+  /** Eleve seulement. Compatibilite 1.8.0: vaut `loginId`. */
   pseudo?: string;
+  loginId?: string;
+  displayName?: string;
   /** Parent seulement, present (vrai) quand le consentement de la famille porte sur une autre version de la politique que celle en vigueur. */
   policyOutdated?: true;
 }
@@ -33,7 +36,7 @@ export async function getMe(deps: Deps, a: Auth): Promise<MeView> {
   }
   const ctx: StudentCtx = { sub: a.sub, studentId: a.username, familyId: a.familyId };
   const s = await activeStudent(deps, ctx);
-  return { userId: a.sub, role: 'eleve', familyId: a.familyId, studentId: ctx.studentId, pseudo: String(s.pseudo) };
+  return { userId: a.sub, role: 'eleve', familyId: a.familyId, studentId: ctx.studentId, pseudo: loginIdOf(s), loginId: loginIdOf(s), displayName: displayNameOf(s) };
 }
 
 export async function getProgress(deps: Deps, ctx: StudentCtx): Promise<Progress> {
@@ -58,7 +61,7 @@ export async function getDashboard(deps: Deps, ctx: ParentCtx) {
   return { students, familyPagesRemaining: Math.max(0, remaining), familyPagesLimit: limit };
 }
 
-/** Classement de la famille. Un eleve (`who`) doit etre actif: un eleve suspendu n'y accede plus meme avec un jeton encore valide. */
+/** Classement de la famille (le `pseudo` des lignes est le surnom affiche, jamais l'identifiant de connexion: ID1). Un eleve (`who`) doit etre actif: un eleve suspendu n'y accede plus meme avec un jeton encore valide. */
 export async function getLeaderboard(deps: Deps, fid: string, who?: StudentCtx) {
   if (who) await activeStudent(deps, who);
   const week = isoWeek(parisDate(deps.now()));
@@ -67,7 +70,7 @@ export async function getLeaderboard(deps: Deps, fid: string, who?: StudentCtx) 
     .map((w) => ({ sid: w.SK.slice(`WEEK#${week}#`.length), xp: Number(w.xp ?? 0), days: Array.isArray(w.days) ? w.days.length : 0 }))
     // Seulement les eleves encore dans la famille, avec au moins 3 jours actifs dans la semaine.
     .filter((e) => pseudos.has(e.sid) && e.days >= LEADERBOARD_MIN_ACTIVE_DAYS)
-    .map((e) => ({ studentId: e.sid, pseudo: (pseudos.get(e.sid) as StudentView).pseudo, xp: e.xp, activeDays: Math.min(7, e.days) }))
+    .map((e) => ({ studentId: e.sid, pseudo: (pseudos.get(e.sid) as StudentView).displayName, xp: e.xp, activeDays: Math.min(7, e.days) }))
     .sort((x, y) => y.xp - x.xp || x.pseudo.localeCompare(y.pseudo));
   return { week, entries };
 }

@@ -3,8 +3,9 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import type { ZodType } from 'zod';
 import { log } from '../../../shared/log/index.js';
+import { PSEUDO_REFUSED_MESSAGE, PSEUDO_TAKEN_MESSAGE } from '../../../shared/pseudo-rules.js';
 
-export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question';
+export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question' | 'pseudo_refuse' | 'pseudo_pris';
 
 /** Erreur attendue, convertie en reponse du contrat. Toute autre erreur est journalisee (code seul) puis devient un 500 generique: rien n'est relance, donc le runtime Lambda ne journalise ni message ni pile (A4). */
 export class HttpError extends Error {
@@ -19,6 +20,8 @@ export class HttpError extends Error {
 export const badRequest = (m = 'Requête invalide') => new HttpError(400, 'requete_invalide', m);
 export const forbidden = (m = 'Accès refusé') => new HttpError(403, 'interdit', m);
 export const notFound = () => new HttpError(404, 'introuvable', 'Introuvable');
+export const pseudoRefuse = () => new HttpError(400, 'pseudo_refuse', PSEUDO_REFUSED_MESSAGE);
+export const pseudoPris = () => new HttpError(409, 'pseudo_pris', PSEUDO_TAKEN_MESSAGE);
 export const conflict = (m = 'État incompatible') => new HttpError(409, 'etat_invalide', m);
 
 export type Role = 'parent' | 'eleve';

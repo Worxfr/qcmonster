@@ -59,6 +59,8 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'POST /students', handler: 'students-create', owner: 'game', throttle: { rate: 1, burst: 3 } },
   { route: 'POST /students/{sid}/activation-link', handler: 'students-link', owner: 'game', throttle: { rate: 1, burst: 3 } },
   { route: 'PATCH /students/{sid}', handler: 'students-update', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  // contract-v1.8 (ID1): nouvel identifiant de connexion, 1 requete/s, rafale 3 (comme activation-link et POST /students)
+  { route: 'POST /students/{sid}/login-id', handler: 'students-login-id-post', owner: 'game', throttle: { rate: 1, burst: 3 } },
   { route: 'DELETE /students/{sid}', handler: 'students-delete', owner: 'game', throttle: { rate: 1, burst: 3 } },
   { route: 'GET /family/dashboard', handler: 'family-read', owner: 'game' },
   { route: 'GET /family/leaderboard', handler: 'family-read', owner: 'game' },
@@ -101,7 +103,7 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
 export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A'> = {
   'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
-  'session-get': 'L3', 'answers-post': 'L3', 'practice-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3',
+  'session-get': 'L3', 'answers-post': 'L3', 'practice-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3', 'students-login-id-post': 'L3',
   'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-mark-read': 'L3', 'family-create': 'L3', 'admin-invitations': 'L3',
   'scans-list': 'FEAT-A', 'scans-delete': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A', 'cours-delete': 'FEAT-A',
   'tests-read': 'L3', 'family-progress': 'L3', 'family-export-archive': 'L3', 'me-export-archive': 'R1-A',

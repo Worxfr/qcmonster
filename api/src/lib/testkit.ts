@@ -43,7 +43,7 @@ export function testDeps(opts: { iso?: string; env?: 'dev' | 'prod' } = {}) {
     now: clk.now,
     newId: () => `id${String(++n).padStart(4, '0')}`,
     newToken: () => `tok-${String(++n).padStart(4, '0')}-abcdefghijklmnopqrstuvwxyz`,
-    suffix: () => `s${String(++n).padStart(3, '0')}`,
+    suffix: () => `s${String(++n).padStart(3, '0')}`, // 4 caracteres de test: seule l'unicite compte ici
     identity,
     photos,
     archives,

@@ -18,6 +18,17 @@ export function takeActivationToken(): string | null {
   return taken.token;
 }
 
+/** Identifiant a pre-remplir sur l'ecran de connexion apres l'activation: en memoire seulement, lu une fois (jamais dans l'URL ni dans un stockage). */
+let remembered: string | null = null;
+export const rememberLoginId = (id: string): void => {
+  remembered = id;
+};
+export const takeRememberedLoginId = (): string | null => {
+  const id = remembered;
+  remembered = null;
+  return id;
+};
+
 /** Quitte l'écran d'activation vers la connexion. */
 export function leaveActivation(): void {
   taken = null;

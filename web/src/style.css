@@ -280,3 +280,9 @@ math mi:not(.mi-i) + mi.mi-i { margin-inline-start: .17em; } /* « sin x » */
 .append-banner { display: flex; gap: .8rem; align-items: flex-start; margin: 0 0 .9rem; padding: .8rem .9rem; border-radius: 18px; background: linear-gradient(135deg, #ede9fe, #fce7f3); border: 2px solid var(--brand); }
 .append-ico { flex: none; display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--pink); color: #fff; font-size: 1.3rem; box-shadow: 0 3px 0 rgba(0,0,0,.2); }
 .append-note { margin: .35rem 0 0; font-weight: 600; }
+
+/* Identifiant de connexion (ID1): gros, lisible, facile a recopier */
+.login-id { text-align: center; padding: 1rem; border: 2px dashed var(--brand); }
+.login-id-label { margin: 0 0 .3rem; font-weight: 700; }
+.login-id-value { margin: .2rem 0 .6rem; font-size: 2rem; font-weight: 800; letter-spacing: .04em; color: var(--brand); font-family: ui-monospace, 'Courier New', monospace; word-break: break-all; user-select: all; }
+.actions .rename { display: grid; gap: .4rem; order: 99; flex: 1 1 100%; max-width: 28rem; margin-top: .3rem; }
