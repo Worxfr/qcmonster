@@ -60,6 +60,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   const { folders, add: addFolder } = useFolders(); // un seul chargement pour toutes les fiches
   // Le dossier choisi en envoyant le scan: la liste des scans le donne (le serveur le garde, il ne peut pas etre retire ici).
   const [jobFolder, setJobFolder] = useState('');
+  // shortcut: on ne cherche que parmi les 50 premiers scans a relire (le job n'expose pas son dossier); au-dela, rien n'est prérempli ni perdu (le serveur garde le dossier du scan), mais « Aucun dossier » s'affiche a tort. A lever quand `folderId` sera sur le job ou la transcription.
   useEffect(() => {
     let live = true;
     api.listScans({ status: 'a_confirmer', limit: 50 }).then((r) => {

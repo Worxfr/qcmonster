@@ -69,6 +69,7 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [gone, setGone] = useState(false);
   const key = JSON.stringify([params, studentId]);
+  useEffect(() => { if (params.folderId) setGone(false); }, [params.folderId]);
 
   const load = useCallback(async (first: boolean) => {
     try {
@@ -167,12 +168,22 @@ function FolderHead({ folder, onChanged, onDeleted }: { folder: Folder; onChange
   const [draft, setDraft] = useState(folder.name);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const renameBtn = useRef<HTMLButtonElement>(null);
+  const confirmEl = useRef<HTMLDivElement>(null);
+  const [back, setBack] = useState(false); // le bouton « Renommer » revient apres Enregistrer/Annuler: on lui rend le focus
+  useEffect(() => {
+    if (back && mode === null) { renameBtn.current?.focus(); setBack(false); }
+  }, [back, mode]);
+  useEffect(() => {
+    if (mode === 'delete') confirmEl.current?.focus();
+  }, [mode]);
+  const close = () => { setMode(null); setBack(true); };
   async function run(fn: () => Promise<unknown>, after: () => void) {
     setBusy(true);
     setErr(null);
     try {
       await fn();
-      setMode(null);
+      close();
       after();
     } catch (e) {
       setErr(folderError(e));
@@ -185,25 +196,25 @@ function FolderHead({ folder, onChanged, onDeleted }: { folder: Folder; onChange
       <p className="folder-head-title"><a className="link" href="#/folders">‹ Mes dossiers</a></p>
       {mode === 'rename' ? (
         <form className="btn-row" onSubmit={(e) => { e.preventDefault(); void run(() => api.renameFolder(folder.folderId, draft.trim()), onChanged); }}>
-          <input aria-label="Nouveau nom du dossier" value={draft} maxLength={60} onChange={(e) => setDraft(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <input aria-label="Nouveau nom du dossier" autoFocus value={draft} maxLength={60} onChange={(e) => setDraft(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
           <button className="btn btn-small" disabled={!draft.trim() || busy}>Enregistrer</button>
-          <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode(null)}>Annuler</button>
+          <button type="button" className="btn btn-small btn-ghost" onClick={close}>Annuler</button>
         </form>
       ) : (
         <div className="folder-head-row">
           <h2 className="folder-head-name"><span aria-hidden="true">📁</span> {folder.name}</h2>
           <div className="btn-row">
-            <button type="button" className="btn btn-small btn-ghost" onClick={() => { setDraft(folder.name); setMode('rename'); }}>Renommer le dossier</button>
+            <button ref={renameBtn} type="button" className="btn btn-small btn-ghost" onClick={() => { setDraft(folder.name); setMode('rename'); }}>Renommer le dossier</button>
             <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode('delete')}>Supprimer le dossier</button>
           </div>
         </div>
       )}
       {mode === 'delete' && (
-        <div className="selpanel">
+        <div className="selpanel" ref={confirmEl} tabIndex={-1} role="group" aria-label="Confirmer la suppression du dossier">
           <p><strong>Supprimer « {folder.name} » ?</strong> Les cours restent, ils sortent du dossier.</p>
           <div className="btn-row">
             <button type="button" className="btn btn-small btn-danger" disabled={busy} onClick={() => void run(() => api.deleteFolder(folder.folderId), onDeleted)}>Oui, supprimer le dossier</button>
-            <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode(null)}>Annuler</button>
+            <button type="button" className="btn btn-small btn-ghost" onClick={close}>Annuler</button>
           </div>
         </div>
       )}

@@ -129,4 +129,46 @@ describe('dossiers (#74)', () => {
     await userEvent.type(screen.getByLabelText('Nom du nouveau dossier'), 'Brevet blanc{Enter}');
     await waitFor(() => expect(calls.find((c) => c.url.endsWith('/folders/F2/scans'))?.body).toEqual({ docIds: ['D1'] }));
   });
+
+  it('la fiche: select désactivé pendant le rangement, une seule requête', async () => {
+    routes['GET /folders'] = () => json({ items: [F1, F2] });
+    routes['GET /docs/D1'] = () => json({ docId: 'D1', title: 'Les volcans', subject: 'svt', createdAt: T0, summary: '', claims: [] });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    routes['POST /folders/F2/scans'] = () => undefined;
+    const base = globalThis.fetch;
+    vi.stubGlobal('fetch', async (i: RequestInfo | URL, init?: RequestInit) => {
+      if (String(i).endsWith('/folders/F2/scans')) { calls.push({ url: String(i), method: 'POST', body: init?.body }); await gate; return json(F2); }
+      return base(i, init);
+    });
+    await open('#/doc/D1');
+    const sel = await screen.findByLabelText('Cette fiche est dans');
+    await waitFor(() => expect(sel).toBeEnabled());
+    await userEvent.selectOptions(sel, 'F2');
+    await waitFor(() => expect(sel).toBeDisabled());
+    release();
+    await waitFor(() => expect(sel).toBeEnabled());
+    expect(calls.filter((c) => c.url.endsWith('/folders/F2/scans'))).toHaveLength(1);
+  });
+
+  it('renommer: le focus va dans le champ, puis revient au bouton', async () => {
+    routes['GET /folders'] = () => json({ items: [F1] });
+    routes['GET /scans*'] = () => json(list([scan(1, { folderId: 'F1' })]));
+    await open('#/docs?folderId=F1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Renommer le dossier' }));
+    expect(screen.getByLabelText('Nouveau nom du dossier')).toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Renommer le dossier' })).toHaveFocus());
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer le dossier' }));
+    expect(screen.getByRole('group', { name: /Confirmer la suppression/ })).toHaveFocus();
+  });
+
+  it('le mot « dossier supprimé » disparaît quand on ouvre un autre dossier', async () => {
+    routes['GET /folders'] = () => json({ items: [F1] });
+    routes['GET /scans*'] = (c) => (c.url.includes('folderId=GONE') ? json({ code: 'introuvable', message: 'x' }, 404) : json(list([scan(1)])));
+    await open('#/docs?folderId=GONE');
+    expect(await screen.findByText(/n'existe plus/)).toBeInTheDocument();
+    window.location.hash = '#/docs?folderId=F1';
+    await waitFor(() => expect(screen.queryByText(/n'existe plus/)).toBeNull());
+  });
 });

@@ -80,7 +80,10 @@ function FolderCard({ docId, initial }: { docId: string; initial: string }) {
   const created = useRef(new Map<string, string>()); // un dossier tout juste cree n'est pas encore dans `folders` quand on range la fiche
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   async function move(to: string) {
+    if (busy) return;
+    setBusy(true);
     setErr(null);
     setMsg(null);
     try {
@@ -90,11 +93,13 @@ function FolderCard({ docId, initial }: { docId: string; initial: string }) {
       setMsg(to ? `✓ Rangée dans « ${created.current.get(to) ?? folders.find((f) => f.folderId === to)?.name ?? 'ce dossier'} ».` : '✓ Sortie du dossier.');
     } catch (e) {
       setErr(folderError(e));
+    } finally {
+      setBusy(false);
     }
   }
   return (
     <Card title="Dossier">
-      <FolderSelect label="Cette fiche est dans" value={current} onChange={(f) => void move(f)} folders={folders} onCreated={(f) => { created.current.set(f.folderId, f.name); add(f); }} none="Aucun dossier" />
+      <FolderSelect disabled={busy} label="Cette fiche est dans" value={current} onChange={(f) => void move(f)} folders={folders} onCreated={(f) => { created.current.set(f.folderId, f.name); add(f); }} none="Aucun dossier" />
       {msg && <p role="status" className="ok">{msg}</p>}
       {err && <p role="alert" className="error">{err}</p>}
     </Card>
