@@ -13,14 +13,19 @@ import type { Item, Write } from '../lib/store.js';
 import { activeStudent } from './access.js';
 import type { Profile, State } from './state.js';
 
-/** Pointeur de passage ouvert (PROFILE.currentTest), pose par session-get. */
+/** Pointeur de passage ouvert (PROFILE.currentTest), pose par session-get et practice-post. Q1: `draw` = questions tirees, dans l'ordre (20 au plus). */
 export interface CurrentTest {
   testId: string;
   sk: string;
+  /** Premiere fiche. */
   docId: string;
   openedAt: number;
   total: number;
   mode: string;
+  draw: string[];
+  scope?: 'fiche' | 'fiches' | 'dossier';
+  docIds?: string[];
+  titre?: string;
 }
 /** PROFILE vu par H1: champs en plus de `Profile` (state.ts n'est pas modifie par ce lot; les champs inconnus sont conserves a l'ecriture). */
 export type PlayProfile = Profile & { currentTest?: CurrentTest; anneesScolaires?: string[] };
@@ -30,32 +35,33 @@ const modeOf = (kinds: Iterable<'qcm' | 'gap'>): string => {
   return s.size > 1 ? 'mixte' : s.has('gap') ? 'gap' : 'qcm';
 };
 
-/** Questions valides d'une fiche dans l'ordre de la session (QCM puis textes a trous): `rank` = position + 1. */
-export async function docQuestions(deps: Deps, docId: string): Promise<{ questionId: string; kind: 'qcm' | 'gap' }[]> {
-  const bySk = (a: { SK: string }, b: { SK: string }) => a.SK.localeCompare(b.SK);
-  const out: { questionId: string; kind: 'qcm' | 'gap' }[] = [];
-  for (const i of (await deps.store.query(`DOC#${docId}`, 'QCM#')).sort(bySk)) {
-    const r = QcmItemSchema.safeParse(i);
-    if (r.success) out.push({ questionId: r.data.questionId, kind: 'qcm' });
-  }
-  for (const i of (await deps.store.query(`DOC#${docId}`, 'GAP#')).sort(bySk)) {
-    const r = GapItemSchema.safeParse(i);
-    if (r.success) out.push({ questionId: r.data.questionId, kind: 'gap' });
-  }
-  return out;
-}
-
-/** session-get: ouvre un passage (pointeur seulement; aucune entree TEST# tant qu'aucune reponse n'est donnee). */
-export function openPassage(st: State, docId: string, questions: { kind: 'qcm' | 'gap' }[]): void {
+/**
+ * session-get et practice-post: ouvre un passage (pointeur seulement; aucune entree TEST# tant qu'aucune reponse n'est donnee).
+ * Le tirage (`draw`) est la seule liste de questions acceptees par answers-post (Q1 P10).
+ */
+export function openPassage(st: State, o: { docIds: string[]; scope: 'fiche' | 'fiches' | 'dossier'; titre?: string; draw: { questionId: string; kind: 'qcm' | 'gap' }[] }): void {
   const testId = newTestId(st.now);
   (st.profile as PlayProfile).currentTest = {
     testId,
     sk: keys.test(st.sid, isoSeconds(st.now), testId).SK,
-    docId,
+    docId: o.docIds[0],
     openedAt: st.now,
-    total: Math.min(MAX_ITEMS, Math.max(1, questions.length)),
-    mode: modeOf(questions.map((q) => q.kind)),
+    total: Math.min(MAX_ITEMS, Math.max(1, o.draw.length)),
+    mode: modeOf(o.draw.map((q) => q.kind)),
+    draw: o.draw.map((q) => q.questionId).slice(0, MAX_ITEMS),
+    scope: o.scope,
+    docIds: o.docIds.slice(0, 10),
+    ...(o.titre !== undefined ? { titre: o.titre.slice(0, MAX_TITLE) } : {}),
   };
+}
+
+/** Passage qui accepte cette question, ou la raison du refus (aucun passage, question hors tirage ou autre test ouvert depuis, plus de 3 h sans reponse). */
+export function openFor(p: PlayProfile, questionId: string, now: number): { ok: true; cur: CurrentTest } | { ok: false; why: 'ouvre' | 'expire' | 'ailleurs' } {
+  const cur = p.currentTest;
+  if (!cur || !Array.isArray(cur.draw)) return { ok: false, why: 'ouvre' };
+  if (!cur.draw.includes(questionId)) return { ok: false, why: 'ailleurs' };
+  if (p.tick === undefined || now - p.tick >= TEST_GAP_MS) return { ok: false, why: 'expire' };
+  return { ok: true, cur };
 }
 
 export interface AnswerFacts {
@@ -66,44 +72,28 @@ export interface AnswerFacts {
   correct: boolean;
   choice: string;
   gained: number;
-  /** Dernier evenement « question affichee » AVANT cette reponse (ms), ou undefined. */
-  previousTick: number | undefined;
-  /** Questions de la fiche dans l'ordre de la session (docQuestions). */
-  order: { questionId: string; kind: 'qcm' | 'gap' }[];
+  /** Passage accepte par `openFor`. */
+  cur: CurrentTest;
 }
 
 /**
- * answers-post, dans `mutate` (donc relu et rejoue a chaque conflit): ecrit la ligne de la question dans le passage en cours, ou cree un
- * passage implicite (pas de session ouverte, autre fiche, ou plus de 3 h sans reponse). L'ecriture est conditionnelle a la version lue,
- * dans la meme transaction que PROFILE: deux reponses simultanees ne s'ecrasent pas, la perdante relit et recommence.
+ * answers-post, dans `mutate` (donc relu et rejoue a chaque conflit): ecrit la ligne de la question dans le passage en cours (plus de passage
+ * implicite: `openFor` a deja refuse toute reponse sans passage). L'ecriture est conditionnelle a la version lue, dans la meme transaction que
+ * PROFILE: deux reponses simultanees ne s'ecrasent pas, la perdante relit et recommence.
  */
 export async function recordTest(deps: Deps, s: State, f: AnswerFacts): Promise<Write> {
   const p = s.profile as PlayProfile;
-  const cur = p.currentTest;
-  const open = cur !== undefined && cur.docId === f.docId && f.previousTick !== undefined && s.now - f.previousTick < TEST_GAP_MS;
-  let pointer: CurrentTest;
-  if (open) pointer = cur;
-  else {
-    const testId = newTestId(s.now);
-    pointer = {
-      testId,
-      sk: keys.test(s.sid, isoSeconds(s.now), testId).SK,
-      docId: f.docId,
-      openedAt: s.now,
-      total: Math.min(MAX_ITEMS, Math.max(1, f.order.length)),
-      mode: modeOf(f.order.map((q) => q.kind)),
-    };
-    p.currentTest = pointer;
-  }
+  const pointer = f.cur;
   const key = { PK: `STUDENT#${s.sid}`, SK: pointer.sk };
-  const existing = open ? await deps.store.get(key) : undefined;
+  const existing = await deps.store.get(key);
   const startedAt = pointer.sk.slice('TEST#'.length, pointer.sk.indexOf('#', 5));
+  const multi = pointer.scope === 'fiches' || pointer.scope === 'dossier';
   const base: TestItem = existing
     ? (existing as unknown as TestItem)
     : {
-        docId: f.docId,
-        titre: String(f.fiche.titre ?? '').slice(0, MAX_TITLE),
-        matiere: String(f.fiche.matiere ?? 'autre'),
+        docId: pointer.docId,
+        titre: String(pointer.titre ?? f.fiche.titre ?? '').slice(0, MAX_TITLE),
+        matiere: multi ? 'autre' : String(f.fiche.matiere ?? 'autre'),
         mode: pointer.mode,
         anneeScolaire: schoolYearOf(new Date(Date.parse(startedAt))),
         startedAt,
@@ -113,6 +103,7 @@ export async function recordTest(deps: Deps, s: State, f: AnswerFacts): Promise<
         firstTry: 0,
         xpGained: 0,
         items: [],
+        ...(multi ? { scope: pointer.scope, docIds: pointer.docIds ?? [pointer.docId] } : {}),
       };
   if (!existing) {
     // Premier passage de cette annee scolaire: la liste des annees se lit sur PROFILE, sans lire l'historique.
@@ -120,7 +111,7 @@ export async function recordTest(deps: Deps, s: State, f: AnswerFacts): Promise<
     years.add(base.anneeScolaire);
     p.anneesScolaires = [...years].sort().reverse();
   }
-  const rank = f.order.findIndex((q) => q.questionId === f.questionId) + 1;
+  const rank = pointer.draw.indexOf(f.questionId) + 1;
   const items = upsertLine(base.items, { q: f.questionId, rank: rank > 0 ? rank : base.items.length + 1, k: f.kind, correct: f.correct, xp: f.gained, at: new Date(s.now).toISOString(), choice: f.choice });
   const item = { ...base, ...recount(items), items, endedAt: new Date(s.now).toISOString() };
   return { item: { ...key, ...item } as unknown as Item, when: existing ? (existing.v ?? 'any') : 'absent' };
@@ -193,7 +184,7 @@ export async function listTestsOf(deps: Deps, studentId: string, q: TestQuery): 
     .sort((a, b) => b.SK.localeCompare(a.SK));
   const rows = all.filter((i) => {
     const t = SK_TIME(i.SK);
-    return t >= lo && t < hi && (q.docId === undefined || i.docId === q.docId) && (after === undefined || i.SK < after);
+    return t >= lo && t < hi && (q.docId === undefined || i.docId === q.docId || (Array.isArray(i.docIds) && (i.docIds as unknown[]).includes(q.docId))) && (after === undefined || i.SK < after);
   });
   const page = rows.slice(0, limit);
   const out: TestPageView = { items: page.map((i) => toSummary(i, testIdOfSk(i.SK))) };
@@ -251,8 +242,10 @@ export async function getTest(deps: Deps, ctx: StudentCtx, testId: string): Prom
       } catch {
         return v; // questionId mal forme
       }
-      if (qid.docId !== docId) return v;
-      const raw = await deps.store.get(qid.kind === 'qcm' ? keys.qcm(docId, qid.nn) : keys.gap(docId, qid.nn));
+      // Q1: le docId de chaque ligne se deduit du questionId; il doit etre une fiche du passage (jamais celle d'un autre eleve).
+      const mine = Array.isArray(it.docIds) ? (it.docIds as unknown[]).includes(qid.docId) : qid.docId === docId;
+      if (!mine) return v;
+      const raw = await deps.store.get(qid.kind === 'qcm' ? keys.qcm(qid.docId, qid.nn) : keys.gap(qid.docId, qid.nn));
       const parsed = qid.kind === 'qcm' ? QcmItemSchema.safeParse(raw) : GapItemSchema.safeParse(raw);
       if (!parsed.success) return v;
       if ('cle' in parsed.data) {

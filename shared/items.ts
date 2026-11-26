@@ -57,6 +57,8 @@ export const FicheItemSchema = z.object({
   coursId: z.string().optional(),
   sectionIndex: z.number().int().min(0).max(5).optional(),
   sectionCount: z.number().int().min(1).max(6).optional(),
+  /** Q1: taille de la banque de questions (QCM + trous). Absent sur une fiche ancienne. */
+  nbQuestions: z.number().int().min(0).max(198).optional(),
 });
 
 /** Dossier de l'eleve (contrat 1.3). `nomCle` = `labelKey(nom)`: unicite sans casse ni accents. Pas de liste de fiches: l'appartenance est portee par la fiche (`dossierId`). */

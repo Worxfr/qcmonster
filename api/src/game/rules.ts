@@ -1,6 +1,11 @@
 // Regles du jeu (docs/game-rules.md, source de verite). Fonctions pures: aucun acces a la base ni a l'horloge.
 export const XP = { qcmFirst: 5, qcmSecond: 2, gap: 5, seriesDone: 20, seriesPerfect: 30, review: 8, report: 15, scanPage: 10 } as const;
 export const DAILY_XP_CAP = 250;
+/** Q1 (decision du proprietaire): 50 XP au plus par fiche, pour toute la vie de la fiche (points de reponse seulement; ni serie, ni page, ni revision). */
+export const DOC_XP_CAP = 50;
+/** XP deja payes sur une fiche, depuis ses lignes ATT. Une ancienne ligne sans `xp` compte 5 si `rewarded` (valeur haute), sinon 0. */
+export const paidXp = (rows: Record<string, unknown>[]): number =>
+  rows.reduce((n, r) => n + (typeof r.xp === 'number' ? r.xp : r.rewarded === true ? XP.gap : 0), 0);
 export const PAID_PAGES_PER_DAY = 2;
 /** Un jour compte pour la serie a partir de 30 XP. */
 export const DAY_VALID_XP = 30;

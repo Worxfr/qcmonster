@@ -39,6 +39,8 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'family-export-archive', role: 'archive', needs: ['SCANS_BUCKET'], memoryMb: 1024, timeoutS: 29 },
   { name: 'session-get', role: 'play' },
   { name: 'answers-post', role: 'play' },
+  // contract-v1.7 (Q1): tirage sur plusieurs fiches ou un dossier. shortcut: role `play` (ecriture STUDENT#* large, comme session-get); role dedie PROFILE seul a voir.
+  { name: 'practice-post', role: 'play' },
   { name: 'docs-mark-read', role: 'play' },
   { name: 'reports-validate', role: 'play' },
   { name: 'students-create', role: 'account', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },

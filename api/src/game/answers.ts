@@ -6,15 +6,17 @@ import type { Deps } from '../lib/deps.js';
 import { HttpError, badRequest, conflict, notFound, type StudentCtx } from '../lib/http.js';
 import { activeStudent } from './access.js';
 import { grantStreakBonus } from './bonus.js';
-import { BURST_MAX_CORRECT, BURST_WINDOW_MS, MIN_ANSWER_MS, MIN_SERIES_MS, SERIES_LENGTH, XP, normalizeGap } from './rules.js';
+import { BURST_MAX_CORRECT, BURST_WINDOW_MS, DOC_XP_CAP, MIN_ANSWER_MS, MIN_SERIES_MS, SERIES_LENGTH, XP, normalizeGap, paidXp } from './rules.js';
 import { awardBadges, credit, mutate, newSeries, progressOf, type Progress } from './state.js';
-import { docQuestions, recordTest } from './tests.js';
+import { openFor, recordTest, type PlayProfile } from './tests.js';
 import { parisDate } from './time.js';
 
 export interface AnswerResult {
   correct: boolean;
   correctAnswer?: string;
   xpGained: number;
+  /** Q1: la reponse aurait rapporte des points mais la fiche a atteint 50 XP. */
+  capped?: boolean;
   badges: string[];
   progress: Progress;
 }
@@ -25,6 +27,8 @@ interface Attempt {
   done: boolean;
   /** Cette tentative a fait gagner la recompense unique de la question (une fois pour toutes, quelle que soit la fiche). */
   rewarded: boolean;
+  /** Points payes par cette ligne (apres le plafond de fiche, avant le plafond quotidien). */
+  xp: number;
 }
 
 export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId: string; choice: string }): Promise<AnswerResult> {
@@ -50,7 +54,6 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
   const risky = !(verdict && (verdict.statut === 'verifiee' || verdict.statut === 'non_factuelle'));
   const subject = String(fiche.matiere ?? 'autre');
 
-  const order = await docQuestions(deps, q.docId); // rang de la question et taille du passage (H1)
   const { st, result } = await mutate(
     deps,
     ctx.familyId,
@@ -58,8 +61,13 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
     async (s) => {
       const attKey = keys.attempt(ctx.studentId, body.questionId, s.today);
       const attIt = await deps.store.get(attKey);
-      const att: Attempt = { attempts: Number(attIt?.attempts ?? 0), done: attIt?.done === true, rewarded: attIt?.rewarded === true };
+      const att: Attempt = { attempts: Number(attIt?.attempts ?? 0), done: attIt?.done === true, rewarded: attIt?.rewarded === true, xp: Number(attIt?.xp ?? 0) };
       const p = s.profile;
+      // Q1 (P10): seule une question du tirage du passage ouvert est acceptee, et le passage expire apres 3 h sans reponse.
+      const gate = openFor(p as PlayProfile, body.questionId, s.now);
+      if (!gate.ok) throw conflict(gate.why === 'expire' ? 'Ton test a expiré, rouvre-le' : gate.why === 'ailleurs' ? 'Ton test a été rouvert ailleurs' : "Ouvre d'abord un test");
+      // La fiche est relue ici: une reponse en vol ne cree rien pour une fiche supprimee.
+      if (!(await deps.store.get(keys.doc(ctx.studentId, q.docId)))) throw notFound();
       const previousTick = p.tick;
       // Reponse trop rapide: rien du tout, pas meme la justesse (sinon 0,5 s par proposition suffirait a trouver la bonne reponse).
       // Le temps de reference n'est pas remis a zero: une rafale reste refusee jusqu'a 1 s apres la derniere reponse acceptee.
@@ -69,23 +77,31 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
       // Une recompense par question POUR TOUJOURS (game-rules 1 et 7.2): une tentative payee un autre jour ferme la question.
       const before = await deps.store.query(`STUDENT#${ctx.studentId}`, `ATT#${body.questionId}#`);
       const paidBefore = before.some((i) => i.SK !== attKey.SK && i.rewarded === true);
+      // Plafond de 50 XP par fiche pour toute la vie de la fiche (decision du proprietaire).
+      const remaining = Math.max(0, DOC_XP_CAP - paidXp(await deps.store.query(`STUDENT#${ctx.studentId}`, `ATT#${q.docId}:`)));
 
       const wasDone = att.done;
       att.attempts += 1;
       let amount = 0;
+      let capped = false;
       if (!wasDone) {
         if (correct) {
           att.done = true;
           if (!paidBefore) {
-            att.rewarded = true;
-            amount += q.kind === 'gap' ? XP.gap : att.attempts === 1 ? XP.qcmFirst : XP.qcmSecond;
+            const normal = q.kind === 'gap' ? XP.gap : att.attempts === 1 ? XP.qcmFirst : XP.qcmSecond;
+            const rowXp = Math.min(normal, remaining); // apres le plafond de fiche, avant le plafond quotidien
+            capped = rowXp < normal;
+            if (rowXp > 0) att.rewarded = true;
+            att.xp += rowXp;
+            amount += rowXp;
           }
         } else if (q.kind === 'gap' || att.attempts >= 2) att.done = true;
       }
       // Serie de 10: elle se mesure depuis l'ouverture de la session du jour (`startedAt`). Sans session ouverte aujourd'hui, la reponse
       // ne compte pas pour la serie. Seule la premiere tentative du jour d'une question jamais payee compte (rejouer ne fabrique rien).
       const sessionToday = p.series.startedAt !== undefined && parisDate(new Date(p.series.startedAt)) === s.today;
-      if (att.attempts === 1 && !paidBefore && sessionToday) {
+      // B1: seule une question qui peut encore rapporter (fiche non pleine) fait avancer la serie.
+      if (att.attempts === 1 && !paidBefore && remaining > 0 && sessionToday) {
         p.series.n += 1;
         p.series.perfect &&= correct;
         p.series.risky ||= risky;
@@ -110,10 +126,10 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
       }
       const c = credit(s, amount, subject);
       const newBadges = awardBadges(s);
-      const testWrite = await recordTest(deps, s, { docId: q.docId, questionId: body.questionId, kind: q.kind, fiche, correct, choice: body.choice, gained: c.gained, previousTick, order });
+      const testWrite = await recordTest(deps, s, { docId: q.docId, questionId: body.questionId, kind: q.kind, fiche, correct, choice: body.choice, gained: c.gained, cur: gate.cur });
       return {
-        extra: [testWrite, { item: { ...attKey, attempts: att.attempts, done: att.done, rewarded: att.rewarded }, when: attIt ? (attIt.v ?? 'any') : 'absent' }],
-        result: { gained: c.gained, newBadges, streakBonus: c.streakBonus, reveal: att.done },
+        extra: [testWrite, { item: { ...attKey, attempts: att.attempts, done: att.done, rewarded: att.rewarded, xp: att.xp }, when: attIt ? (attIt.v ?? 'any') : 'absent' }],
+        result: { gained: c.gained, capped, newBadges, streakBonus: c.streakBonus, reveal: att.done },
       };
     },
     () => conflict('Réessaie'),
@@ -123,6 +139,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
     correct,
     ...(result.reveal ? { correctAnswer: expected } : {}),
     xpGained: result.gained,
+    ...(result.capped ? { capped: true } : {}),
     badges: result.newBadges,
     progress: await progressOf(deps, ctx.familyId, ctx.studentId, st.profile, Number(student.quotaPages), st.today),
   };

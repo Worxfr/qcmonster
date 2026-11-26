@@ -298,10 +298,10 @@ describe('students-link, update, delete', () => {
     const v = await updateStudent(t.deps, parentCtx, SID, { status: 'suspendu' });
     expect(v.status).toBe('suspendu');
     expect(t.identity.users.get(SID)?.enabled).toBe(false);
-    await rejects(getSession(t.deps, s.ctx, 'doc1'), 403);
+    await rejects(getSession(t.deps, s.ctx, 'doc1', '20'), 403);
     await updateStudent(t.deps, parentCtx, SID, { status: 'actif' });
     expect(t.identity.users.get(SID)?.enabled).toBe(true);
-    await getSession(t.deps, s.ctx, 'doc1');
+    await getSession(t.deps, s.ctx, 'doc1', '20');
     // C4: une requete portant `status` rappelle toujours Cognito (reprise apres un echec Cognito).
     await updateStudent(t.deps, parentCtx, SID, { status: 'suspendu' });
     t.identity.users.get(SID)!.enabled = true; // Cognito n'avait pas suivi

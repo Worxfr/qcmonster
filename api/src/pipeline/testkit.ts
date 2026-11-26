@@ -19,6 +19,8 @@ export interface Script {
   extraction: string | ((prompt: string) => string);
   generation: string;
   solve: string;
+  /** Q1: second tour (banque). Absent: aucune question de plus. */
+  variantes?: string | (() => string);
 }
 
 export function scriptedPort(script: Script, calls: string[] = [], prompts: string[] = []): ModelPort {
@@ -37,6 +39,9 @@ export function scriptedPort(script: Script, calls: string[] = [], prompts: stri
         calls.push('extraction');
         prompts.push(req.prompt);
         text = typeof script.extraction === 'function' ? script.extraction(req.prompt) : script.extraction;
+      } else if (req.prompt.includes('<deja>')) {
+        calls.push('variantes');
+        text = typeof script.variantes === 'function' ? script.variantes() : (script.variantes ?? '{"qcm":[],"trous":[]}');
       } else if (req.prompt.includes('<affirmations>')) {
         calls.push('generation');
         text = script.generation;

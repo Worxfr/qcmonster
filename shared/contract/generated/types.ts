@@ -303,6 +303,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/practice/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * S'entrainer sur plusieurs fiches ou un dossier: tire les questions, SANS les reponses (handler practice-post, Q1, v1.7)
+         * @description Eleve seulement (403 pour un parent). Exactement un de `docIds` (1 a 10 fiches) ou `folderId`. Un `docId` inconnu ou d'un autre eleve n'est pas une erreur: il est range dans `skipped` (`introuvable`), sans difference visible. Un dossier de plus de 10 fiches: les 10 les moins recemment travaillees. Ouvrir une session remet la serie a zero et ferme le test precedent (un seul test ouvert par eleve).
+         */
+        post: operations["postPracticeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/answers": {
         parameters: {
             query?: never;
@@ -731,10 +751,10 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question";
             message: string;
             /**
              * Format: date
@@ -1101,6 +1121,8 @@ export interface components {
             folderId?: string;
             /** @description Cours complet d'ou vient la fiche (v1.3); absent pour une fiche ancienne ou si le cours a ete supprime */
             coursId?: string;
+            /** @description Taille de la banque de questions (v1.7): un nombre, jamais un contenu (visible aussi par le parent). Absent pour une fiche ancienne. */
+            questionCount?: number;
             sectionIndex?: number;
         };
         DocList: {
@@ -1161,10 +1183,52 @@ export interface components {
             prompt: string;
             /** @description Choix; ils peuvent contenir du LaTeX comme l'enonce. */
             choices?: string[];
+            /** @description Fiche d'origine (v1.7), seulement pour un test sur plusieurs fiches */
+            docId?: string;
+            /** @description Titre de la fiche d'origine (v1.7), seulement pour un test sur plusieurs fiches */
+            docTitle?: string;
         };
         Session: {
             docId: string;
             questions: components["schemas"]["Question"][];
+            /** @description Questions distinctes utilisables dans la banque (v1.7), hors questions proches */
+            available?: number;
+            /** @description Vrai si le test est plus court que demande (v1.7) */
+            short?: boolean;
+            /** @description Points encore gagnables sur la fiche (v1.7): 50 au plus par fiche, pour toute la vie de la fiche */
+            xpRemaining?: number;
+        };
+        /** @description Exactement un de `docIds` ou `folderId`. */
+        PracticeRequest: {
+            docIds?: string[];
+            folderId?: string;
+            /**
+             * @default 10
+             * @enum {integer}
+             */
+            size: 5 | 10 | 15 | 20;
+        };
+        PracticeSession: {
+            /** @enum {string} */
+            scope: "fiches" | "dossier";
+            title: string;
+            /** @description Fiches reellement interrogees, dans l'ordre */
+            docIds: string[];
+            questions: components["schemas"]["Question"][];
+            available: number;
+            short: boolean;
+            /** @description Points encore gagnables par fiche (50 au plus par fiche) */
+            xpRemaining?: {
+                docId: string;
+                xpRemaining: number;
+            }[];
+            skipped: {
+                docId: string;
+                /** @description Seulement pour une fiche de l'eleve (jamais pour un identifiant inconnu ou d'un autre eleve) */
+                title?: string;
+                /** @enum {string} */
+                reason: "sans_question" | "introuvable";
+            }[];
         };
         AnswerRequest: {
             questionId: string;
@@ -1197,6 +1261,8 @@ export interface components {
             /** @description Revele seulement apres la reponse */
             correctAnswer?: string;
             xpGained: number;
+            /** @description Vrai si la reponse aurait rapporte des points mais la fiche a atteint 50 XP (v1.7); `xpGained` vaut alors 0 pour cette part */
+            capped?: boolean;
             badges: string[];
             progress: components["schemas"]["Progress"];
         };
@@ -1357,6 +1423,13 @@ export interface components {
              * @enum {string}
              */
             status: "complet" | "incomplet";
+            /**
+             * @description Q1 (v1.7): absent ou `fiche` = une seule fiche. `titre` est alors le titre de la fiche, le nom du dossier ou `N fiches` (copie; pour un passage multi-fiches, seules les lignes de la fiche supprimee partent).
+             * @enum {string}
+             */
+            scope?: "fiche" | "fiches" | "dossier";
+            /** @description Fiches interrogees (v1.7); `docId` reste la premiere */
+            docIds?: string[];
         };
         /** @description Resultat d'une question dans un passage, sans aucun texte. */
         TestQuestionStatus: {
@@ -2354,7 +2427,10 @@ export interface operations {
     };
     getSession: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Nombre de questions du test (v1.7). Autre valeur: 400. */
+                size?: 5 | 10 | 15 | 20;
+            };
             header?: never;
             path: {
                 docId: components["parameters"]["DocId"];
@@ -2785,6 +2861,95 @@ export interface operations {
                      * @example {
                      *       "code": "etat_invalide",
                      *       "message": "Un ajout est en cours"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postPracticeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "docIds": [
+                 *         "01JEXAMPLE0DOC0000000000AA",
+                 *         "01JEXAMPLE0DOC0000000000AB"
+                 *       ],
+                 *       "size": 10
+                 *     }
+                 */
+                "application/json": components["schemas"]["PracticeRequest"];
+            };
+        };
+        responses: {
+            /** @description Session tiree */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "scope": "fiches",
+                     *       "title": "2 fiches",
+                     *       "docIds": [
+                     *         "01JEXAMPLE0DOC0000000000AA",
+                     *         "01JEXAMPLE0DOC0000000000AB"
+                     *       ],
+                     *       "questions": [
+                     *         {
+                     *           "questionId": "01JEXAMPLE0DOC0000000000AA:qcm:01",
+                     *           "kind": "qcm",
+                     *           "prompt": "Que produit la photosynthese ?",
+                     *           "choices": [
+                     *             "Du dioxygene",
+                     *             "De l azote",
+                     *             "Du sable",
+                     *             "Du fer"
+                     *           ],
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "docTitle": "La photosynthese"
+                     *         }
+                     *       ],
+                     *       "available": 12,
+                     *       "short": false,
+                     *       "xpRemaining": [
+                     *         {
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "xpRemaining": 50
+                     *         },
+                     *         {
+                     *           "docId": "01JEXAMPLE0DOC0000000000AB",
+                     *           "xpRemaining": 35
+                     *         }
+                     *       ],
+                     *       "skipped": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PracticeSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `aucune_question`: aucune des fiches n'a de question. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "aucune_question",
+                     *       "message": "Aucune question pour le moment"
                      *     }
                      */
                     "application/json": components["schemas"]["Error"];

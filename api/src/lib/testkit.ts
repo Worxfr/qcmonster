@@ -76,7 +76,7 @@ export async function seed(
   const n = o.nQcm ?? 12;
   for (let i = 1; i <= n; i++) {
     const nn = String(i).padStart(2, '0');
-    await put({ ...keys.qcm(docId, i), questionId: `${docId}:qcm:${nn}`, enonce: `Question ${i} ?`, choix: ['A', 'B', 'C', 'D'], cle: 1, claimId: nn });
+    await put({ ...keys.qcm(docId, i), questionId: `${docId}:qcm:${nn}`, enonce: `Question ${i} ? alpha${nn} beta${nn}`, choix: ['A', 'B', 'C', 'D'], cle: 1, claimId: nn });
     await put({ ...keys.verdict(docId, i), statut: (o.badClaims ?? []).includes(i) ? 'erreur' : 'verifiee', secondeLecture: false, sources: [] });
   }
   for (let i = 1; i <= (o.nGap ?? 0); i++) {

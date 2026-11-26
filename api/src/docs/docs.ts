@@ -35,6 +35,7 @@ const summary = (d: Item) => {
     createdAt: d.createdAt,
     ...(topic ? { topic } : {}),
     ...(str(d.dossierId) ? { folderId: str(d.dossierId) } : {}),
+    ...(typeof d.nbQuestions === 'number' ? { questionCount: d.nbQuestions } : {}), // Q1: un nombre, jamais un contenu
     ...(str(d.coursId) ? { coursId: str(d.coursId) } : {}),
     ...(typeof d.sectionIndex === 'number' ? { sectionIndex: d.sectionIndex } : {}),
   };

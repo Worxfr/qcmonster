@@ -33,7 +33,7 @@ describe('ecriture: passage de test', () => {
   it('session-get pose le pointeur, sans creer d\'entree TEST#', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3, nGap: 1 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     expect(await tests(t)).toHaveLength(0);
     const p = await prof(t);
     expect(p.currentTest).toMatchObject({ docId: 'doc1', total: 4, mode: 'mixte', openedAt: t.clk.t });
@@ -43,7 +43,7 @@ describe('ecriture: passage de test', () => {
   it('les reponses d\'une session alimentent UN passage: lignes, rang, compteurs, annee scolaire', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     await answer(t, ctx, qid('doc1', 'qcm', 1), good);
     t.clk.advance(2000);
@@ -89,15 +89,15 @@ describe('ecriture: passage de test', () => {
   it('sans reponse, ouvrir une fiche ne laisse rien', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1');
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
+    await getSession(t.deps, ctx, 'doc1', '20');
     expect(await tests(t)).toHaveLength(0);
   });
 
   it('deux reponses simultanees ne perdent aucune ligne (ecriture conditionnelle, relecture au conflit)', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     // Horloge qui avance de 1,1 s a chaque lecture: la perdante, relancee apres le conflit, n'est plus « trop rapide ».
     t.deps.now = () => new Date((t.clk.t += 1100));
     await Promise.all([answer(t, ctx, qid('doc1', 'qcm', 1), good), answer(t, ctx, qid('doc1', 'qcm', 2), good)]);
@@ -110,7 +110,7 @@ describe('ecriture: passage de test', () => {
   it('une transaction perdue (conflit) n\'ecrit ni la ligne ni la tentative', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     t.store.failNextCommits(3);
     await rejects(answer(t, ctx, qid('doc1', 'qcm', 1), good), 409);
@@ -216,7 +216,7 @@ describe('lecture: GET /me/tests/{testId}', () => {
   it('detail: reponse donnee, texte relu dans la fiche, bonne reponse seulement si la question est terminee', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3, nGap: 1 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     await answer(t, ctx, qid('doc1', 'qcm', 1), 'A'); // faux, 1er essai: pas terminee
     t.clk.advance(2000);

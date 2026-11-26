@@ -84,8 +84,8 @@ describe('aleatoire', () => {
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
-  it('18 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(18);
+  it('19 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
+    expect(files).toHaveLength(19);
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT
@@ -98,6 +98,10 @@ describe('garde: chaque handler verifie l\'identite du jeton', () => {
       const src = readFileSync(new URL(f, dir), 'utf8');
       // tests-read (H1-A) lit des FILTRES de liste (fiche, annee, curseur, limite) dans la requete; l'eleve et la famille viennent du jeton seul.
       if (f === 'tests-read.ts') {
+        expect(src, f).not.toMatch(/rawQueryString|\be\.body\b|event\.body\b|headers|familyId|studentId|\bsid\b/);
+        expect(src, f).toMatch(/requireStudent\(authOf\(e\)\)/);
+      } else if (f === 'session-get.ts') {
+        // Q1: `size` (taille du test) vient de la requete; l'eleve et la famille viennent du jeton seul.
         expect(src, f).not.toMatch(/rawQueryString|\be\.body\b|event\.body\b|headers|familyId|studentId|\bsid\b/);
         expect(src, f).toMatch(/requireStudent\(authOf\(e\)\)/);
       } else if (f === 'family-progress.ts') {
