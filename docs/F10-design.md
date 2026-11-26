@@ -21,7 +21,7 @@ Base lue : `main` à `781e9c2` (contrat 1.4.1), en particulier `api/src/pipeline
 | D9 | Échec | **Tout ou rien pour l'ajout seulement** : le cours d'origine est restauré tel quel (texte, sections, fiches) à partir d'une base écrite **à la création**. Aujourd'hui `failJob` supprime tout le cours ; pour un ajout ce serait une perte de données (section 6). |
 | D10 | Historique de tests (H1) | Inchangé : les `docId` existants ne bougent pas, donc aucun passage `TEST#` n'est touché. |
 | D12 | Liste des scans | **Un ajout = un scan.** Ses fiches forment leur propre groupe dans « Mes fiches » (même `scanId` = job de l'ajout). `sectionCount` des fiches d'origine n'est **pas** réécrit. La vue d'ensemble d'un cours est l'écran `GET /cours/{id}`. |
-| D11 | Confidentialité | Aucune donnée nouvelle ni durée nouvelle, mais un nouveau traitement du texte conservé (deux phrases renvoyées à Bedrock). Textes dans un commit séparé. **`POLICY_VERSION` : décision du propriétaire** (deux options, section 7). |
+| D11 | Confidentialité | Aucune donnée nouvelle ni durée nouvelle, mais un nouveau traitement du texte conservé (deux phrases renvoyées à Bedrock). Textes dans un commit séparé. **`POLICY_VERSION` : pas de hausse propre à F10, elle suit la hausse unique de R1** (décision du propriétaire, section 7). |
 
 ## 1. Ce qui existe (main `781e9c2`)
 
@@ -240,10 +240,9 @@ Le commit « docs(legal): F10 » (séparé du commit de conception, dans la PR d
 - `docs/legal/registre.md` (T3) : préciser que le texte du cours s'enrichit à chaque ajout, jusqu'à 30 pages, avec la même conservation ;
 - `docs/legal/politique-confidentialite.md` : une phrase « Tu peux ajouter des pages à un cours déjà scanné » et la mention que le texte ajouté suit la même règle ;
 - `docs/legal/aipd-brouillon.md` : volume maximal par élève (30 pages par cours) ; `sous-traitants.md` : aucune nouveauté (AWS déjà sous-traitant).
-- **`POLICY_VERSION` : DÉCISION DU PROPRIÉTAIRE (P13).** La substance ne change pas (aucune donnée nouvelle, aucune durée nouvelle, mêmes destinataires), mais le commentaire de `shared/policy.ts` demande de relever la version à chaque modification du texte, et la politique et le registre changent. Deux options :
-  - **Option A, exception explicite** : `POLICY_VERSION` reste `2026-11-26`. Le commit légal note que la modification est une clarification non substantielle. Pas de nouveau consentement.
-  - **Option B, une seule hausse commune avec R1** : R1 modifie aussi `politique-confidentialite.md`, `registre.md` et `aipd-brouillon.md`. Une seule nouvelle version est posée pour les deux, au moment de la mise en production du dernier des deux lots ; les familles consentent une fois.
-  - **Ordre des deux PR sur les mêmes textes légaux** : R1-D d'abord (elle est la première en conception), puis F10-D rebasée sur ses textes, avec un commit qui ne modifie que les lignes F10. Aucune des deux ne modifie `shared/policy.ts` sans la décision du propriétaire. Recommandation : option B, car elle évite deux demandes de consentement et deux écarts à la règle du commentaire.
+- **`POLICY_VERSION` : décision du propriétaire (P13), tranchée.** F10 ne relève pas la version et ne modifie pas `shared/policy.ts`. La version suit la **hausse unique de R1** (PR #82), posée une seule fois pour les deux lots ; les familles consentent une fois. Raison : la substance ne change pas (aucune donnée nouvelle, aucune durée nouvelle, mêmes destinataires), mais R1 modifie les mêmes textes (`politique-confidentialite.md`, `registre.md`, `aipd-brouillon.md`).
+  - **Ordre des deux PR sur les mêmes textes légaux** : R1-D d'abord, puis F10-D rebasée sur ses textes, avec un commit qui ne modifie que les lignes F10. Le commit légal de F10 le dit : « la version est relevée par R1 ».
+  - Si F10 est mise en production **avant** la hausse de R1, le texte modifié part sans nouvelle version jusqu'à celle de R1 ; le propriétaire en est informé au moment de ce choix d'ordre de mise en production.
 
 Contrôles : photo supprimée à la confirmation de l'ajout (`s3.deleteAll(scansPrefix)` du `jobsConfirm`, inchangé) ; l'ajout n'écrit aucune photo hors du préfixe du job ; aucun texte dans les journaux, ni dans les erreurs 4xx (messages constants).
 
@@ -309,7 +308,7 @@ Prérequis : fusion de R1-A (PR #82 et ses lots) pour les fichiers communs ; con
 
 ### Lot F10-D : textes légaux (après validation)
 
-- `docs/legal/registre.md`, `politique-confidentialite.md`, `aipd-brouillon.md`, à rebaser sur R1-D (ordre en section 7). `shared/policy.ts` seulement sur décision du propriétaire (P13).
+- `docs/legal/registre.md`, `politique-confidentialite.md`, `aipd-brouillon.md`, à rebaser sur R1-D (ordre en section 7). `shared/policy.ts` n'est pas modifié par F10 (la hausse unique est celle de R1, P13).
 
 ### Lot F10-E : e2e
 
@@ -370,7 +369,7 @@ Un test réel sur dev (1 à 2 pages, coût attendu inférieur à 0,10 €) avant
 | P10 | Fiches déjà jouées et liste | Inchangées, historique intact ; **un ajout = un scan**, `sectionCount` des fiches d'origine non réécrit | Regrouper par cours (`listScans`, contrat, `Docs.tsx`) : plus gros, plus tard |
 | P11 | Isolation | `sid` du jeton, 404 uniforme | — |
 | P12 | Parent | Aucun texte, aucun ajout (403) | — |
-| P13 | `POLICY_VERSION` (**décision du propriétaire**) | Recommandé : option B, une seule hausse commune avec R1 | Option A : version inchangée, exception notée dans le commit légal |
+| P13 | `POLICY_VERSION` | **Tranché par le propriétaire** : pas de hausse propre à F10, hausse unique avec R1 (PR #82) | — |
 | P14 | Échec d'ajout | **Restaurer** le cours d'origine (jamais le supprimer), depuis une base écrite à la création ; blocs, figures et marques de R1 suivent | — |
 | P15 | Édition en place de R1 pendant un ajout | **Refusée** (409), même règle que `DELETE /cours` | La laisser, avec un verrou séparé |
 
