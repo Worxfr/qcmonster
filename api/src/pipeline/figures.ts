@@ -129,6 +129,27 @@ export function sharpCrop(): CropPort {
   };
 }
 
+/**
+ * Mode « sans figures » (deploiement de R1-A avant le bucket et la couche de R1-B): actif sauf si `FIGURES_ENABLED=true` ET `QCM_FIGURES_BUCKET` est fourni.
+ * Alors aucune figure n'est demandee, ni rognee, ni ecrite, ni copiee, et le scan fonctionne en texte comme avant R1.
+ */
+export const figuresConfig = (env: Record<string, string | undefined>): { enabled: boolean; bucket?: string } =>
+  env.FIGURES_ENABLED === 'true' && env.QCM_FIGURES_BUCKET ? { enabled: true, bucket: env.QCM_FIGURES_BUCKET } : { enabled: false };
+
+/** Bucket des figures absent: aucune figure n'existe, donc rien a lire, copier ni supprimer. */
+export const disabledFigureStore = (): FigureStore => ({
+  async copyFromScans() {
+    throw new Error('figures desactivees');
+  },
+  async presignGet() {
+    throw new Error('figures desactivees');
+  },
+  async list() {
+    return [];
+  },
+  async deleteAll() {},
+});
+
 export async function s3Figures(figuresBucket: string, scansBucket: string): Promise<FigureStore> {
   const { S3Client, CopyObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');

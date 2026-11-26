@@ -6,7 +6,7 @@ import { coursApi } from '../cours/cours.js';
 import { docsRead } from '../docs/docs.js';
 import { scansDelete } from '../scans/delete.js';
 import { jobKey } from './ctx.js';
-import { cropFigures, figureKey, tempFigureKey } from './figures.js';
+import { cropFigures, disabledFigureStore, figureKey, figuresConfig, tempFigureKey } from './figures.js';
 import { guarded } from './http.js';
 import { scansPrefix } from './job.js';
 import { awaitConfirm, awaitUpload, failJob, scanCheck, scanStart, transcribe } from './steps.js';
@@ -321,5 +321,49 @@ describe('suppression: ordre, S3 avant DynamoDB, isolation, parent', () => {
     expect(pere.figures).toBeUndefined();
     expect(JSON.stringify(pere)).not.toContain('figures/');
     expect(pere.claims[0].sentenceId).toBeUndefined();
+  });
+});
+
+describe('mode sans figures (R1-A deploye avant le bucket et la couche de R1-B)', () => {
+  it('figuresConfig: actif seulement avec FIGURES_ENABLED=true ET un bucket', () => {
+    expect(figuresConfig({}).enabled).toBe(false);
+    expect(figuresConfig({ QCM_FIGURES_BUCKET: 'b' }).enabled).toBe(false);
+    expect(figuresConfig({ FIGURES_ENABLED: 'true' }).enabled).toBe(false);
+    expect(figuresConfig({ FIGURES_ENABLED: 'false', QCM_FIGURES_BUCKET: 'b' }).enabled).toBe(false);
+    expect(figuresConfig({ FIGURES_ENABLED: 'true', QCM_FIGURES_BUCKET: 'b' })).toEqual({ enabled: true, bucket: 'b' });
+  });
+
+  it('le scan marche en texte de bout en bout: aucune figure demandee, rognee, ecrite ni copiee, suppression sans erreur', async () => {
+    const k = await makeCtx(script(readMd()));
+    k.ctx.figures = disabledFigureStore(); // aucun bucket: toute ecriture ou signature leverait
+    k.ctx.cfg = { figuresEnabled: false };
+    const i = await toReview(k);
+    expect(k.prompts[0]).not.toContain('[[f1]]');
+    expect(k.crop.calls).toEqual([]);
+    expect([...k.s3.objects.keys()].filter((x) => x.includes('/fig/'))).toEqual([]);
+    const t = body(await jobsTranscription(k.ctx, event({ params: { jobId: i.jobId } })));
+    expect(t.figures).toBeUndefined();
+    expect(t.blocks.some((b: { kind: string }) => b.kind === 'figure')).toBe(false);
+    expect((await confirm(k, i.jobId, { corrections: [{ id: 'p1-s3', text: 'Phrase corrigee.' }] })).statusCode).toBe(200);
+    expect((await confirm(k, i.jobId, { figures: [{ figureId: 'f1', keep: true }] })).statusCode).toBe(409); // deja confirme
+    const get = { ...event({ params: { coursId: i.jobId } }), routeKey: 'GET /cours/{coursId}' };
+    const c = body(await cours(k.ctx, get as never));
+    expect(c.figures).toEqual([]);
+    const del = { ...get, routeKey: 'DELETE /cours/{coursId}', queryStringParameters: { fiches: 'supprimer' } };
+    expect((await cours(k.ctx, del as never)).statusCode).toBe(204);
+  });
+
+  it('echec et annulation sans bucket: aucun appel au stockage des figures', async () => {
+    const k = await makeCtx(script(readMd()));
+    k.ctx.figures = disabledFigureStore();
+    k.ctx.cfg = { figuresEnabled: false };
+    const i = await toReview(k);
+    await failJob(k.ctx, { ...i, error: { Error: 'Error' } });
+    expect((await k.db.get(jobKey('s1', i.jobId)))!.state).toBe('echec');
+    const k2 = await makeCtx(script(readMd()));
+    k2.ctx.figures = disabledFigureStore();
+    k2.ctx.cfg = { figuresEnabled: false };
+    const i2 = await toReview(k2);
+    expect((await delScan(k2.ctx, event({ params: { scanId: i2.jobId } }))).statusCode).toBe(204);
   });
 });

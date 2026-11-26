@@ -33,7 +33,7 @@ export function studentExportDeps(): StudentExportDeps {
     now: () => new Date(),
     ...realRandom,
     archives: s3Archives(bucket),
-    figures: s3FigureReader(need('QCM_FIGURES_BUCKET')),
+    figures: process.env.QCM_FIGURES_BUCKET ? s3FigureReader(process.env.QCM_FIGURES_BUCKET) : { list: async () => [], get: async () => undefined }, // sans bucket: pas de figures dans l'archive
     openSink: (key) => partSink(s3Uploader(bucket, key)),
     async launch(payload) {
       await new LambdaClient({}).send(new InvokeCommand({ FunctionName: need('QCM_EXPORT_FUNCTION'), InvocationType: 'Event', Payload: Buffer.from(JSON.stringify(payload)) }));

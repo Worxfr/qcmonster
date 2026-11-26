@@ -26,7 +26,7 @@ export function s3Photos(bucket: string, client: S3Client = new S3Client({}), fi
   return {
     async deleteFiguresForStudent(studentId) {
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(studentId)) return;
-      if (!figuresBucket) throw new Error('bucket des figures manquant'); // jamais de suppression silencieusement sautee
+      if (!figuresBucket) return; // R1-A deploye avant le bucket (R1-B): aucune figure n'existe encore
       await deletePrefix(client, figuresBucket, `figures/${studentId}/`);
     },
     async deleteForStudent(studentId) {

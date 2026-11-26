@@ -14,7 +14,7 @@ import { scansList } from '../scans/list.js';
 import { scansDelete } from '../scans/delete.js';
 import { handler as exportBuildHandler } from '../family/student-export-build.js';
 import { handler as meExportHandler } from '../handlers/me-export.js';
-import { cropFigures, s3Figures, sharpCrop } from './figures.js';
+import { cropFigures, disabledFigureStore, figuresConfig, s3Figures, sharpCrop } from './figures.js';
 import { jobsCancel, jobsConfirm, jobsGet, jobsTranscription, scansCreate } from './api.js';
 import { ulid, type Ctx } from './ctx.js';
 import { guarded, json } from './http.js';
@@ -97,6 +97,7 @@ function context(): Promise<Ctx> {
     if (!ENVS.includes(env)) throw new Error('QCM_ENV invalide');
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
     const table = need('QCM_TABLE');
+    const fig = figuresConfig(process.env); // sans bucket ni FIGURES_ENABLED=true: comportement d'avant R1
     return {
       env,
       db: dynamoDb(client, table),
@@ -104,9 +105,9 @@ function context(): Promise<Ctx> {
       s3: await s3Store(need('QCM_SCANS_BUCKET')),
       sfn: await sfnPort(need('QCM_STATE_MACHINE_ARN')),
       // Bucket des figures (lot B: variable QCM_FIGURES_BUCKET, parametre SSM data/figuresBucket); `sharp` n'est charge que par l'etape cropFigures.
-      figures: await s3Figures(need('QCM_FIGURES_BUCKET'), need('QCM_SCANS_BUCKET')),
+      figures: fig.bucket ? await s3Figures(fig.bucket, need('QCM_SCANS_BUCKET')) : disabledFigureStore(),
       crop: sharpCrop(),
-      cfg: { figuresEnabled: process.env.FIGURES_ENABLED !== 'false', figureBoxModel: process.env.FIGURE_BOX_MODEL === 'sonnet' ? 'sonnet' : 'haiku' },
+      cfg: { figuresEnabled: fig.enabled, figureBoxModel: process.env.FIGURE_BOX_MODEL === 'sonnet' ? 'sonnet' : 'haiku' },
       models: { haiku: process.env.QCM_MODEL_HAIKU ?? '', sonnet: process.env.QCM_MODEL_SONNET ?? '' },
       port: await modelPortFromEnv(),
       costStore: costStoreFromDynamo(client, table),
