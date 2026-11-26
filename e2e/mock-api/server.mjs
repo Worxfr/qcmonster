@@ -113,11 +113,30 @@ function status(j) {
 }
 const jobOut = (j) => { advance(j); return { jobId: j.jobId, state: j.state, pages: j.pages, createdAt: j.createdAt, status: status(j), ...(j.message ? { message: j.message } : {}), ...(j.docIds ? { docId: j.docIds[0], docIds: j.docIds } : {}) }; };
 
-const textOf = (j) => Array.from({ length: j.pages }, (_, i) => ({ page: i + 1, sentences: PAGES[i % PAGES.length].map((t, k) => ({ id: `p${i + 1}-s${k + 1}`, text: j.fixed?.[`p${i + 1}-s${k + 1}`] ?? t })) }));
+// R1 (contrat 1.5): `doubt` sur la 2e phrase de chaque page tant qu'elle n'est pas corrigee; phrases retirees (`removed`) absentes du cours conserve.
+const textOf = (j, { review = false } = {}) => Array.from({ length: j.pages }, (_, i) => ({
+  page: i + 1,
+  sentences: PAGES[i % PAGES.length].map((t, k) => ({ id: `p${i + 1}-s${k + 1}`, text: j.fixed?.[`p${i + 1}-s${k + 1}`] ?? t, ...(review && k === 1 && !j.fixed?.[`p${i + 1}-s${k + 1}`] ? { doubt: true } : {}) })).filter((x) => !j.removed?.includes(x.id)),
+}));
+/** Blocs: un titre (1re phrase de la page 1), un paragraphe par page, et une figure `f1` apres le paragraphe de la page 1. */
+const FIG_ALT = 'Schéma de la feuille avec les flèches du dioxyde de carbone';
+const blocksOf = (j) => {
+  const out = [];
+  let b = 0;
+  textOf(j).forEach((pg, i) => {
+    const ids = pg.sentences.map((x) => x.id);
+    if (i === 0 && ids.length) out.push({ id: `b${++b}`, kind: 'titre', level: 2, sentenceIds: [ids.shift()] });
+    if (ids.length) out.push({ id: `b${++b}`, kind: 'paragraphe', sentenceIds: ids });
+    if (i === 0) out.push({ id: `b${++b}`, kind: 'figure', figureId: 'f1' });
+  });
+  return out;
+};
+const figureOf = (j, kept = false) => ({ figureId: 'f1', page: 1, kind: 'schema', alt: j.figAlt ?? FIG_ALT, caption: 'Fig. 1', box: { x: 0.1, y: 0.4, w: 0.8, h: 0.35 }, url: `${BASE}/__photo/0.svg`, urlExpireAt: iso(Date.now() + 300e3), ...(kept ? {} : {}) });
+const latexOk = (t) => { let n = 0; for (let k = 0; k < t.length; k++) { if (t[k] === '\\' && t[k + 1] === '$') k++; else if (t[k] === '$') n++; } return n % 2 === 0 && !/\\(href|url|input|include|def|htmlData|htmlClass)\b/.test(t); };
 
 function makeDocs(j) {
   const all = textOf(j).flatMap((p) => p.sentences);
-  const cours = { coursId: id('crs'), createdAt: j.createdAt, pages: j.pages, texts: textOf(j), sections: [] };
+  const cours = { coursId: id('crs'), createdAt: j.createdAt, pages: j.pages, texts: textOf(j), sections: [], blocks: blocksOf(j).filter((b) => b.kind !== 'figure' || j.keepFigure), figures: j.keepFigure ? [figureOf(j)] : [], marks: [] };
   j.docIds = [];
   const kept = j.sections.filter((s) => !s.ignore).length;
   j.sections.forEach((s, i) => {
@@ -206,8 +225,13 @@ const json = (b) => { try { return JSON.parse(b.toString() || '{}'); } catch { r
 function confirm(j, b) {
   const all = textOf(j).flatMap((p) => p.sentences);
   const fixed = {};
-  for (const c of b.corrections ?? []) { if (!all.some((s) => s.id === c.id) || !c.text?.trim()) return [400, 'requete_invalide', 'Demande invalide']; fixed[c.id] = c.text; }
+  const removed = b.removed ?? [];
+  if (removed.some((r) => !all.some((s) => s.id === r))) return [400, 'requete_invalide', 'Phrase inconnue'];
+  if ((b.figures ?? []).some((f) => f.figureId !== 'f1')) return [400, 'requete_invalide', 'Figure inconnue'];
+  for (const c of b.corrections ?? []) { if (!latexOk(c.text ?? '')) return [400, 'requete_invalide', 'Formule non valide']; if (!all.some((s) => s.id === c.id) || !c.text?.trim()) return [400, 'requete_invalide', 'Demande invalide']; fixed[c.id] = c.text; }
   if ([b.folderId, ...(b.sections ?? []).map((x) => x.folderId)].some((f) => f && !S.folders.some((x) => x.folderId === f))) return [404, 'introuvable', 'Dossier introuvable'];
+  const kept = all.filter((x) => !removed.includes(x.id));
+  if (removed.includes(b.sections?.[0]?.fromSentenceId ?? '')) return [400, 'requete_invalide', 'Phrase de départ inconnue'];
   const secs = b.sections?.length ? b.sections : [{ fromSentenceId: all[0].id, subject: b.subject ?? 'autre', topic: b.topic ?? 'Sans sujet', folderId: b.folderId }];
   if (secs.length > Math.min(6, 2 * j.pages)) return [400, 'requete_invalide', 'Trop de fiches'];
   let last = -1;
@@ -223,7 +247,7 @@ function confirm(j, b) {
     for (const x of all.slice(from, to)) w += words(fixed[x.id] ?? x.text);
   });
   if (w < 40) return [400, 'requete_invalide', 'Il faut au moins 40 mots dans les parties gardées'];
-  Object.assign(j, { fixed, sections: secs, state: 'verification', confirmedAt: Date.now() });
+  Object.assign(j, { removed, keepFigure: (b.figures ?? []).some((f) => f.keep), figAlt: (b.figures ?? []).find((f) => f.keep)?.alt, fixed, sections: secs, state: 'verification', confirmedAt: Date.now() });
   return null;
 }
 
@@ -341,7 +365,7 @@ const server = createServer(async (req, res) => {
     if (parent) return err(res, 403, 'interdit', 'Interdit');
     if (m === 'GET' && seg[3] === 'transcription') {
       if (j.state !== 'a_confirmer') return err(res, 409, 'etat_invalide', 'Ce scan ne peut plus être relu');
-      return send(res, 200, { jobId: j.jobId, docType: 'cours', pages: textOf(j), suggestedSubject: 'svt', suggestedTopic: 'La photosynthèse', ...(S.suggest && j.pages > 1 ? { suggestedSections: [{ fromSentenceId: 'p1-s1', subject: 'svt', topic: 'La photosynthèse' }, { fromSentenceId: 'p2-s1', subject: 'histoire_geo', topic: 'La Révolution française' }] } : {}), photoUrls: Array.from({ length: j.pages }, (_, i) => `${BASE}/__photo/${i}.svg`), photoUrlsExpireAt: iso(Date.now() + 300e3) });
+      return send(res, 200, { jobId: j.jobId, docType: 'cours', pages: textOf(j, { review: true }), blocks: blocksOf(j), figures: [figureOf(j)], suggestedSubject: 'svt', suggestedTopic: 'La photosynthèse', ...(S.suggest && j.pages > 1 ? { suggestedSections: [{ fromSentenceId: 'p1-s1', subject: 'svt', topic: 'La photosynthèse' }, { fromSentenceId: 'p2-s1', subject: 'histoire_geo', topic: 'La Révolution française' }] } : {}), photoUrls: Array.from({ length: j.pages }, (_, i) => `${BASE}/__photo/${i}.svg`), photoUrlsExpireAt: iso(Date.now() + 300e3) });
     }
     if (m === 'POST' && seg[3] === 'confirm') {
       if (j.state !== 'a_confirmer') return err(res, 409, 'etat_invalide', 'Ce scan ne peut plus être confirmé');
@@ -382,7 +406,13 @@ const server = createServer(async (req, res) => {
     const d = S.docs.find((x) => x.docId === ID);
     if (!d) return err(res, 404, 'introuvable', 'Introuvable');
     const { jobId: _j, sectionIndex: _i, sectionCount: _n, ...pub } = d;
-    if (m === 'GET' && !seg[3]) return send(res, 200, pub);
+    if (m === 'GET' && !seg[3]) {
+      if (parent) return send(res, 200, pub);
+      const c = S.cours.find((x) => x.coursId === d.coursId);
+      const body = [{ heading: 'À retenir', text: `${pub.summary} Voici la formule $E = mc^{2}$.`, claimIds: pub.claims.slice(0, 1).map((x) => x.claimId) }, { text: 'Deuxième paragraphe de la fiche.' }];
+      const recall = pub.claims.slice(0, 2).map((x, k) => ({ kind: k ? 'date' : 'definition', text: x.text, claimId: x.claimId, verified: x.status === 'verifiee' }));
+      return send(res, 200, { ...pub, claims: pub.claims.map((x) => ({ ...x, sentenceId: 'p1-s1' })), body, recall, ...(c?.figures?.length ? { figures: c.figures } : {}) });
+    }
     if (m === 'DELETE') { S.docs = S.docs.filter((x) => x !== d); return send(res, 204); }
     if (m === 'POST' && seg[3] === 'read') {
       const first = !S.readToday.has(ID);
@@ -392,11 +422,26 @@ const server = createServer(async (req, res) => {
     }
     if (m === 'GET' && seg[3] === 'session') return send(res, 200, { docId: ID, questions: (S.questions.get(ID) ?? []).map(({ answer: _a, ...q }) => q) });
   }
+  if (seg[1] === 'me' && seg[2] === 'export' && seg[3] === 'archive') {
+    if (parent) return err(res, 403, 'interdit', 'Interdit');
+    S.exports ??= new Map();
+    if (m === 'POST' && !seg[4]) {
+      const exportId = id('exp');
+      S.exports.set(exportId, { at: Date.now() });
+      return send(res, 202, { exportId, state: 'en_cours' });
+    }
+    if (m === 'GET' && seg[4]) {
+      const e = S.exports.get(seg[4]);
+      if (!e) return err(res, 404, 'introuvable', 'Introuvable');
+      if (Date.now() - e.at < T_STEP) return send(res, 200, { exportId: seg[4], state: 'en_cours' });
+      return send(res, 200, { exportId: seg[4], state: 'pret', archive: { url: `${BASE}/__export/${seg[4]}.zip`, expiresAt: iso(Date.now() + 600e3), format: 'zip', sizeBytes: 482113, students: 1, tests: S.tests.length, truncated: false, courses: S.cours.length, figures: S.cours.reduce((n, c) => n + c.figures.length, 0), omittedCourses: 0 } });
+    }
+  }
   if (seg[1] === 'cours') {
     if (parent) return err(res, 403, 'interdit', 'Interdit');
     const c = S.cours.find((x) => x.coursId === ID);
     if (!c) return err(res, 404, 'introuvable', 'Introuvable');
-    if (m === 'GET') return send(res, 200, { ...c, sections: c.sections.map((s) => (s.docId && !S.docs.some((d) => d.docId === s.docId) ? { ...s, docId: undefined, status: 'supprimee' } : s)) });
+    if (m === 'GET') return send(res, 200, { ...c, figureCount: c.figures.length, marks: S.docs.filter((d) => d.coursId === ID).flatMap((d) => d.claims.slice(0, 2).map((x, k) => ({ sentenceId: x.sentenceId ?? `p1-s${k + 1}`, status: ['verifiee', 'erreur', 'non_verifiable'][k % 3], docId: d.docId, claimId: x.claimId }))), sections: c.sections.map((s) => (s.docId && !S.docs.some((d) => d.docId === s.docId) ? { ...s, docId: undefined, status: 'supprimee' } : s)) });
     if (m === 'DELETE') {
       const mode = url.searchParams.get('fiches');
       if (!['garder', 'supprimer'].includes(mode)) return err(res, 400, 'requete_invalide', 'Demande invalide');

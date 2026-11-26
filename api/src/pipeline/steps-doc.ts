@@ -14,6 +14,8 @@ import { extractPrompt, generatePrompt, solvePrompt, SYSTEM_JSON } from './promp
 import type { Item } from './ports.js';
 import { MSG, purgeScan, type WfInput } from './steps.js';
 import { addVerifyCostOnce, currentAttempt, draftKey } from './steps-cost.js';
+import { sanitizeLatex, splitMath } from '../../../shared/latex.js';
+import { validFiche, type FicheParagraph, type RecallItem } from './blocks.js';
 import { ModelOutputError, normalize, parseModelJson, salvageTruncatedList, sliceRanges, thinEvenly, words, type SliceRange } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
@@ -326,7 +328,8 @@ export async function quotaConsume(ctx: Ctx, i: WfInput & { verify?: { coutCenti
 
 // ---------------------------------------------------------------- 11-13
 const GenOut = z.object({
-  resume: z.string().max(3000),
+  resume: z.string().max(3000).optional(),
+  fiche: z.unknown().optional(), // R1: paragraphes et rappel, controles par `validFiche` (illisible: repli sur `resume`)
   qcm: z.array(z.object({ claimId: z.string(), enonce: z.string(), choix: z.array(z.string()), cle: z.number().int() })).max(20),
   trous: z.array(z.object({ claimId: z.string(), phrase: z.string(), attendu: z.string() })).max(20),
 });
@@ -367,6 +370,8 @@ export function validQcm(q: GenQcm, eligible: Map<string, EligibleClaim>): boole
 /** Trou: un seul `____`, le mot masque est dans l'affirmation, ne reste pas dans la phrase, et la phrase vient de l'affirmation. */
 export function validGap(g: GenGap, eligible: Map<string, EligibleClaim>): boolean {
   const claim = eligible.get(g.claimId);
+  // Le mot masque ne peut pas etre a l'interieur d'une formule (R1 2.7).
+  if (splitMath(g.phrase)?.some((s) => 'math' in s && s.math.includes('____'))) return false;
   if (!claim || g.phrase.split('____').length !== 2 || g.attendu.trim().length < 1 || g.attendu.length > 60) return false;
   const att = normalize(g.attendu);
   if (!att || !` ${normalize(claim.texte)} `.includes(` ${att} `)) return false;
@@ -391,7 +396,11 @@ async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, Eligibl
   let resume = '';
   const raw = await callModel(ctx, i, 'generation', 'haiku', { system: SYSTEM_JSON, prompt: generatePrompt([...forSummary.values()], cap), maxTokens: 4000 });
   const gen = parseModelJson(raw, GenOut);
-  resume = gen.resume.trim();
+  resume = (gen.resume ?? '').trim();
+  const fiche: { body: FicheParagraph[]; recall: RecallItem[] } | undefined = validFiche(gen.fiche, new Map([...forSummary].map(([id, c]) => [id, { texte: c.texte, status: c.verifiee ? ('verifiee' as const) : ('non_verifiable' as const) }])));
+  // `summary` reprend `body` (clients 1.4): paragraphes separes par une ligne vide, sans le rappel. Fiche illisible: le `resume` seul, pas de rappel.
+  if (fiche) resume = fiche.body.map((p) => p.text).join('\n\n');
+  else if (!resume) throw new ModelOutputError('sortie du modele: fiche vide');
   const cand = gen.qcm.filter((q) => validQcm(q, eligible)).slice(0, MAX_QUESTIONS); // le plafond `cap` s'applique apres le controle a l'aveugle
   if (cand.length) {
     // Resolution a l'aveugle: un second appel repond sans voir la cle; une reponse differente rejette la question.
@@ -409,7 +418,7 @@ async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, Eligibl
     }
   }
   gaps.push(...gen.trous.filter((g) => validGap(g, eligible)).slice(0, cap));
-  return { resume, qcm, gaps };
+  return { resume, fiche, qcm, gaps };
 }
 
 export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; qcm: number; gaps: number; doublon: boolean; skipped?: boolean }> {
@@ -439,7 +448,7 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
   }
 
   await clearDoc(ctx, docId, ['QCM#', 'GAP#']);
-  let made: { resume: string; qcm: GenQcm[]; gaps: GenGap[] } = { resume: '', qcm: [], gaps: [] };
+  let made: { resume: string; fiche?: { body: FicheParagraph[]; recall: RecallItem[] }; qcm: GenQcm[]; gaps: GenGap[] } = { resume: '', qcm: [], gaps: [] };
   if (forSummary.size > 0) {
     try {
       made = await makeQuestions(ctx, i, eligible, forSummary);
@@ -452,10 +461,10 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
   for (const [k, q] of made.qcm.entries()) {
     const qid = questionId(docId, 'qcm', k + 1);
     const sh = shuffleChoices(q.choix, q.cle, qid);
-    await ctx.db.put(QcmItemSchema.parse({ ...keys.qcm(docId, k + 1), questionId: qid, enonce: q.enonce.trim(), choix: sh.choix, cle: sh.cle, claimId: q.claimId }));
+    await ctx.db.put(QcmItemSchema.parse({ ...keys.qcm(docId, k + 1), questionId: qid, enonce: sanitizeLatex(q.enonce.trim()), choix: sh.choix.map((c) => sanitizeLatex(c)), cle: sh.cle, claimId: q.claimId }));
   }
   for (const [k, g] of made.gaps.entries()) {
-    await ctx.db.put(GapItemSchema.parse({ ...keys.gap(docId, k + 1), questionId: questionId(docId, 'gap', k + 1), phrase: g.phrase.trim(), attendu: g.attendu.trim(), claimId: g.claimId }));
+    await ctx.db.put(GapItemSchema.parse({ ...keys.gap(docId, k + 1), questionId: questionId(docId, 'gap', k + 1), phrase: sanitizeLatex(g.phrase.trim()), attendu: g.attendu.trim(), claimId: g.claimId }));
   }
 
   // Empreinte et doublon (meme famille), sur le texte de la section seule. Un texte sans groupe de mots n'est jamais un doublon.
@@ -494,7 +503,7 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
     ...(plan && slot && typeof job.coursId === 'string' ? { coursId: job.coursId, sectionIndex: sec.rank, sectionCount: sec.kept.length } : {}),
   });
   // La fiche est ecrite en dernier: elle n'apparait dans les listes que complete.
-  await ctx.db.put({ ...fiche, ...gsi1.doc(job.familyId as string, `${createdAt}#${docId}`), familyId: job.familyId, studentId: i.sid, jobId: i.jobId, resume: made.resume });
+  await ctx.db.put({ ...fiche, ...gsi1.doc(job.familyId as string, `${createdAt}#${docId}`), familyId: job.familyId, studentId: i.sid, jobId: i.jobId, resume: sanitizeLatex(made.resume), ...(made.fiche ? { body: made.fiche.body, recall: made.fiche.recall } : {}) });
   if (plan) return { docId, qcm: made.qcm.length, gaps: made.gaps.length, doublon }; // la fin du scan est le pas `finalize`
   const done = await ctx.db.get(jobKey(i.sid, i.jobId));
   const micros = (done?.coutMicros as number | undefined) ?? 0;

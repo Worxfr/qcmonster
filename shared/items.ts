@@ -144,3 +144,29 @@ export const CoursTextItemSchema = z.object({
   page: z.number().int().min(1).max(10),
   sentences: z.array(z.object({ id: z.string().regex(/^p[0-9]+-s[0-9]+$/), text: z.string().max(2000), pages: z.array(z.number().int().min(1).max(10)).min(1).max(4).optional() })),
 });
+
+/** Bloc du cours (contrat 1.5). */
+export const BlockSchema = z.object({
+  id: z.string().regex(/^b[0-9]+$/),
+  kind: z.enum(['titre', 'paragraphe', 'liste', 'formule', 'figure']),
+  level: z.number().int().min(1).max(3).optional(),
+  ordered: z.boolean().optional(),
+  sentenceIds: z.array(z.string().regex(/^p[0-9]+-s[0-9]+$/)).max(200).optional(),
+  figureId: z.string().regex(/^f[0-9]+$/).optional(),
+});
+/** Figure du cours SANS url (l'url est signee a la lecture). `boxInvalid` n'existe que dans le job, jamais dans le cours. */
+export const FigureMetaSchema = z.object({
+  figureId: z.string().regex(/^f[0-9]+$/),
+  page: z.number().int().min(1).max(10),
+  kind: z.enum(['schema', 'graphique', 'tableau', 'carte', 'photo', 'autre']),
+  alt: z.string().min(1).max(300),
+  caption: z.string().max(200).optional(),
+  box: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
+});
+/** `STUDENT#<sid> / COURS#<coursId>#B` (R1): blocs (400 au plus) et figures conservees (8 au plus). Pas de drapeau `doubt`: il n'a de sens qu'avant la confirmation. */
+export const CoursBlocksItemSchema = z.object({
+  PK: z.string(),
+  SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}#B$/),
+  blocks: z.array(BlockSchema).max(400),
+  figures: z.array(FigureMetaSchema).max(8),
+});

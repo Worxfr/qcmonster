@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.5.0
+  version: 1.5.1
   description: |
-    Contrat d'API QCMonster (contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -233,6 +233,9 @@ paths:
                 state: verification
                 pages: 2
                 createdAt: '2026-12-01T10:00:00Z'
+        '503':
+          description: "Erreur de stockage pendant la copie des figures gardees (`indisponible`, v1.5.1): rien n'a change, l'eleve renvoie la meme confirmation."
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: indisponible, message: Service momentanément indisponible, réessaie } } }
         '400':
           description: "Demande invalide. Cas propres aux sections: phrase inconnue, coupes pas dans l'ordre ou en double, premiere section pas au debut, plus de 6 sections, aucune section non ignoree, `sections` avec `subject`/`topic`/`folderId`, `topic` ou `title` vide apres nettoyage."
           content:
@@ -938,6 +941,43 @@ paths:
               schema: { $ref: '#/components/schemas/FamilyExport' }
               example: { familyId: 01JEXAMPLE0FAM0000000000AA, exportedAt: '2026-12-01T10:00:00Z', parentEmail: parent@example.invalid, students: [], docs: [], reports: [] }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /me/export/archive:
+    post:
+      operationId: createMyExportArchive
+      tags: [game]
+      summary: "L'eleve demande l'archive de TOUTES ses donnees, figures comprises (contract-v1.5.1, R1; handler me-export)"
+      description: |
+        Reserve a l'eleve (un parent recoit 403: l'export du parent ne contient aucun contenu de cours). Pas de corps. La construction est **asynchrone**: la reponse est `202` avec un `exportId`, puis `GET /me/export/archive/{exportId}` donne l'etat et, quand l'archive est prete, un lien signe de 10 minutes.
+        Contenu du zip: `export.json` (profil, dossiers, cours avec texte, blocs et sections, fiches avec affirmations, sources, resume, paragraphes et rappel), `tests/<studentId>.jsonl` (historique des tests AVEC les reponses donnees) et `figures/<coursId>/<figureId>.jpg`. Le zip est ecrit en flux et ne depasse pas 150 Mo de figures: au-dela, les cours les plus anciens perdent leurs images (le texte reste complet), `truncated` vaut vrai et `omittedCourses` donne leur nombre.
+        Limite: 3 demandes par heure et par eleve (429 `quota_epuise`). Le fichier est supprime au plus tard 2 jours apres, et avec l'eleve.
+      responses:
+        '202':
+          description: Demande acceptee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportStatus' }
+              example: { exportId: 01JF5EXP0RT00000000000AAAA, state: en_cours }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429':
+          description: "Plus de 3 demandes dans l'heure (`quota_epuise`), ou limite de debit de la route (corps API Gateway)"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: "Trop d'archives demandées, réessaie dans une heure" } } }
+  /me/export/archive/{exportId}:
+    get:
+      operationId: getMyExportArchive
+      tags: [game]
+      summary: "Etat d'une archive de l'eleve; le lien signe est re-signe a chaque lecture (contract-v1.5.1, R1; handler me-export)"
+      description: "Eleve seulement, et seulement SES demandes (404 sinon, y compris pour l'`exportId` d'un autre eleve). `state`: `en_cours`, `pret` (avec `archive`) ou `echec` (relancer une demande)."
+      parameters:
+        - { name: exportId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      responses:
+        '200':
+          description: Etat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportStatus' }
+              example: { exportId: 01JF5EXP0RT00000000000AAAA, state: pret, archive: { url: 'https://example.invalid/exports/archive.zip?signature=exemple', expiresAt: '2026-12-01T10:10:00Z', format: zip, sizeBytes: 48211300, students: 1, tests: 120, truncated: false, courses: 12, figures: 31, omittedCourses: 0 } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /family/export/archive:
     post:
       operationId: createExportArchive
@@ -1062,7 +1102,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite], description: "`dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible], description: "`indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -1783,6 +1823,15 @@ components:
         truncated: { type: boolean }
         courses: { type: integer, minimum: 0, description: "Facultatif (v1.5, archive de l'eleve): nombre de cours dans l'archive" }
         figures: { type: integer, minimum: 0, description: "Facultatif (v1.5, archive de l'eleve): nombre de figures (fichiers JPEG) dans l'archive" }
+        omittedCourses: { type: integer, minimum: 0, description: "Facultatif (v1.5.1, archive de l'eleve): cours les plus anciens dont les figures ont ete omises pour tenir dans 150 Mo (leur texte est dans l'archive). `truncated` vaut alors vrai." }
+    ExportStatus:
+      type: object
+      required: [exportId, state]
+      description: "Demande d'archive de l'eleve (v1.5.1). `archive` est present quand `state` vaut `pret`."
+      properties:
+        exportId: { type: string }
+        state: { type: string, enum: [en_cours, pret, echec] }
+        archive: { $ref: '#/components/schemas/ExportArchive' }
     DocProgress:
       type: object
       required: [docId, titre, matiere, pages, createdAt, tests]

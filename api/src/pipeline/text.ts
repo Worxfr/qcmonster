@@ -128,10 +128,14 @@ export interface AssembledSentence {
   text: string;
   /** Pages d'origine d'une phrase recollee (consecutives, la premiere = celle de l'identifiant). Absent: une seule page. */
   pages?: number[];
+  /** Lecture douteuse (R1), avant confirmation seulement. */
+  doubt?: boolean;
 }
 export interface AssembledPage {
   page: number;
   sentences: AssembledSentence[];
+  /** Vrai si la premiere phrase de la page a ete recollee a la page precedente (R1: les blocs s'en servent). */
+  glued?: boolean;
 }
 export const MAX_GLUED_PAGES = 4;
 const SENTENCE_END = /[.!?…]$/u;
@@ -144,12 +148,24 @@ const SENTENCE_END = /[.!?…]$/u;
  * absorbee). Pages triees numeriquement (jamais lexicalement).
  */
 export function assemblePages(read: ReadPage[]): AssembledPage[] {
+  return assembleParts(read.map((p) => ({ page: p.page, parts: splitSentences(p.lines.join('\n')), suite: p.suite })));
+}
+
+/** Page deja decoupee en phrases (R1: les blocs decoupent leurs lignes eux-memes). */
+export interface PartsPage {
+  page: number;
+  parts: string[];
+  suite: boolean;
+}
+/** Comme `assemblePages` sur des phrases deja decoupees. `glued` vaut vrai si la premiere phrase de la page a ete absorbee par la page precedente. */
+export function assembleParts(read: PartsPage[]): AssembledPage[] {
   const out: AssembledPage[] = [];
   let tail: AssembledSentence | undefined; // derniere phrase du texte lu jusqu'ici
   let tailLastPage = 0; // derniere page couverte par `tail`
   for (const p of [...read].sort((a, b) => a.page - b.page)) {
-    const parts = splitSentences(p.lines.join('\n'));
+    const parts = [...p.parts];
     const first = parts[0];
+    let glued = false;
     if (p.suite && tail && first !== undefined && tailLastPage === p.page - 1 && !SENTENCE_END.test(tail.text) && (tail.pages ?? [tailLastPage]).length < MAX_GLUED_PAGES) {
       const joined = tail.text.endsWith('-') ? `${tail.text}${first}` : `${tail.text} ${first}`;
       if (joined.length <= MAX_SENTENCE) {
@@ -157,10 +173,11 @@ export function assemblePages(read: ReadPage[]): AssembledPage[] {
         tail.pages = [...(tail.pages ?? [tailLastPage]), p.page];
         tailLastPage = p.page;
         parts.shift();
+        glued = true;
       }
     }
     const sentences: AssembledSentence[] = parts.map((text, k) => ({ id: sentenceId(p.page, k + 1), text }));
-    out.push({ page: p.page, sentences });
+    out.push({ page: p.page, sentences, ...(glued ? { glued } : {}) });
     if (sentences.length) {
       tail = sentences[sentences.length - 1];
       tailLastPage = p.page;

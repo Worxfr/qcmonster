@@ -4,7 +4,7 @@ import type { CostStore, ModelPort, ModelRequest } from '../../../shared/bedrock
 import type { CostTotals } from '../../../shared/cost.js';
 import { memoryQuotaDb } from '../../../shared/quota.js';
 import { ulid, type Ctx } from './ctx.js';
-import { memoryDb, memoryScanStore, memorySfn } from './ports.js';
+import { memoryCrop, memoryDb, memoryFigureStore, memoryScanStore, memorySfn } from './ports.js';
 import { finalize, generate } from './steps-doc.js';
 
 export const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
@@ -74,6 +74,8 @@ export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>
   const db = memoryDb(quota.items); // une seule table, comme en production (le quota et le marqueur QUOTAOP# sont dans la meme transaction)
   const s3 = memoryScanStore();
   const sfn = memorySfn();
+  const figures = memoryFigureStore(s3);
+  const crop = memoryCrop();
   const costStore = memoryCost(opts.cost);
   let n = 0;
   const ctx: Ctx = {
@@ -82,6 +84,8 @@ export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>
     quota,
     s3,
     sfn,
+    figures,
+    crop,
     models: { haiku: MODEL_ARN, sonnet: MODEL_ARN },
     port: scriptedPort(script, calls, prompts),
     costStore,
@@ -91,7 +95,7 @@ export async function makeCtx(script: Script, opts: { cost?: Partial<CostTotals>
   await db.put({ PK: 'FAMILY#f1', SK: 'META' });
   await db.put({ PK: 'FAMILY#f1', SK: 'STUDENT#s1', cognitoSub: 'sub-s1', statut: 'actif' });
   await db.put({ PK: 'FAMILY#f1', SK: 'STUDENT#s2', cognitoSub: 'sub-s2', statut: 'suspendu' });
-  return { ctx, db, quota, s3, sfn, costStore, calls, prompts };
+  return { ctx, db, quota, s3, sfn, figures, crop, costStore, calls, prompts };
 }
 
 export function event(o: { sub?: string; family?: string; groups?: string; params?: Record<string, string>; body?: unknown } = {}): APIGatewayProxyEventV2 {

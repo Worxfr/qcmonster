@@ -3,6 +3,7 @@ import { monthParis } from '../../../shared/ddb/keys.js';
 import { centsFromMicros, iso, jobKey, type Ctx } from './ctx.js';
 import { returnQuotaOnce } from './quota-ops.js';
 import type { Item } from './ports.js';
+import { coursFiguresPrefix } from './figures.js';
 
 export type JobState = 'en_attente_envoi' | 'verification_fichier' | 'transcription' | 'a_confirmer' | 'verification' | 'generation' | 'termine' | 'rejete' | 'echec' | 'expire';
 export const TERMINAL: JobState[] = ['termine', 'rejete', 'echec', 'expire'];
@@ -32,7 +33,8 @@ export async function endWithoutDoc(ctx: Ctx, sid: string, jobId: string, from: 
   const job = await transition(ctx, sid, jobId, from, to, { message, finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros) });
   if (!job) return false;
   // Les deux nettoyages sont tentes meme si l'un echoue (quota rendu, photo supprimee); l'erreur remonte ensuite.
-  const results = await Promise.allSettled([returnQuotaOnce(ctx, sid, jobId), ctx.s3.deleteAll(scansPrefix(sid, jobId))]);
+  // `figures/<eleve>/<job>/`: le cours porte l'identifiant du job; une copie faite par une confirmation interrompue ne survit pas a la fin du scan.
+  const results = await Promise.allSettled([returnQuotaOnce(ctx, sid, jobId), ctx.s3.deleteAll(scansPrefix(sid, jobId)), ctx.figures.deleteAll(coursFiguresPrefix(sid, jobId))]);
   const failed = results.find((r) => r.status === 'rejected');
   if (failed) throw (failed as PromiseRejectedResult).reason;
   return true;

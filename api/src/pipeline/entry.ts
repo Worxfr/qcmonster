@@ -12,6 +12,7 @@ import { docsDelete, docsPatch, docsRead, docsReport } from '../docs/docs.js';
 import { foldersApi } from '../folders/folders.js';
 import { scansList } from '../scans/list.js';
 import { scansDelete } from '../scans/delete.js';
+import { cropFigures, s3Figures, sharpCrop } from './figures.js';
 import { jobsCancel, jobsConfirm, jobsGet, jobsTranscription, scansCreate } from './api.js';
 import { ulid, type Ctx } from './ctx.js';
 import { guarded, json } from './http.js';
@@ -22,7 +23,7 @@ import { extract, finalize, generate, quotaConsume, sectionCost, sectionsPlan } 
 const need = (name: string): string => process.env[name] ?? (() => { throw new Error(`variable ${name} absente`); })();
 
 export async function s3Store(bucket: string): Promise<ScanStore> {
-  const { S3Client, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = await import('@aws-sdk/client-s3');
+  const { S3Client, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, PutObjectCommand } = await import('@aws-sdk/client-s3');
   const { createPresignedPost } = await import('@aws-sdk/s3-presigned-post');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
   const s3 = new S3Client({});
@@ -56,6 +57,9 @@ export async function s3Store(bucket: string): Promise<ScanStore> {
     async getBytes(key) {
       const r = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       return r.Body!.transformToByteArray();
+    },
+    async put(key, bytes, contentType) {
+      await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: bytes, ContentType: contentType }));
     },
     list,
     async deleteAll(prefix) {
@@ -97,6 +101,10 @@ function context(): Promise<Ctx> {
       quota: dynamoQuotaDb(client, table),
       s3: await s3Store(need('QCM_SCANS_BUCKET')),
       sfn: await sfnPort(need('QCM_STATE_MACHINE_ARN')),
+      // Bucket des figures (lot B: variable QCM_FIGURES_BUCKET, parametre SSM data/figuresBucket); `sharp` n'est charge que par l'etape cropFigures.
+      figures: await s3Figures(need('QCM_FIGURES_BUCKET'), need('QCM_SCANS_BUCKET')),
+      crop: sharpCrop(),
+      cfg: { figuresEnabled: process.env.FIGURES_ENABLED !== 'false', figureBoxModel: process.env.FIGURE_BOX_MODEL === 'sonnet' ? 'sonnet' : 'haiku' },
       models: { haiku: process.env.QCM_MODEL_HAIKU ?? '', sonnet: process.env.QCM_MODEL_SONNET ?? '' },
       port: await modelPortFromEnv(),
       costStore: costStoreFromDynamo(client, table),
@@ -145,6 +153,7 @@ export const scanStartHandler = step(scanStart);
 export const awaitUploadHandler = step((c, i: WfInput & { token: string }) => awaitUpload(c, i));
 export const scanCheckHandler = step((c, i: WfInput) => scanCheck(c, i));
 export const transcribeHandler = step((c, i: WfInput) => transcribe(c, i));
+export const cropFiguresHandler = step((c, i: WfInput) => cropFigures(c, i));
 export const awaitConfirmHandler = step((c, i: WfInput & { token: string }) => awaitConfirm(c, i));
 export const expireHandler = step((c, i: WfInput & { phase: 'upload' | 'confirm' }) => expire(c, i));
 export const sectionsPlanHandler = step(sectionsPlan);

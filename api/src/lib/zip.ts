@@ -24,6 +24,36 @@ function dosTime(d: Date): { time: number; date: number } {
   return { time: (d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | (d.getUTCSeconds() >> 1), date: ((y - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate() };
 }
 
+/**
+ * Ecrivain de zip en flux (archive de l'eleve, R1 3.6): `add` renvoie les octets a ecrire pour UNE entree (en-tete local et corps), `end` le repertoire central.
+ * Le corps d'une image (deja compressee) est stocke sans compression (`store`), le JSON est compresse. Une seule entree est en memoire a la fois.
+ * shortcut: pas de zip64: une entree de moins de 4 Go et 65 534 fichiers au plus (150 Mo de figures, 8 par cours), assez pour cette archive.
+ */
+export class ZipWriter {
+  private readonly central: Buffer[] = [];
+  private offset = 0;
+  private count = 0;
+  private readonly stamp: { time: number; date: number };
+  constructor(at: Date) {
+    this.stamp = dosTime(at);
+  }
+  add(name: string, data: Buffer, method: 'store' | 'deflate' = 'deflate'): Buffer {
+    if (++this.count > 0xfffe) throw new RangeError('trop de fichiers');
+    const n = Buffer.from(name, 'utf8');
+    const body = method === 'deflate' ? deflateRawSync(data) : data;
+    if (body.length > 0xffffffff) throw new RangeError('fichier trop gros');
+    const common = Buffer.concat([u16(20), u16(0x0800), u16(method === 'deflate' ? 8 : 0), u16(this.stamp.time), u16(this.stamp.date), u32(crc32(data)), u32(body.length), u32(data.length), u16(n.length), u16(0)]);
+    const head = Buffer.concat([u32(0x04034b50), common, n]);
+    this.central.push(Buffer.concat([u32(0x02014b50), u16(20), common, u16(0), u16(0), u16(0), u32(0), u32(this.offset), n]));
+    this.offset += head.length + body.length;
+    return Buffer.concat([head, body]);
+  }
+  end(): Buffer {
+    const cd = Buffer.concat(this.central);
+    return Buffer.concat([cd, u32(0x06054b50), u16(0), u16(0), u16(this.count), u16(this.count), u32(cd.length), u32(this.offset), u16(0)]);
+  }
+}
+
 export function zip(entries: ZipEntry[], at: Date): Buffer {
   if (entries.length > 0xfffe) throw new RangeError('trop de fichiers');
   const { time, date } = dosTime(at);

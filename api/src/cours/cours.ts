@@ -6,7 +6,9 @@ import { keys } from '../../../shared/ddb/keys.js';
 import { ID_RE, mapLimit, type Ctx } from '../pipeline/ctx.js';
 import { callerOf, fail, json, noContent, pathId, requireStudent } from '../pipeline/http.js';
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
+import { coursFiguresPrefix } from '../pipeline/figures.js';
 import { coursMeta } from './meta.js';
+import { coursMarks, loadCoursBlocks, signFigures } from './view.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
 const BATCH = 25;
@@ -20,8 +22,11 @@ async function get(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const sections = Array.isArray(head.sections) ? (head.sections as { docId?: unknown }[]) : [];
   const ids = [...new Set(sections.map((s) => s.docId).filter((d): d is string => typeof d === 'string' && ID_RE.test(d)))];
   const existing = new Set((await Promise.all(ids.map(async (id) => ((await ctx.db.get(keys.doc(sid, id))) ? id : undefined)))).filter((x): x is string => x !== undefined));
+  const extra = await loadCoursBlocks(ctx, sid, coursId); // absent pour un cours ancien: l'ecran affiche les phrases
+  const marks = extra ? await coursMarks(ctx, sid, head) : [];
   return json(200, {
     ...coursMeta(head, existing),
+    ...(extra ? { figureCount: extra.figures.length, blocks: extra.blocks, figures: await signFigures(ctx, sid, coursId, extra.figures), marks } : {}),
     texts: texts.map((t) => ({ page: Number(t.page), sentences: t.sentences ?? [] })).sort((a, b) => a.page - b.page), // tri numerique (la page 10 apres la 2)
   });
 }
@@ -38,6 +43,8 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const fiches = event.queryStringParameters?.fiches;
   if (fiches !== 'garder' && fiches !== 'supprimer') return fail('requete_invalide', 'Demande invalide'); // obligatoire, pas de defaut
   const head = (await ctx.db.get(keys.cours(sid, coursId))) ?? fail('introuvable', 'Introuvable');
+  // Figures conservees d'abord (S3 avant DynamoDB): interrompue, l'en-tete existe encore et un second DELETE reprend.
+  await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId));
   const sectionDocs = new Set((Array.isArray(head.sections) ? (head.sections as { docId?: unknown }[]) : []).map((s) => s.docId).filter((d): d is string => typeof d === 'string'));
   const docs: Item[] = (await ctx.db.query(`STUDENT#${sid}`, 'DOC#')).filter((d) => d.coursId === coursId || sectionDocs.has(d.SK.slice('DOC#'.length)));
   const tree = treeDbFrom(ctx.db);
@@ -59,7 +66,7 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   if (jobId) {
     await ctx.db.update(keys.job(sid, jobId), { remove: ['coursId'], cond: { exists: true } }); // le job a pu expirer: sans effet
     // Copie de travail du texte AVANT l'en-tete du cours: interrompue, l'en-tete reste et un second DELETE finit le travail.
-    const texts = (await ctx.db.query(`JOB#${jobId}`, 'TEXT#')).map((t) => ({ PK: t.PK, SK: t.SK }));
+    const texts = (await ctx.db.query(`JOB#${jobId}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK }));
     if (texts.length) await ctx.db.remove(texts);
   }
   await deleteCoursTree(tree, sid, coursId, { ...(jobId ? { jobId } : {}) });

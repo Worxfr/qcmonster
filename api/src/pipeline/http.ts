@@ -3,8 +3,8 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import type { Ctx } from './ctx.js';
 import { ID_RE } from './ctx.js';
 
-export type ErrorCode = 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise';
-const STATUS: Record<ErrorCode, number> = { requete_invalide: 400, interdit: 403, introuvable: 404, etat_invalide: 409, quota_epuise: 429, budget_epuise: 429 };
+export type ErrorCode = 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'indisponible';
+const STATUS: Record<ErrorCode, number> = { requete_invalide: 400, interdit: 403, introuvable: 404, etat_invalide: 409, quota_epuise: 429, budget_epuise: 429, indisponible: 503 };
 
 export class HttpError extends Error {
   constructor(readonly code: ErrorCode, message: string, readonly extra: Record<string, unknown> = {}) {

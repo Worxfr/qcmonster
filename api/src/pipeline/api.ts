@@ -5,13 +5,16 @@ import { costGateFor } from '../../../shared/cost.js';
 import { keys, monthParis } from '../../../shared/ddb/keys.js';
 import { cleanLabel, cleanTopic, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
 import { deleteCoursTree } from '../../../shared/delete-tree.js';
-import { CoursItemSchema, CoursTextItemSchema } from '../../../shared/items.js';
+import { CoursBlocksItemSchema, CoursItemSchema, CoursTextItemSchema } from '../../../shared/items.js';
+import { isSafeText, sanitizeLatex } from '../../../shared/latex.js';
 import { releasePages, reservePages } from '../../../shared/quota.js';
 import { log } from '../../../shared/log/index.js';
 import { bodyOf, callerOf, fail, json, pathId, requireStudent, resetDate } from './http.js';
 import { centsFromMicros, DAY_S, iso, jobKey, ttlIn, type Ctx } from './ctx.js';
 import { endWithoutDoc, loadJob, scansPrefix, sentencesOf, sortedTexts, transition } from './job.js';
 import { MIN_WORDS } from './steps.js';
+import type { Block, FigureMeta } from './blocks.js';
+import { coursFiguresPrefix, figureKey, FIGURE_URL_TTL_S, tempFigureKey } from './figures.js';
 import { words } from './text.js';
 import { quotaScope } from './quota-ops.js';
 import { treeDbFrom, type Item } from './ports.js';
@@ -135,10 +138,22 @@ export async function jobsTranscription(ctx: Ctx, event: APIGatewayProxyEventV2)
     .filter((k) => /^\d{1,2}$/.test(k.slice(prefix.length)) && Number(k.slice(prefix.length)) < (job.expectedFiles as number))
     .sort((a, b) => Number(a.slice(prefix.length)) - Number(b.slice(prefix.length)));
   const photoUrls = await Promise.all(keysList.map((k) => ctx.s3.presignGet(k, PHOTO_URL_TTL_S)));
+  // Figures (R1): seulement celles dont le recadrage existe; URL pre-signee de 5 minutes re-signee a chaque appel. Un bloc `figure` sans image disparait.
+  const meta = await ctx.db.get(keys.jobBlocks(jobId));
+  const have = new Set(await ctx.s3.list(`${prefix}fig/`));
+  const figures = await Promise.all(
+    ((meta?.figures as FigureMeta[] | undefined) ?? [])
+      .filter((f) => have.has(tempFigureKey(sid, jobId, f.figureId)))
+      .map(async (f) => ({ figureId: f.figureId, page: f.page, kind: f.kind, alt: f.alt, ...(f.caption ? { caption: f.caption } : {}), ...(f.box ? { box: f.box } : {}), url: await ctx.s3.presignGet(tempFigureKey(sid, jobId, f.figureId), FIGURE_URL_TTL_S), urlExpireAt: new Date(ctx.now().getTime() + FIGURE_URL_TTL_S * 1000).toISOString() })),
+  );
+  const shown = new Set(figures.map((f) => f.figureId));
+  const blocks = (meta?.blocks as Block[] | undefined)?.filter((b) => b.kind !== 'figure' || (b.figureId !== undefined && shown.has(b.figureId)));
   return json(200, {
     jobId,
     docType: job.docType ?? 'cours',
     pages: texts.map((t) => ({ page: t.page, sentences: t.sentences })),
+    ...(blocks ? { blocks } : {}),
+    ...(figures.length ? { figures } : {}),
     ...(typeof job.suggestedSubject === 'string' ? { suggestedSubject: job.suggestedSubject } : {}),
     ...(typeof job.suggestedTopic === 'string' ? { suggestedTopic: job.suggestedTopic } : {}),
     ...(Array.isArray(job.suggestedSections) && job.suggestedSections.length ? { suggestedSections: job.suggestedSections } : {}),
@@ -179,14 +194,23 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   const byId = new Map<string, Item>();
   for (const t of texts) for (const s of t.sentences as { id: string }[]) byId.set(s.id, t);
   const changed = new Map<string, Item>();
+  // Phrases retirees (R1): inconnues = 400; elles ne sont ni gardees, ni extraites, ni verifiees.
+  const removed = new Set(req.removed ?? []);
+  for (const id of removed) if (!byId.has(id)) return fail('requete_invalide', 'Phrase inconnue');
   for (const c of req.corrections) {
     const page = byId.get(c.id);
     if (!page) return fail('requete_invalide', 'Phrase inconnue');
+    if (removed.has(c.id)) continue; // corrigee puis retiree dans la meme requete: le retrait gagne
     const text = c.text.trim();
     if (!text) return fail('requete_invalide', 'Phrase vide');
-    const sentences = (changed.get(page.SK) ?? page).sentences as { id: string; text: string; pages?: number[] }[];
-    // Les pages d'une phrase recollee restent celles de la lecture: la correction ne change que le texte.
-    changed.set(page.SK, { ...(changed.get(page.SK) ?? page), sentences: sentences.map((s) => (s.id === c.id ? { ...s, text } : s)) });
+    if (!isSafeText(text)) return fail('requete_invalide', 'Formule non valide'); // LaTeX refuse (R1 2.7): rien n'est modifie
+    const sentences = (changed.get(page.SK) ?? page).sentences as { id: string; text: string; pages?: number[]; doubt?: boolean }[];
+    // Les pages d'une phrase recollee restent celles de la lecture: la correction ne change que le texte (et eteint le doute: l'eleve l'a relue).
+    changed.set(page.SK, { ...(changed.get(page.SK) ?? page), sentences: sentences.map((s) => (s.id === c.id ? { id: s.id, text, ...(s.pages ? { pages: s.pages } : {}) } : s)) });
+  }
+  for (const t of texts) {
+    const sentences = (changed.get(t.SK) ?? t).sentences as { id: string }[];
+    if (sentences.some((s) => removed.has(s.id))) changed.set(t.SK, { ...(changed.get(t.SK) ?? t), sentences: sentences.filter((s) => !removed.has(s.id)) });
   }
   const finalTexts = texts.map((t) => changed.get(t.SK) ?? t);
   const all = sentencesOf(finalTexts);
@@ -219,14 +243,45 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   const plan = planSections(all.map((s) => s.id), chosen, { wordCounts: all.map((s) => words(s.text).length), minWords: MIN_WORDS, pages: job.pages as number });
   if (!plan.ok) return fail('requete_invalide', SECTION_MESSAGES[plan.error]);
 
+  // Figures (R1): le choix de l'eleve est valide AVANT toute ecriture; une figure absente de la liste n'est pas conservee.
+  const meta = await ctx.db.get(keys.jobBlocks(jobId));
+  const jobFigures = (meta?.figures as FigureMeta[] | undefined) ?? [];
+  const choice = new Map<string, { keep: boolean; alt?: string }>();
+  for (const f of req.figures ?? []) {
+    if (!jobFigures.some((x) => x.figureId === f.figureId)) return fail('requete_invalide', 'Figure inconnue');
+    const alt = f.alt === undefined ? undefined : cleanLabel(f.alt, 300);
+    if (f.alt !== undefined && !alt) return fail('requete_invalide', 'Description vide');
+    choice.set(f.figureId, { keep: f.keep, ...(alt ? { alt: sanitizeLatex(alt) } : {}) });
+  }
+
   // (a) identifiants: un docId par section non ignoree; le cours porte l'identifiant du job (deterministe: une relance ne laisse pas d'orphelin).
   const coursId = jobId;
+  // Copie des figures gardees AVANT la transition (la photo existe encore): idempotente (meme cle), une erreur S3 est reessayable et ne change pas l'etat du job.
+  const kept: FigureMeta[] = [];
+  try {
+    for (const f of jobFigures) {
+      const c = choice.get(f.figureId);
+      if (!c?.keep) continue;
+      if (await ctx.figures.copyFromScans(tempFigureKey(sid, jobId, f.figureId), figureKey(sid, coursId, f.figureId))) kept.push({ ...f, ...(c.alt ? { alt: c.alt } : {}) });
+    }
+  } catch {
+    await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)).catch(() => undefined);
+    return fail('indisponible', 'Service momentanément indisponible, réessaie');
+  }
   const sections = chosen.map((c) => ({ ...c, ...(c.ignore ? {} : { docId: ctx.newId() }) }));
   const docIds = sections.flatMap((s) => (s.docId ? [s.docId] : []));
   // (b) cours durable (sans TTL), corrections appliquees, section ignoree conservee. Une ecriture identique rejouee est sans effet.
   const createdAt = iso(ctx);
   await ctx.db.put(CoursItemSchema.parse({ ...keys.cours(sid, coursId), jobId, pages: job.pages, createdAt, nbPhrases: all.length, sections: sections.map((s) => ({ ...s, statut: s.ignore ? 'ignoree' : 'fiche' })) }));
   for (const t of finalTexts) await ctx.db.put(CoursTextItemSchema.parse({ ...keys.coursText(sid, coursId, t.page as number), page: t.page, sentences: t.sentences }));
+  if (meta?.blocks) {
+    // Blocs du cours: sans les phrases retirees, sans bloc vide, sans bloc de figure non gardee. Pas de `doubt`. Identifiants renumerotes par `renumber` seulement pour un ajout de pages (F10).
+    const keptIds = new Set(kept.map((f) => f.figureId));
+    const blocks = (meta.blocks as Block[])
+      .map((b) => (b.sentenceIds ? { ...b, sentenceIds: b.sentenceIds.filter((id) => !removed.has(id)) } : b))
+      .filter((b) => (b.kind === 'figure' ? b.figureId !== undefined && keptIds.has(b.figureId) : (b.sentenceIds?.length ?? 0) > 0));
+    await ctx.db.put(CoursBlocksItemSchema.parse({ ...keys.coursBlocks(sid, coursId), blocks, figures: kept }));
+  }
   // (c) le plan sur le job et la transition, en une seule ecriture conditionnelle: le premier qui change l'etat gagne la course
   // contre une annulation ou l'expiration.
   const moved = await transition(ctx, sid, jobId, ['a_confirmer'], 'verification', { confirmedAt: iso(ctx), coursId, docIds, sections, ...(single ?? {}) });
@@ -234,7 +289,10 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     // Course perdue contre l'annulation ou l'expiration: le cours durable ecrit en (b) n'a plus de raison d'etre. On ne le supprime que si le job
     // est bien termine (jamais si une autre confirmation a gagne: meme `coursId`).
     const now = await ctx.db.get(jobKey(sid, jobId));
-    if (now && ['rejete', 'expire', 'echec'].includes(now.state as string)) await deleteCoursTree(treeDbFrom(ctx.db), sid, coursId, { jobId });
+    if (now && ['rejete', 'expire', 'echec'].includes(now.state as string)) {
+      await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)); // S3 avant DynamoDB
+      await deleteCoursTree(treeDbFrom(ctx.db), sid, coursId, { jobId });
+    }
     return fail('etat_invalide', "Le job n'est plus à confirmer");
   }
   const token = typeof moved.confirmToken === 'string' ? moved.confirmToken : undefined;

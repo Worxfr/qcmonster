@@ -5,7 +5,7 @@ import { toMicros } from '../../../shared/cost.js';
 import { keys } from '../../../shared/ddb/keys.js';
 import { jobCapEur, type Env } from '../../../shared/names.js';
 import type { QuotaDb } from '../../../shared/quota.js';
-import type { Db, Item, ScanStore, Sfn } from './ports.js';
+import type { CropPort, Db, FigureStore, Item, ScanStore, Sfn } from './ports.js';
 
 export interface Ctx {
   env: Env;
@@ -13,6 +13,11 @@ export interface Ctx {
   quota: QuotaDb;
   s3: ScanStore;
   sfn: Sfn;
+  /** Figures conservees (R1) et rognage des recadrages. */
+  figures: FigureStore;
+  crop: CropPort;
+  /** Interrupteurs d'exploitation (R1, 3.4 et 3.5): `FIGURES_ENABLED` (defaut vrai), `FIGURE_BOX_MODEL` (defaut haiku). */
+  cfg?: { figuresEnabled?: boolean; figureBoxModel?: 'haiku' | 'sonnet' };
   /** ARN des profils d'application (SSM /qcm/<env>/models/*, injectes par CDK). */
   models: { haiku: string; sonnet: string };
   port: ModelPort;

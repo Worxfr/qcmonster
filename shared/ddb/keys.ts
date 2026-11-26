@@ -16,6 +16,12 @@ export const keys = {
   quotaFamily: (fid: string, month: string): Key => ({ PK: `FAMILY#${fid}`, SK: `QUOTA#${month}#FAMILY` }),
   job: (sid: string, jobId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `JOB#${jobId}` }),
   text: (jobId: string, page: number): Key => ({ PK: `JOB#${jobId}`, SK: `TEXT#${page}` }),
+  /** Blocs et metadonnees de figures d'un job (R1), TTL 7 jours comme `TEXT#`. Ecrit par `transcribe` seul. */
+  jobBlocks: (jobId: string): Key => ({ PK: `JOB#${jobId}`, SK: 'BLOCKS' }),
+  /** Blocs et figures conserves du cours (R1), dans la partition de l'eleve; ecrit par `jobs-confirm` seul, vit autant que le cours. */
+  coursBlocks: (sid: string, coursId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `COURS#${coursId}#B` }),
+  /** Demande d'export de l'eleve (R1, asynchrone): etat et lien, TTL 2 jours. Ecrit par `me-export` et par la fonction de construction. */
+  exportJob: (sid: string, exportId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `EXPORT#${exportId}` }),
   doc: (sid: string, docId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `DOC#${docId}` }),
   /** Cours complet conserve (contrat 1.3): en-tete et texte par page, dans la partition de l'eleve (supprimes avec lui par deleteStudentTree). */
   cours: (sid: string, coursId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `COURS#${coursId}` }),

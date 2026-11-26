@@ -39,7 +39,7 @@ export async function scansDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   // puis liberation de la machine (jeton d'envoi ou de confirmation) pour qu'aucune reprise tardive ne recree de donnees.
   await returnQuotaOnce(ctx, sid, jobId);
   await ctx.s3.deleteAll(scansPrefix(sid, jobId));
-  const texts = (await ctx.db.query(`JOB#${jobId}`, 'TEXT#')).map((t) => ({ PK: t.PK, SK: t.SK }));
+  const texts = (await ctx.db.query(`JOB#${jobId}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK })); // TEXT# et BLOCKS (R1)
   if (texts.length) await ctx.db.remove(texts);
   for (const token of [job.confirmToken, job.uploadToken]) if (typeof token === 'string') await ctx.sfn.taskFailure(token, 'Cancelled');
 

@@ -91,6 +91,9 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'GET /students/{sid}/tests/{testId}', handler: 'family-progress', owner: 'game' },
   // Limite basse par route; le plafond « 3 par heure et par famille » (design H1 section 5, regle 7) est applique par le handler (429 quota_epuise).
   { route: 'POST /family/export/archive', handler: 'family-export-archive', owner: 'game', throttle: { rate: 1, burst: 2 } },
+  // contract-v1.5.1 (R1-A): archive de l'eleve, construite en asynchrone. `owner` reste `skeleton` (501) jusqu'au lot B, qui cree la fonction `me-export` (role, FIGURES_BUCKET, EXPORT_BUILD_FUNCTION) et la fonction `me-export-build` (15 min, 512 Mo) puis passe l'`owner` a `game`.
+  { route: 'POST /me/export/archive', handler: 'me-export', throttle: { rate: 1, burst: 2 } },
+  { route: 'GET /me/export/archive/{exportId}', handler: 'me-export', throttle: { rate: 2, burst: 5 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
