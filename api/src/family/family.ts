@@ -7,6 +7,7 @@ import { coursMeta } from '../cours/meta.js';
 import { studentView } from '../game/access.js';
 import type { Item } from '../lib/store.js';
 import { badRequest, conflict, forbidden, type Auth, type ParentCtx } from '../lib/http.js';
+import type { Deps } from '../lib/deps.js';
 import type { FamilyDeps } from './ports.js';
 import { purgeStudent } from './students.js';
 
@@ -42,7 +43,7 @@ export async function createFamily(deps: FamilyDeps, a: Auth, body: { consent: b
  * Les cours conserves sortent sans leur texte (structure, sections, liens vers les fiches; l'eleve lit le texte par GET /cours).
  * Non exporte (dit dans la politique): le texte brut lu sur les photos (TEXT#, supprime au bout de 7 jours) et les extraits web partages.
  */
-export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
+export async function exportFamily(deps: Deps, ctx: ParentCtx) {
   const fam = `FAMILY#${ctx.familyId}`;
   const meta = await deps.store.get(keys.family(ctx.familyId));
   const consent = (it: Item | undefined) =>
@@ -133,5 +134,6 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
 export async function deleteFamily(deps: FamilyDeps, ctx: ParentCtx): Promise<void> {
   for (const s of await deps.store.query(`FAMILY#${ctx.familyId}`, 'STUDENT#')) await purgeStudent(deps, ctx.familyId, s);
   await deleteFamilyTree(deps.tree, ctx.familyId);
+  await deps.archives.deleteFamily(ctx.familyId); // archives d'export encore presentes (exports/<familyId>/)
   await deps.identity.deleteUser(ctx.username); // en dernier: si une etape echoue, le parent peut relancer
 }

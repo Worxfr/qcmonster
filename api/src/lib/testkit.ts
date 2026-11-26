@@ -3,6 +3,7 @@ import { keys } from '../../../shared/ddb/keys.js';
 import { memoryQuotaDb, type QuotaDb } from '../../../shared/quota.js';
 import type { FamilyDeps } from '../family/ports.js';
 import type { Deps } from './deps.js';
+import { memoryArchives } from './archive-store.js';
 import { memoryIdentity } from './identity.js';
 import { memoryPhotos } from './photos.js';
 import { memoryStore, storeTreeDb } from './store.js';
@@ -34,6 +35,7 @@ export function testDeps(opts: { iso?: string; env?: 'dev' | 'prod' } = {}) {
   let n = 0;
   const identity = memoryIdentity();
   const photos = memoryPhotos();
+  const archives = memoryArchives(clk.now);
   const deps: FamilyDeps = {
     store,
     quota,
@@ -44,10 +46,11 @@ export function testDeps(opts: { iso?: string; env?: 'dev' | 'prod' } = {}) {
     suffix: () => `s${String(++n).padStart(3, '0')}`,
     identity,
     photos,
+    archives,
     tree: storeTreeDb(store),
     webOrigin: 'https://front.example.invalid',
   };
-  return { deps: deps as FamilyDeps & Deps, store, clk, identity, photos, quota };
+  return { deps: deps as FamilyDeps & Deps, store, clk, identity, photos, archives, quota };
 }
 export type TestEnv = ReturnType<typeof testDeps>;
 

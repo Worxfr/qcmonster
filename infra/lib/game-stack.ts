@@ -13,12 +13,15 @@ export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'readDocs' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite';
+type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite';
 interface HandlerDef {
   name: string;
   role: RoleKey;
   /** Variables d'environnement en plus de TABLE_NAME et QCM_ENV. */
   needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET')[];
+  /** Memoire (Mo) et delai (s) si differents du defaut (256 Mo, 10 s; 30 s pour le role admin). */
+  memoryMb?: number;
+  timeoutS?: number;
 }
 
 /**
@@ -30,6 +33,10 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'family-read', role: 'read' },
   // contract-v1.4 (H1-A): historique des tests de l'eleve. Role dedie `readDocs`: lit aussi les questions (DOC#*), GetItem seul; aucun droit d'ecriture ni de suppression.
   { name: 'tests-read', role: 'readDocs' },
+  // contract-v1.4 (H1-B): vue parent (lecture seule; role dedie, sans DOC#) et archive d'export (lecture de la famille, ecriture S3 sous exports/ seulement).
+  { name: 'family-progress', role: 'progress' },
+  // 29 s: sous la limite de 30 s d'API Gateway. 1 Go: l'archive se construit en memoire (design H1 section 6, 50 000 passages au plus).
+  { name: 'family-export-archive', role: 'archive', needs: ['SCANS_BUCKET'], memoryMb: 1024, timeoutS: 29 },
   { name: 'session-get', role: 'play' },
   { name: 'answers-post', role: 'play' },
   { name: 'docs-mark-read', role: 'play' },
@@ -94,6 +101,15 @@ export class GameStack extends Stack {
       // Historique des tests (H1-A): profil, eleve, passages (STUDENT#, FAMILY#) et questions des fiches (DOC#). Lecture seule; GetItem et Query seulement.
       // Role distinct de `read`: DOC#* n'est pas donne a me-get ni a family-read.
       readDocs: [ddb(READ, [...FAM, ...STU]), ddb(['GetItem'], ['DOC#*'])], // DOC#: GetItem seul (pas de Query)
+      // Vue parent (H1-B): profil, eleve, passages, fiches et scans de l'eleve (tout sous STUDENT#), famille (FAMILY#). Lecture seule; jamais DOC# (aucun texte de question).
+      progress: [ddb(READ, [...FAM, ...STU])],
+      // Archive d'export (H1-B): lit comme l'export JSON (STUDENT#, FAMILY#, DOC# et l'index GSI1 des fiches de la famille); S3: ecrit, relit (pour signer) et liste
+      // le seul prefixe exports/ (liste: compter les archives de l'heure). Aucune ecriture ni suppression DynamoDB, aucun droit sur scans/.
+      archive: [
+        ddb(READ, [...FAM, ...STU, 'DOC#*'], true),
+        new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:GetObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/exports/*`] }),
+        new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['exports/*'] } } }),
+      ],
       // Jeu: lit fiches/questions/verdicts (DOC#), ecrit PROFILE, DAY, ATT (STUDENT#), WEEK, quotas, bonus, signalements (FAMILY#).
       play: [ddb(READ, [...FAM, ...STU, 'DOC#*']), ddb(WRITE, [...FAM, ...STU])],
       // Creation: famille (groupe parent, famille_id) et eleve (utilisateur Cognito sans message), lien d'activation.
@@ -104,8 +120,8 @@ export class GameStack extends Stack {
       admin: [
         ddb([...READ, 'DeleteItem', 'BatchWriteItem'], [...FAM, ...STU, 'DOC#*', 'JOB#*', 'ACTIVATION#*'], true),
         cognito(['AdminDeleteUser']),
-        new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*'] } } }),
-        new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`] }),
+        new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*', 'exports/*'] } } }),
+        new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`, `arn:${this.partition}:s3:::${scansBucket}/exports/*`] }),
       ],
       // Route publique: lit l'eleve et le jeton (hache), consomme le jeton, pose le mot de passe. Rien d'autre.
       activation: [ddb([...READ, 'PutItem', 'DeleteItem'], ['ACTIVATION#*', ...FAM]), cognito(['AdminSetUserPassword'])],
@@ -132,8 +148,8 @@ export class GameStack extends Stack {
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_22_X,
         architecture: lambda.Architecture.ARM_64,
-        memorySize: 256,
-        timeout: Duration.seconds(h.role === 'admin' ? 30 : 10),
+        memorySize: h.memoryMb ?? 256,
+        timeout: Duration.seconds(h.timeoutS ?? (h.role === 'admin' ? 30 : 10)),
         role: roles[h.role],
         environment: { TABLE_NAME: table, QCM_ENV: envName, ...Object.fromEntries((h.needs ?? []).map((n) => [n, extra[n]])) },
         logGroup,

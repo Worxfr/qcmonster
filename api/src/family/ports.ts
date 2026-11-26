@@ -1,4 +1,5 @@
 import type { TreeDb } from '../../../shared/delete-tree.js';
+import type { ArchiveStore } from '../lib/archive-store.js';
 import type { Deps } from '../lib/deps.js';
 import type { Identity } from '../lib/identity.js';
 import type { Photos } from '../lib/photos.js';
@@ -7,6 +8,8 @@ import type { Photos } from '../lib/photos.js';
 export interface FamilyDeps extends Deps {
   identity: Identity;
   photos: Photos;
+  /** Archives d'export (H1-B): supprimees avec la famille. */
+  archives: ArchiveStore;
   tree: TreeDb;
   webOrigin: string;
 }

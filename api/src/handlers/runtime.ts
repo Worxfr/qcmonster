@@ -6,7 +6,9 @@ import type { InviteDeps } from '../admin/invitations.js';
 import { dynamoTreeDb } from '../../../shared/delete-tree.js';
 import { ENVS, type Env } from '../../../shared/names.js';
 import { dynamoQuotaDb } from '../../../shared/quota.js';
+import type { ArchiveDeps } from '../family/archive.js';
 import type { FamilyDeps } from '../family/ports.js';
+import { memoryArchives, s3Archives, type ArchiveStore } from '../lib/archive-store.js';
 import { realRandom, type Deps } from '../lib/deps.js';
 import { cognitoIdentity } from '../lib/identity.js';
 import { s3Photos } from '../lib/photos.js';
@@ -28,12 +30,20 @@ export function gameDeps(): Deps {
   return { store: dynamoStore(client(), table), quota: dynamoQuotaDb(client(), table), env, now: () => new Date(), ...realRandom };
 }
 
+const archivesOf = (): ArchiveStore => (process.env.SCANS_BUCKET ? s3Archives(process.env.SCANS_BUCKET) : { ...memoryArchives(), deleteFamily: () => Promise.reject(new Error('SCANS_BUCKET manquant')) });
+
+/** Archive d'export (H1-B): lecture de la famille, ecriture S3 sous exports/ seulement. */
+export function archiveDeps(): ArchiveDeps {
+  return { ...gameDeps(), archives: s3Archives(need('SCANS_BUCKET')) };
+}
+
 export function familyDeps(): FamilyDeps {
   const base = gameDeps();
   return {
     ...base,
     identity: cognitoIdentity(need('USER_POOL_ID'), new CognitoIdentityProviderClient({})),
     photos: process.env.SCANS_BUCKET ? s3Photos(process.env.SCANS_BUCKET) : { deleteForStudent: () => Promise.reject(new Error('SCANS_BUCKET manquant')) },
+    archives: archivesOf(),
     tree: dynamoTreeDb(client(), need('TABLE_NAME')),
     webOrigin: process.env.WEB_ORIGIN ?? '',
   };

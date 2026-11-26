@@ -189,5 +189,28 @@ export function toSummary(it: Record<string, unknown>, testId: string): TestSumm
   };
 }
 
+export interface QuestionStatus {
+  questionId: string;
+  rank: number;
+  kind: 'qcm' | 'gap';
+  correct: boolean;
+  attempts: number;
+  firstTry: boolean;
+  xpGained: number;
+  answeredAt: string;
+}
+
+/**
+ * Passage vu par le parent et ecrit dans l'archive (`TestParentDetail`): resume + resultat par question. Liste blanche de champs: ni texte de
+ * question, ni choix, ni reponse donnee (`c`), ni bonne reponse. Les lignes sont triees par rang.
+ */
+export function toParentDetail(it: Record<string, unknown>, testId: string): TestSummary & { questions: QuestionStatus[] } {
+  const lines = (Array.isArray(it.items) ? (it.items as TestLine[]) : []).slice().sort((a, b) => a.r - b.r);
+  return {
+    ...toSummary(it, testId),
+    questions: lines.map((l) => ({ questionId: l.q, rank: l.r, kind: l.k, correct: l.ok, attempts: l.n, firstTry: l.f, xpGained: l.xp, answeredAt: l.at })),
+  };
+}
+
 /** testId d'une cle de tri `TEST#<startedAt>#<testId>`. */
 export const testIdOfSk = (sk: string): string => sk.slice(sk.lastIndexOf('#') + 1);
