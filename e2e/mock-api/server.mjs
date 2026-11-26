@@ -32,10 +32,19 @@ const iso = (t = Date.now()) => new Date(t).toISOString();
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const words = (s) => s.trim().split(/\s+/).filter(Boolean).length;
 
+// ---- ID1: surnoms (memes codes d'erreur que l'API; liste de mots reduite a un exemple) ----
+const NICK_REFUSED = "Ce surnom n'est pas possible, essaie-en un autre";
+const NICK_TAKEN = 'Ce surnom est déjà pris dans ta famille, essaie-en un autre';
+const nickOk = (s) => typeof s === 'string' && /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ0-9 '-]{1,19}$/.test(s.trim()) && (s.match(/[0-9]/g) ?? []).length <= 2 && !/porn|connard/.test(norm(s));
+const nameTaken = (name, self) => S.students.some((x) => x !== self && norm(x.displayName) === norm(name));
+const SUFFIX = 'abcdefghjkmnpqrstuvwxyz23456789';
+let sfx = 0;
+const suffix = () => Array.from({ length: 5 }, (_, i) => SUFFIX[(++sfx * 7 + i * 3) % SUFFIX.length]).join('');
+
 let S;
 function reset({ role = 'eleve', family = true, student = true, pagesLimit = 20 } = {}) {
-  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, archives: 0, bank: new Set(), seen: new Set(), docXp: new Map(), draw: null };
-  if (family && student) S.students.push({ studentId: 'stu1', pseudo: 'Lila-7k2f', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 });
+  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, tokens: new Map(), archives: 0, bank: new Set(), seen: new Set(), docXp: new Map(), draw: null };
+  if (family && student) S.students.push({ studentId: 'stu1', pseudo: 'lila-7k2fm', loginId: 'lila-7k2fm', displayName: 'Lila', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 });
 }
 reset();
 
@@ -381,7 +390,7 @@ const server = createServer(async (req, res) => {
   if (m === 'GET' && p === '/me') {
     if (parent) return S.family ? send(res, 200, { userId: 'u-parent', role: 'parent', familyId: S.family.familyId, ...(S.policyOutdated ? { policyOutdated: true } : {}) }) : err(res, 404, 'introuvable', 'Introuvable');
     const s = S.students[0];
-    return send(res, 200, { userId: 'u-eleve', role: 'eleve', familyId: 'fam1', studentId: s.studentId, pseudo: s.pseudo });
+    return send(res, 200, { userId: 'u-eleve', role: 'eleve', familyId: 'fam1', studentId: s.studentId, pseudo: s.loginId, loginId: s.loginId, displayName: s.displayName });
   }
   if (m === 'POST' && p === '/family') {
     if (b.consent !== true) return err(res, 400, 'requete_invalide', 'Demande invalide');
@@ -408,14 +417,33 @@ const server = createServer(async (req, res) => {
       S.archives += 1;
       return send(res, 200, { url: `${BASE}/__archive/${S.archives}.zip`, expiresAt: iso(Date.now() + 600e3), format: 'zip', sizeBytes: 48211, students: S.students.length, tests: S.tests.length, truncated: false });
     case 'GET /family/dashboard': return send(res, 200, { students: S.students.map((student) => ({ student, progress: progress() })), familyPagesRemaining: 50 - used(), familyPagesLimit: 50 });
-    case 'GET /family/leaderboard': return send(res, 200, { week: '2099-W01', entries: S.students.map((s) => ({ studentId: s.studentId, pseudo: s.pseudo, xp: S.xp, activeDays: S.xp ? 1 : 0 })) });
+    case 'GET /family/leaderboard': return send(res, 200, { week: '2099-W01', entries: S.students.map((s) => ({ studentId: s.studentId, pseudo: s.displayName, xp: S.xp, activeDays: S.xp ? 1 : 0 })) });
     case 'GET /family/export': return send(res, 200, { familyId: 'fam1', exportedAt: iso(), students: S.students, docs: [], reports: [] });
     case 'POST /students': {
       if (!parent) return err(res, 403, 'interdit', 'Interdit');
       if (b.parentalAuthority !== true || !/^[A-Za-z][A-Za-z0-9 -]{1,19}$/.test(b.pseudo ?? '')) return err(res, 400, 'requete_invalide', 'Demande invalide');
-      const student = { studentId: id('stu'), pseudo: `${b.pseudo}-7k2f`, schoolLevel: b.schoolLevel, under15: !!b.under15, status: 'actif', pageQuota: 20 };
+      if (!nickOk(b.pseudo)) return err(res, 400, 'pseudo_refuse', NICK_REFUSED);
+      if (nameTaken(b.pseudo)) return err(res, 409, 'pseudo_pris', NICK_TAKEN);
+      const loginId = `${norm(b.pseudo).replace(/[^a-z0-9]+/g, '-')}-${suffix()}`;
+      const student = { studentId: id('stu'), pseudo: loginId, loginId, displayName: b.pseudo.trim(), schoolLevel: b.schoolLevel, under15: !!b.under15, status: 'actif', pageQuota: 20 };
       S.students.push(student);
-      return send(res, 201, { student, activationLink: { url: 'http://127.0.0.1/activer#token=factice', expiresAt: iso(Date.now() + 86400e3) } });
+      const token = `factice-${student.studentId}-0123456789abcdef`;
+      S.tokens.set(token, student.studentId);
+      return send(res, 201, { student, activationLink: { url: `http://127.0.0.1/activer#token=${token}`, expiresAt: iso(Date.now() + 86400e3) } });
+    }
+    case 'POST /activation': {
+      // Meme ordre que l'API: jeton d'abord (404 unique), surnom controle AVANT de consommer le jeton, puis 200 avec l'identifiant.
+      const sid = S.tokens.get(b.token);
+      const s = sid && S.students.find((x) => x.studentId === sid);
+      if (!s) return err(res, 404, 'introuvable', 'Introuvable');
+      if (typeof b.password !== 'string' || b.password.length < 12) return err(res, 400, 'requete_invalide', 'Mot de passe refusé');
+      if (b.displayName !== undefined) {
+        if (!nickOk(b.displayName)) return err(res, 400, 'pseudo_refuse', NICK_REFUSED);
+        if (nameTaken(b.displayName, s)) return err(res, 409, 'pseudo_pris', NICK_TAKEN);
+        s.displayName = b.displayName.trim();
+      }
+      S.tokens.delete(b.token);
+      return send(res, 200, { loginId: s.loginId, displayName: s.displayName });
     }
     case 'POST /scans': {
       const pages = Number(b.pages);
@@ -576,7 +604,16 @@ const server = createServer(async (req, res) => {
   if (seg[1] === 'students') {
     const s = S.students.find((x) => x.studentId === ID);
     if (!s) return err(res, 404, 'introuvable', 'Introuvable');
-    if (m === 'PATCH') { Object.assign(s, b); return send(res, 200, s); }
+    if (m === 'POST' && seg[3] === 'login-id') { s.loginId = `${s.loginId.replace(/-[a-z0-9]{4,5}$/, '')}-${suffix()}`; s.pseudo = s.loginId; return send(res, 200, { loginId: s.loginId }); }
+    if (m === 'PATCH') {
+      if (b.displayName !== undefined) {
+        if (!nickOk(b.displayName)) return err(res, 400, 'pseudo_refuse', NICK_REFUSED);
+        if (nameTaken(b.displayName, s)) return err(res, 409, 'pseudo_pris', NICK_TAKEN);
+        b.displayName = b.displayName.trim();
+      }
+      Object.assign(s, b);
+      return send(res, 200, s);
+    }
     if (m === 'DELETE') { S.students = S.students.filter((x) => x !== s); return send(res, 204); }
   }
   return err(res, 404, 'introuvable', `Route inconnue: ${m} ${p}`);

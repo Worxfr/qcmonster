@@ -33,7 +33,7 @@ test.describe('Connexion et déconnexion', () => {
   test('mode dev: un mauvais mot de passe est refusé avec un message', async ({ page }) => {
     test.skip(isMock, 'Connexion réelle seulement');
     await page.goto('/');
-    await page.getByLabel('Pseudo ou e-mail').fill('inconnu-e2e');
+    await page.getByLabel('Identifiant ou e-mail').fill('inconnu-e2e');
     await page.getByLabel('Mot de passe').fill('mauvais-mot-de-passe-1A');
     await page.getByRole('button', { name: 'Se connecter' }).click();
     await expect(page.getByRole('alert')).toBeVisible();
