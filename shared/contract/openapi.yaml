@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.4.1
+  version: 1.5.0
   description: |
-    Contrat d'API QCMonster (contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -183,12 +183,18 @@ paths:
                   - page: 1
                     sentences:
                       - { id: p1-s1, text: La photosynthese produit du dioxygene. }
-                      - { id: p1-s2, text: 'Les plantes vertes utilisent la lumiere du soleil pour fabriquer leur matiere a partir du gaz carbonique de l''air.', pages: [1, 2] }
+                      - { id: p1-s2, doubt: true, text: 'Les plantes vertes utilisent la lumiere du soleil pour fabriquer leur matiere a partir du gaz carbonique de l''air.', pages: [1, 2] }
                   - page: 2
                     sentences:
                       - { id: p2-s2, text: Ce phenomene a lieu dans les chloroplastes. }
                 suggestedSubject: svt
                 suggestedTopic: La photosynthese
+                blocks:
+                  - { id: b1, kind: titre, level: 1, sentenceIds: [p1-s1] }
+                  - { id: b2, kind: paragraphe, sentenceIds: [p1-s2, p2-s2] }
+                  - { id: b3, kind: figure, figureId: f1 }
+                figures:
+                  - { figureId: f1, page: 2, kind: schema, alt: 'Schema d''une feuille avec les entrees de lumiere et de gaz carbonique', caption: Fig. 1 La feuille, box: { x: 0.1, y: 0.4, w: 0.8, h: 0.35 }, url: 'https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/fig/f1.jpg?X-Amz-Signature=example' }
                 photoUrls: ['https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/0?X-Amz-Signature=example']
                 photoUrlsExpireAt: '2026-12-01T10:05:00Z'
         '404': { $ref: '#/components/responses/NotFound' }
@@ -211,6 +217,8 @@ paths:
             schema: { $ref: '#/components/schemas/ConfirmRequest' }
             example:
               corrections: []
+              figures: [{ figureId: f1, keep: true }]
+              removed: [p2-s9]
               sections:
                 - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese }
                 - { fromSentenceId: p2-s2, subject: histoire_geo, topic: La Revolution francaise, folderId: 01JEXAMPLE0FLD0000000000AA }
@@ -290,11 +298,16 @@ paths:
                 subject: svt
                 createdAt: '2026-12-01T10:03:00Z'
                 summary: Les plantes fabriquent leur matiere avec la lumiere.
+                body:
+                  - { heading: Le principe, text: Les plantes fabriquent leur matiere avec la lumiere., claimIds: ['01'] }
+                recall:
+                  - { kind: definition, text: La photosynthese produit du dioxygene., claimId: '01', verified: true }
                 claims:
                   - claimId: '01'
                     text: La photosynthese produit du dioxygene.
                     status: verifiee
                     aRisque: false
+                    sentenceId: p1-s1
                     sources:
                       - passageId: 4f2a9c
                         url: https://fr.wikipedia.org/wiki/Photosynth%C3%A8se
@@ -536,6 +549,15 @@ paths:
                 sections:
                   - { fromSentenceId: p1-s1, subject: svt, topic: La photosynthese, title: La photosynthese, status: fiche, docId: 01JEXAMPLE0DOC0000000000AA }
                   - { fromSentenceId: p2-s1, subject: histoire_geo, status: ignoree }
+                figureCount: 1
+                blocks:
+                  - { id: b1, kind: paragraphe, sentenceIds: [p1-s1] }
+                  - { id: b2, kind: figure, figureId: f1 }
+                  - { id: b3, kind: paragraphe, sentenceIds: [p2-s1] }
+                figures:
+                  - { figureId: f1, page: 1, kind: schema, alt: Schema de la photosynthese, url: 'https://qcm-dev-figures.s3.eu-west-3.amazonaws.com/figures/x/f1.jpg?X-Amz-Signature=example', urlExpireAt: '2026-12-01T10:10:00Z' }
+                marks:
+                  - { sentenceId: p1-s1, status: verifiee, docId: 01JEXAMPLE0DOC0000000000AA, claimId: '01' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
@@ -1134,6 +1156,7 @@ components:
         coursId: { type: string }
         createdAt: { type: string, format: date-time }
         pages: { type: integer, minimum: 1, maximum: 10 }
+        figureCount: { type: integer, minimum: 0, maximum: 8, description: "Facultatif (v1.5): nombre de figures conservees. Les images ne sont jamais dans l'export parent." }
         sections:
           type: array
           maxItems: 6
@@ -1164,6 +1187,21 @@ components:
                 properties:
                   page: { type: integer, minimum: 1 }
                   sentences: { type: array, items: { $ref: '#/components/schemas/Sentence' } }
+            blocks:
+              type: array
+              maxItems: 400
+              items: { $ref: '#/components/schemas/Block' }
+              description: "Facultatif (v1.5): mise en forme conservee. Absent pour un cours ancien: l'ecran affiche les phrases."
+            figures:
+              type: array
+              maxItems: 8
+              items: { $ref: '#/components/schemas/Figure' }
+              description: "Facultatif (v1.5): figures conservees, avec `url` pre-signee de 5 minutes (eleve seulement). Supprimees avec le cours."
+            marks:
+              type: array
+              maxItems: 500
+              items: { $ref: '#/components/schemas/SentenceMark' }
+              description: "Facultatif (v1.5): resultat de la verification des sources, phrase par phrase, calcule a la lecture depuis les fiches liees (vide tant que la verification n'est pas finie; les fiches supprimees n'y figurent plus)."
     Folder:
       type: object
       required: [folderId, name, createdAt, scanCount]
@@ -1258,14 +1296,79 @@ components:
       type: object
       required: [id, text]
       properties:
+        doubt: { type: boolean, description: "Facultatif (v1.5), reponse seulement (`Transcription`), ignore dans `ConfirmRequest.corrections` et absent de `Cours`. true: la lecture de cette phrase est douteuse (ecriture illisible, mot incertain); l'ecran de relecture la signale. C'est une confiance de LECTURE donnee par le modele: ce n'est PAS un resultat de verification des faits (qui n'existe qu'apres la confirmation, voir `Cours.marks`). Absent = pas de doute signale." }
         id: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "`p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin." }
-        text: { type: string, maxLength: 2000 }
+        text: { type: string, maxLength: 2000, description: "Texte de la phrase. Depuis la v1.5 il peut contenir du LaTeX: une formule dans une phrase est entouree de `$...$` (`\\$` pour un dollar litteral); dans un bloc `formule`, le texte est le LaTeX sans delimiteurs. Le serveur controle le LaTeX (longueur, accolades, commandes interdites comme href, url, input, def) et laisse en texte simple ce qui ne passe pas; le site l'affiche en MathML via KaTeX (trust: false)." }
         pages:
           type: array
           minItems: 1
           maxItems: 4
           items: { type: integer, minimum: 1, maximum: 10 }
           description: "Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent)."
+    Block:
+      type: object
+      required: [id, kind]
+      description: "Bloc de mise en forme du cours (v1.5), au-dessus des phrases: les phrases (`Sentence`) restent l'unite des corrections, des coupes en sections, des retraits et des affirmations verifiees; un bloc ne fait que les REGROUPER dans l'ordre du document. Un bloc peut s'etendre sur deux pages (phrase recollee, ou paragraphe qui continue)."
+      properties:
+        id: { type: string, pattern: '^b[0-9]+$', description: "b1, b2... dans l'ordre du document" }
+        kind: { type: string, enum: [titre, paragraphe, liste, formule, figure], description: "titre: une phrase; paragraphe: une ou plusieurs phrases; liste: une phrase par element; formule: une phrase dont le texte est du LaTeX SANS delimiteurs (ex. `E = mc^{2}`); figure: aucune phrase, voir `figureId`" }
+        level: { type: integer, minimum: 1, maximum: 3, description: "Titre seulement: 1 = titre du cours, 2 = partie, 3 = sous-partie" }
+        ordered: { type: boolean, description: "Liste seulement: numerotee (true) ou a puces (defaut false)" }
+        sentenceIds: { type: array, maxItems: 200, items: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }, description: "Phrases du bloc, dans l'ordre. Absent pour une figure." }
+        figureId: { type: string, pattern: '^f[0-9]+$', description: "Figure seulement" }
+    FigureBox:
+      type: object
+      required: [x, y, w, h]
+      description: "Cadre de la figure sur la page, en fractions de la largeur et de la hauteur (0 a 1), origine en haut a gauche"
+      properties:
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        w: { type: number, minimum: 0, maximum: 1 }
+        h: { type: number, minimum: 0, maximum: 1 }
+    Figure:
+      type: object
+      required: [figureId, page, kind, alt, url]
+      description: "Schema, graphique, tableau, carte ou photo du cours (v1.5). Une figure est TOUJOURS une image (`url`): jamais de figure en texte seul. `alt` (description courte ecrite par le modele) est le texte alternatif pour l'accessibilite, pas un substitut de l'image. Si le cadre propose est faux et ne se corrige pas, l'image est la page entiere (`box` absent). La figure et son `alt` ne sont JAMAIS des affirmations: ils ne sont ni verifies ni utilises pour les questions."
+      properties:
+        figureId: { type: string, pattern: '^f[0-9]+$' }
+        page: { type: integer, minimum: 1, maximum: 10 }
+        kind: { type: string, enum: [schema, graphique, tableau, carte, photo, autre] }
+        alt: { type: string, minLength: 1, maxLength: 300 }
+        caption: { type: string, maxLength: 200, description: "Legende ecrite sous la figure sur la page, recopiee, si elle existe" }
+        box: { allOf: [{ $ref: '#/components/schemas/FigureBox' }], description: "Absent: la figure est la page entiere (cadre introuvable)" }
+        url: { type: string, format: uri, description: "Image recadree (JPEG, 1200 px au plus), URL pre-signee de 5 minutes re-signee a chaque lecture." }
+        urlExpireAt: { type: string, format: date-time }
+    ConfirmFigure:
+      type: object
+      required: [figureId, keep]
+      properties:
+        figureId: { type: string, pattern: '^f[0-9]+$' }
+        keep: { type: boolean, description: "true: le recadrage est conserve avec le cours. false: il est supprime avec la photo." }
+        alt: { type: string, minLength: 1, maxLength: 300, description: "Texte alternatif corrige par l'eleve" }
+    SentenceMark:
+      type: object
+      required: [sentenceId, status, docId, claimId]
+      description: "Resultat de verification le plus severe parmi les affirmations tirees de cette phrase (erreur > non_verifiable > verifiee). Une phrase sans affirmation factuelle n'a pas de marque."
+      properties:
+        sentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+        status: { type: string, enum: [verifiee, erreur, non_verifiable] }
+        docId: { type: string }
+        claimId: { type: string }
+    FicheParagraph:
+      type: object
+      required: [text]
+      properties:
+        heading: { type: string, maxLength: 120, description: "Intertitre facultatif" }
+        text: { type: string, minLength: 1, maxLength: 1200 }
+        claimIds: { type: array, maxItems: 20, items: { type: string }, description: "Affirmations (`Doc.claims`) sur lesquelles repose le paragraphe" }
+    RecallItem:
+      type: object
+      required: [kind, text, claimId, verified]
+      properties:
+        kind: { type: string, enum: [date, formule, definition, nombre] }
+        text: { type: string, minLength: 1, maxLength: 1000, description: "Texte de l'affirmation citee, COPIE par le serveur (le modele ne choisit que `claimId` et `kind`), jamais reecrit. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`)." }
+        claimId: { type: string, description: "Affirmation d'ou vient l'element (`Doc.claims`)" }
+        verified: { type: boolean, description: "true: l'affirmation est `verifiee`. false: elle est `non_verifiable` (reprise du cours, signalee comme telle). Une affirmation en `erreur` n'est jamais reprise." }
     Transcription:
       type: object
       required: [jobId, docType, pages, photoUrls, photoUrlsExpireAt]
@@ -1290,6 +1393,16 @@ components:
           description: "Decoupage suggere (v1.3), au plus 6 sections; la premiere commence a la premiere phrase. Absent: pas de decoupage suggere (une seule section)."
         photoUrls: { type: array, items: { type: string, format: uri }, description: "Dans l'ordre des pages (1 par page)" }
         photoUrlsExpireAt: { type: string, format: date-time }
+        blocks:
+          type: array
+          maxItems: 400
+          items: { $ref: '#/components/schemas/Block' }
+          description: "Facultatif (v1.5): mise en forme du document, dans l'ordre. Absent (job ancien): l'ecran retombe sur la liste de phrases de `pages`. Chaque phrase de `pages` est dans exactement un bloc."
+        figures:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/Figure' }
+          description: "Facultatif (v1.5): figures proposees par la lecture, 8 au plus par scan; l'eleve les confirme avec `ConfirmRequest.figures`. Les `url` de recadrage sont re-signees a chaque appel et expirent avec la photo."
     ConfirmRequest:
       type: object
       required: [corrections]
@@ -1304,6 +1417,16 @@ components:
         subject: { $ref: '#/components/schemas/Subject' }
         topic: { $ref: '#/components/schemas/Topic', description: "Un sujet vide apres nettoyage (espaces, chevrons, caracteres invisibles) repond 400 `requete_invalide`: le schema ne le detecte pas, le serveur le controle." }
         folderId: { type: string, minLength: 1, maxLength: 64, description: "Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation" }
+        figures:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/ConfirmFigure' }
+          description: "Facultatif (v1.5): choix de l'eleve pour chaque figure proposee. Une figure absente de la liste n'est PAS conservee (par defaut, rien n'est garde). Un `figureId` inconnu: 400 `requete_invalide`."
+        removed:
+          type: array
+          maxItems: 500
+          items: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }
+          description: "Facultatif (v1.5): phrases retirees du cours par l'eleve (bruit, remarque personnelle). Elles ne sont pas gardees dans le cours, ni extraites, ni verifiees. Une phrase retiree ne peut pas etre le `fromSentenceId` d'une section; une phrase inconnue: 400. Le seuil de 40 mots s'applique apres retrait."
     DocSummary:
       type: object
       required: [docId, title, subject, createdAt]
@@ -1336,9 +1459,10 @@ components:
       required: [claimId, text, status, aRisque, sources]
       properties:
         claimId: { type: string }
-        text: { type: string, maxLength: 1000 }
+        text: { type: string, maxLength: 1000, description: "Texte de l'affirmation. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`)." }
         status: { type: string, enum: [verifiee, erreur, non_verifiable, non_factuelle] }
         aRisque: { type: boolean }
+        sentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "Facultatif (v1.5): phrase du cours d'ou vient l'affirmation (celle de `Cours.texts` et `Cours.marks`). Absent pour une fiche ancienne ou si le cours a ete supprime." }
         sources: { type: array, items: { $ref: '#/components/schemas/Source' } }
     Doc:
       allOf:
@@ -1346,8 +1470,24 @@ components:
         - type: object
           required: [summary, claims]
           properties:
-            summary: { type: string }
+            summary: { type: string, description: "Texte continu de la fiche. Depuis la v1.5 il reprend `body` (paragraphes separes par une ligne vide, sans le rappel): un client 1.4 continue de fonctionner." }
             claims: { type: array, items: { $ref: '#/components/schemas/Claim' } }
+            body:
+              type: array
+              maxItems: 8
+              items: { $ref: '#/components/schemas/FicheParagraph' }
+              description: "Facultatif (v1.5): la fiche en plusieurs paragraphes. Absent pour une fiche ancienne (un seul bloc `summary`)."
+            recall:
+              type: array
+              maxItems: 12
+              items: { $ref: '#/components/schemas/RecallItem' }
+              description: "Facultatif (v1.5): rappel final des elements importants (dates, formules, definitions, nombres). Vide ou absent s'il n'y en a pas."
+            figures:
+              type: array
+              maxItems: 8
+              items: { $ref: '#/components/schemas/Figure' }
+              description: "Facultatif (v1.5): figures du cours utiles a la fiche, avec `url` pre-signee. Absentes si le cours a ete supprime (les figures partent avec lui). Eleve seulement."
+
     ReportRequest:
       type: object
       required: [comment]
@@ -1374,8 +1514,8 @@ components:
       properties:
         questionId: { type: string }
         kind: { type: string, enum: [qcm, gap] }
-        prompt: { type: string, maxLength: 1000 }
-        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 } }
+        prompt: { type: string, maxLength: 1000, description: "Enonce. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`)." }
+        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 }, description: "Choix; ils peuvent contenir du LaTeX comme l'enonce." }
     Session:
       type: object
       required: [docId, questions]
@@ -1641,6 +1781,8 @@ components:
         students: { type: integer, minimum: 0 }
         tests: { type: integer, minimum: 0 }
         truncated: { type: boolean }
+        courses: { type: integer, minimum: 0, description: "Facultatif (v1.5, archive de l'eleve): nombre de cours dans l'archive" }
+        figures: { type: integer, minimum: 0, description: "Facultatif (v1.5, archive de l'eleve): nombre de figures (fichiers JPEG) dans l'archive" }
     DocProgress:
       type: object
       required: [docId, titre, matiere, pages, createdAt, tests]
