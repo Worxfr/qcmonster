@@ -178,6 +178,28 @@ describe('applyChanges: refus (rien n\'est modifie)', () => {
   });
 });
 
+describe('applyChanges: durcissements de relecture (PR #101)', () => {
+  it('une correction avec une formule interdite ou un $ impair est refusee (la garde des corrections vit ici)', () => {
+    for (const text of ['Voir $\\href{http://a}{b}$', 'coute 5 $ environ']) {
+      expect(applyChanges(texts(), blocks(), { corrections: [{ id: 'p1-s2', text }] })).toEqual({ ok: false, error: 'formule' });
+    }
+    expect(applyChanges(texts(), blocks(), { corrections: [{ id: 'p1-s2', text: 'Soit $E = mc^{2}$.' }] }).ok).toBe(true);
+  });
+
+  it('numerotation avec un trou: page p1-s1, p1-s3 => l\'ajout est p1-s4 (jamais p1-s3, ni p1-s2)', () => {
+    const t: PageItem[] = [{ SK: 'TEXT#1', page: 1, sentences: [S('p1-s1'), S('p1-s3')] }];
+    const r = applyChanges(t, undefined, { added: [add('n1', 'p1-s1'), add('n2', 'p1-s1')] });
+    expect(r.ok && [...r.ids.values()]).toEqual(['p1-s4', 'p1-s5']);
+    expect(r.ok && (r.texts[0].sentences as { id: string }[]).map((s) => s.id)).toEqual(['p1-s1', 'p1-s5', 'p1-s4', 'p1-s3']);
+  });
+
+  it('ancre hors de tout bloc alors que le texte a des blocs: refus (ordre des blocs et des phrases ne divergent pas)', () => {
+    const partial: Block[] = [{ id: 'b1', kind: 'paragraphe', sentenceIds: ['p1-s2'] }];
+    expect(applyChanges(texts(), partial, { added: [add('n1', 'p1-s1')] })).toEqual({ ok: false, error: 'ancre' });
+    expect(applyChanges(texts(), partial, { added: [add('n1', 'p1-s2')] }).ok).toBe(true); // une ancre dans un bloc reste acceptee
+  });
+});
+
 describe('applyChanges: retraits et corrections (comportement inchange)', () => {
   it('phrase inconnue (retrait ou correction) = refus; corrigee puis retiree: le retrait gagne; doute eteint', () => {
     expect(applyChanges(texts(), blocks(), { removed: ['p9-s9'] })).toEqual({ ok: false, error: 'phrase_inconnue' });

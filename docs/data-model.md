@@ -190,3 +190,5 @@ Aucun nouvel element, aucune table, aucun droit IAM. Un attribut facultatif:
 - Identifiant: `p<page>-s<n>`, `n` = plus grand numero de la page dans le texte du job (phrases retirees comprises) + 1. Aucun identifiant existant n'est renumerote ni repris.
 - Blocs (`COURS#<id>#B`): la phrase rejoint le paragraphe ou la liste de son ancre, ou forme un nouveau paragraphe (`api/src/pipeline/changes.ts`, `applyAdded`, fonction pure reutilisee par #90).
 - Extraction, verification et questions: le chemin d'une phrase lue, sans traitement de faveur.
+- Export de l'archive de l'eleve (`student-export.ts`): le texte d'une phrase ajoutee est exporte comme les autres, le drapeau d'affichage `added` ne l'est pas.
+- Dette connue, a traiter avec #90 (relecture #101, m2): `jobs-confirm` ecrit le cours avant la transition `a_confirmer -> verification`; deux requetes differentes envoyees depuis deux onglets peuvent laisser le cours du perdant. Defaut anterieur a #89, aggrave par `added`.

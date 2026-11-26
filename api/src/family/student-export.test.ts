@@ -70,7 +70,7 @@ function env(maxFigureBytes?: number) {
 async function seedCours(t: TestEnv, e: ReturnType<typeof env>, sid: string, coursId: string, createdAt: string, bytes: number, figs = ['f1']) {
   await t.store.commit([
     { item: { ...keys.cours(sid, coursId), jobId: coursId, pages: 1, createdAt, nbPhrases: 1, sections: [] }, when: 'any' },
-    { item: { ...keys.coursText(sid, coursId, 1), page: 1, sentences: [{ id: 'p1-s1', text: `Texte ${coursId}` }] }, when: 'any' },
+    { item: { ...keys.coursText(sid, coursId, 1), page: 1, sentences: [{ id: 'p1-s1', text: `Texte ${coursId}` }, { id: 'p1-s2', text: 'Ajoutee par eleve', added: true }] }, when: 'any' },
     { item: { ...keys.coursBlocks(sid, coursId), blocks: [], figures: figs.map((f) => ({ figureId: f, page: 1, kind: 'schema', alt: 'a' })) }, when: 'any' },
   ]);
   for (const f of figs) e.objects.set(figureKey(sid, coursId, f), Buffer.alloc(bytes, 7));
@@ -124,6 +124,8 @@ describe('construction en flux', () => {
     expect([...files.keys()].sort()).toEqual(['export.json', 'figures/c1/f1.jpg', 'figures/c1/f2.jpg', `tests/${SID}.jsonl`]);
     const exp = JSON.parse(files.get('export.json')!.toString());
     expect(exp.cours[0].texts[0].sentences[0].text).toBe('Texte c1');
+    // M1 #89: la phrase ajoutee est exportee (son texte), pas le drapeau d'affichage `added`
+    expect(exp.cours[0].texts[0].sentences[1]).toEqual({ id: 'p1-s2', text: 'Ajoutee par eleve' });
     expect(files.get(`tests/${SID}.jsonl`)!.toString()).toContain('ma reponse');
     expect(files.get('figures/c1/f1.jpg')!.length).toBe(3000);
     const st = await getExport(e.deps, studentCtx, exportId);

@@ -165,7 +165,11 @@ export function applyChanges<T extends PageItem>(texts: T[], blocks: Block[] | u
       const anchor = a.afterId.startsWith('n') ? idsOut.get(a.afterId)! : a.afterId;
       const block = blockOf.get(anchor);
       if (work && block && (block.kind === 'paragraphe' || block.kind === 'liste') && !a.newBlock && (block.sentenceIds?.length ?? 0) < MAX_BLOCK_SENTENCES) joined = block;
-      else if (work) newAfter = block;
+      else if (work) {
+        // Ancre hors de tout bloc (texte ancien partiel): l'ordre des blocs divergerait de celui des phrases, on refuse plutot que de deviner.
+        if (!block) return { ok: false, error: 'ancre' };
+        newAfter = block;
+      }
       // Un nouveau bloc se place apres la derniere phrase du bloc de l'ancre: on ne coupe jamais un paragraphe en deux.
       const ref = joined || !block?.sentenceIds?.length ? anchor : block.sentenceIds[block.sentenceIds.length - 1];
       at = after(ref);
