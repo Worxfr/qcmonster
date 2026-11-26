@@ -29,7 +29,7 @@ cd infra && npx cdk synth -c env=dev --quiet   # QCM_ALERT_EMAIL=... pour l'adre
 ## Regles
 
 - Jamais de secret, de cle AWS ni de photo d'essai dans git (`samples/` est ignore). Deploiement par OIDC seulement.
-- Tags `Project`, `Environment`, `ManagedBy`, `Owner` sur toute ressource (test CI).
+- Tags `project` (minuscules, valeur `qcmonster`), `Environment`, `ManagedBy`, `Owner` sur toute ressource (test CI).
 - Aucun `modelId` systeme (`eu.anthropic...`): uniquement des ARN de profils d'application (test CI).
 - Journaux par `shared/log` seulement, jamais de console (test CI).
 - Changer le contrat ou le schema de donnees: PR relue par le proprietaire du lot 1.

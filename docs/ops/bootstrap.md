@@ -28,16 +28,16 @@ et une policy dediees, et ne supprime rien. Voir `infra-bootstrap/README.md`.
 npx cdk bootstrap aws://<ID_COMPTE>/eu-west-3
 ```
 
-## 4. Activer la cle de tag de couts `Project`
+## 4. Activer la cle de tag de couts `project`
 
 Le budget filtre par tag ne voit rien tant que la cle n'est pas activee (gratuit, jusqu'a 24 h de delai).
-Console: Billing → Cost allocation tags → activer `Project` (et `Environment`). Verifier avant de creer les budgets:
+Console: Billing → Cost allocation tags → activer `project` (et `Environment`). Verifier avant de creer les budgets:
 
 ```bash
 aws ce list-cost-allocation-tags --status Active
 ```
 
-Si seule `project` (minuscule) est active, activer aussi `Project`: les deux cles sont distinctes pour AWS.
+La cle est `project` en minuscules, valeur `qcmonster`. Ne jamais poser `Project` (majuscule): IAM compare les cles sans tenir compte de la casse, et deux ecritures differentes sur une meme ressource echouent.
 
 ## 5. Configurer GitHub (depot prive `Worxfr/qcmonster`)
 
@@ -60,7 +60,7 @@ Si seule `project` (minuscule) est active, activer aussi `Project`: les deux cle
   `QCMonster-filet-marketplace`, `QCMonster-securite-40`. L'**action** du budget securite est desactivee par defaut (elle cible
   les roles `qcm-prod-pipeline-role` et `qcm-prod-verify-role` des lots L2a/L2b, qui n'existent pas encore). Une fois ces
   lots deployes: `npx cdk deploy qcm-prod-budget -c env=prod -c budgetAction=true`.
-  - [ ] **Controle J+2 fait avant `-c budgetAction=true`**: Cost Explorer filtre par tag `Project` ET par entite AWS Marketplace
+  - [ ] **Controle J+2 fait avant `-c budgetAction=true`**: Cost Explorer filtre par tag `project` ET par entite AWS Marketplace
     montre les appels de modeles apres le premier appel reel (design 4.6 point 4). Tant que ce n'est pas coche, la coupure
     automatique ne voit peut-etre pas Bedrock: seuls le compteur applicatif (15/18 EUR) et le budget Marketplace protegent.
 - Creer un code d'invitation parent (aucun parent ne peut s'inscrire sans): `npx tsx scripts/create-invite.ts --env=dev` (simulation),

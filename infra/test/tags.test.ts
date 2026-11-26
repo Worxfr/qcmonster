@@ -3,6 +3,7 @@ import { Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
 process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' });
 const { buildApp } = await import('../bin/app.js');
+import { readdirSync, readFileSync } from 'node:fs';
 import { missingTags } from './tags.js';
 import type { Env } from '../../shared/names.js';
 
@@ -44,5 +45,27 @@ describe('le test des tags detecte un tag retire (acceptation L1 n.3)', () => {
   it('passe quand les 4 tags sont la', () => {
     const tags = ['project', 'Environment', 'ManagedBy', 'Owner'].map((Key) => ({ Key, Value: 'x' }));
     expect(missingTags({ Resources: { Topic: { Type: 'AWS::SNS::Topic', Properties: { Tags: tags } } } })).toEqual([]);
+  });
+});
+
+describe('cle de tag `project` en minuscules partout (F13)', () => {
+  it('la stack eval (dev, evalPath=true) porte project=qcmonster et jamais Project', () => {
+    const app = buildApp('dev', 'test@example.invalid', { evalPath: 'true', evalSubPrefix: 'repo:o/r' });
+    const s = app.node.tryFindChild('qcm-dev-eval') as unknown as Parameters<typeof Template.fromStack>[0];
+    expect(s).toBeDefined();
+    const t = Template.fromStack(s).toJSON();
+    expect(missingTags(t)).toEqual([]);
+    expect(JSON.stringify(t)).not.toMatch(/"Key":"Project"/);
+    expect(JSON.stringify(t)).toMatch(/"Key":"project","Value":"qcmonster"/);
+  });
+  it('les scripts de bootstrap ne posent pas la cle Project (majuscule)', () => {
+    const dir = new URL('../../infra-bootstrap/', import.meta.url);
+    const scripts = readdirSync(dir).filter((f) => f.endsWith('.sh'));
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const f of scripts) {
+      const src = readFileSync(new URL(f, dir), 'utf8');
+      expect(src, f).not.toMatch(/Key=Project\b|\bProject=/);
+      expect(src, f).toMatch(/Key=project,Value=qcmonster/);
+    }
   });
 });

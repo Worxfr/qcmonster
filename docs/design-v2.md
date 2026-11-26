@@ -176,18 +176,18 @@ AgentCore reste une évolution possible si le produit s'ouvre et que l'agent doi
 
 ### 4.6 Budget et suivi des coûts (B1)
 
-**Ce qu'on sait** : les modèles Claude sont facturés via AWS Marketplace et listés sous le fournisseur (fiche, lue). Un budget filtré sur le service « Amazon Bedrock » les manquerait. Un budget filtré sur le tag `Project` ne les voit que si le coût suit le tag du profil d'inférence **[non vérifié : seul un test sur la vraie facture le dira]**.
+**Ce qu'on sait** : les modèles Claude sont facturés via AWS Marketplace et listés sous le fournisseur (fiche, lue). Un budget filtré sur le service « Amazon Bedrock » les manquerait. Un budget filtré sur le tag `project` ne les voit que si le coût suit le tag du profil d'inférence **[non vérifié : seul un test sur la vraie facture le dira]**.
 
 **Ce que la v2 met en place.**
 
-1. **Un profil d'inférence d'application par modèle et par environnement** (quatre au total : Haiku et Sonnet, `dev` et `prod`). Chacun est copié du profil système `eu.anthropic.claude-haiku-5-5` ou `eu.anthropic.claude-sonnet-5-5` et porte les tags `Project`, `Environment`, `ManagedBy`, `Owner`. **Le code appelle toujours l'ARN du profil d'application, jamais le profil système.** Un test CI échoue si un `modelId` ne commence pas par `arn:aws:bedrock:eu-west-3:`. Les droits IAM doivent couvrir le profil d'application, le profil système et les modèles de base dans les régions de destination (à tester au lot 1).
+1. **Un profil d'inférence d'application par modèle et par environnement** (quatre au total : Haiku et Sonnet, `dev` et `prod`). Chacun est copié du profil système `eu.anthropic.claude-haiku-5-5` ou `eu.anthropic.claude-sonnet-5-5` et porte les tags `project`, `Environment`, `ManagedBy`, `Owner`. **Le code appelle toujours l'ARN du profil d'application, jamais le profil système.** Un test CI échoue si un `modelId` ne commence pas par `arn:aws:bedrock:eu-west-3:`. Les droits IAM doivent couvrir le profil d'application, le profil système et les modèles de base dans les régions de destination (à tester au lot 1).
 2. **Compteur de coût dans l'application (garde principale).** À chaque appel, le code convertit `usage` (tokens d'entrée, de sortie, de cache) en euros avec la table de prix `shared/pricing.ts` et ajoute le montant à l'élément `COST#<env>/MONTH#<aaaa-mm>` (ajout atomique). Règles : à **15 €** dans le mois, `POST /scans` répond 429 `budget_epuise` ; à **18 €**, tous les traitements en cours s'arrêtent à la prochaine étape. Un alarme CloudWatch sur ce compteur envoie un e-mail à 10 €.
 3. **AWS Budgets, trois budgets, comme alerte et filet.**
-   - `QCMonster-alerte-20` : 20 € par mois, filtré sur le tag `Project=QCMonster`. Seuils e-mail à 50 %, 80 %, 100 % en réel et 100 % en prévision.
+   - `QCMonster-alerte-20` : 20 € par mois, filtré sur le tag `project=qcmonster`. Seuils e-mail à 50 %, 80 %, 100 % en réel et 100 % en prévision.
    - `QCMonster-filet-marketplace` : 25 € par mois, filtre « entité de facturation = AWS Marketplace » (les modèles Claude). **Alerte seulement**, pas d'action : le compte contient peut-être d'autres usages Claude **[à valider au lot 1]**.
    - `QCMonster-securite-40` : 40 €, filtré sur le tag, avec **action** qui applique une politique IAM refusant `bedrock:InvokeModel*` aux rôles des Lambda de traitement. Elle ne s'active que si le suivi par tag fonctionne.
 4. **Contrôle à J+2 du premier appel** (critère du lot 1b, 10.2) : après les premiers appels réels, lire Cost Explorer filtré par tag et par entité Marketplace. Si le tag ne ressort pas, on documente que seul le compteur applicatif et le budget Marketplace protègent, et le propriétaire en est informé.
-5. **Clé de tag** : on utilise `Project` avec majuscule, comme le test CI. Avant de créer les budgets, lire `aws ce list-cost-allocation-tags`. Si seule `project` est active, **activer aussi `Project`** (gratuit, jusqu'à 24 h de délai). Les deux clés sont distinctes pour AWS.
+5. **Clé de tag** : on utilise `project` en minuscules (décision FEAT-D, F13), valeur `qcmonster`. Avant de créer les budgets, lire `aws ce list-cost-allocation-tags` et vérifier que `project` est active (gratuit, jusqu'à 24 h de délai). `Project` ne doit jamais être posé : IAM compare les clés sans tenir compte de la casse.
 
 ### 4.7 Quota de pages, relié à l'XP (A4)
 
@@ -409,7 +409,7 @@ Acceptation (preuves dans `docs/acceptance/L1.md`) :
 3. Le test des tags échoue quand on retire un tag d'une ressource (PR de test fermée sans fusion) et passe sinon.
 4. `npm run mock` répond 200 avec un exemple valide pour **chacune des routes** du tableau 6 ; un test de contrat le vérifie.
 5. Test unitaire : réservation de quota concurrente (50 appels simultanés pour 20 pages) donne exactement 20 réussites.
-6. **L1b, à J+2 du premier appel Bedrock réel** (preuve ajoutée dans la PR suivante) : capture de Cost Explorer filtré par tag `Project` **et** par entité Marketplace, avec le verdict « le tag ressort / ne ressort pas » (4.6). Et `docs/quotas.md` : valeurs appliquées de Service Quotas pour Sonnet 5.5 et Haiku 5.5 en profil Geo (commande lancée par le propriétaire ; si inférieures à 1 000 000 de tokens par minute, demande d'augmentation faite).
+6. **L1b, à J+2 du premier appel Bedrock réel** (preuve ajoutée dans la PR suivante) : capture de Cost Explorer filtré par tag `project` **et** par entité Marketplace, avec le verdict « le tag ressort / ne ressort pas » (4.6). Et `docs/quotas.md` : valeurs appliquées de Service Quotas pour Sonnet 5.5 et Haiku 5.5 en profil Geo (commande lancée par le propriétaire ; si inférieures à 1 000 000 de tokens par minute, demande d'augmentation faite).
 7. L'estimation de coût (section 8) a été présentée au propriétaire **avant** tout déploiement, et sa validation est inscrite dans `docs/decisions.md`.
 
 **L2c. Jeu doré et évaluation**
@@ -476,7 +476,7 @@ Légende : **corrigé** = repris dans cette version ; **refusé** = non repris, 
 
 | Point | Décision | Section |
 |---|---|---|
-| B1. Le budget par tag ne voit pas Bedrock | **Corrigé.** Profils d'application tagués, compteur applicatif, trois budgets (tag, Marketplace, sécurité), contrôle à J+2, clé `Project` activée. Fait nouveau trouvé : les modèles sont facturés via Marketplace, ce qui rend aussi un filtre par service inefficace. | 4.6, 10.3 (L1) |
+| B1. Le budget par tag ne voit pas Bedrock | **Corrigé.** Profils d'application tagués, compteur applicatif, trois budgets (tag, Marketplace, sécurité), contrôle à J+2, clé `project` activée. Fait nouveau trouvé : les modèles sont facturés via Marketplace, ce qui rend aussi un filtre par service inefficace. | 4.6, 10.3 (L1) |
 | B2. Rien ne garantit que les sources citées existent | **Corrigé.** L'outil stocke les passages, le modèle cite un identifiant, le code recopie URL et extrait et vérifie la citation. | 4.1 (étapes 7-9), 4.3 |
 | B3. Coût de Sonnet sous-estimé de 5 à 10 fois | **Corrigé.** Trois scénarios avec formules, prix exacts. Le workflow remplace la boucle. Plafond de coût par page et par job. Le scénario D reste une hypothèse non mesurée. | 4.1, 8 |
 | B4. Les lots 2 et 3 se marchent dessus | **Corrigé.** Propriétaire unique par répertoire et par stack, routes ajoutées dans la stack du lot, contrat et schéma fixés par L1, workflows à L1. | 5, 6, 10 |
@@ -525,7 +525,7 @@ Légende : **corrigé** = repris dans cette version ; **refusé** = non repris, 
 | Les QCM contrôlés par le modèle qui les a écrits | **Corrigé.** Résolution à l'aveugle par un second appel. | 4.1 (étape 12) |
 | Détection d'un document qui n'est pas un cours | **Corrigé.** Type `autre`, refus, quota rendu. | 4.1, 4.8 |
 | Lien d'activation, MFA, sauvegardes, URL pré-signée | **Corrigé** (voir A12, A13, M6, M7). | 4.8 |
-| Tag `Project` / `project` | **Corrigé.** `Project`, activation de la clé avant la création des budgets. | 4.6 |
+| Tag `project` | **Corrigé.** `project`, activation de la clé avant la création des budgets. | 4.6 |
 | AIPD « relue par le propriétaire » | **Corrigé.** Brouillon par L0 ; validation compétente exigée avant ouverture ; registre simple suffit pour une famille. | 4.8 |
 | Acceptations non vérifiables : « e-mail de test », « autre branche », Lighthouse, coût du premier mois, dossier RGPD | **Corrigé.** Dépôt de test jetable, seuils fixes, coût à J+30, relecture compétente. | 10.3 |
 | Journaux Bedrock, AgentCore, API Gateway dans le test « aucun contenu » | **Corrigé.** Liste des groupes et méthode du jeton unique. | 4.9 |
