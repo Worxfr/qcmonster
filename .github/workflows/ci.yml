@@ -44,15 +44,6 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Tests
         run: npx vitest run --shard=${{ matrix.shard }}/4
-  # Tests du front (vitest + jsdom, workspace web). Ils n'etaient lances nulle part en CI avant ce changement.
-  web-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup
-      - name: Tests du front
-        run: npm test -w web
   synth:
     name: cdk synth (dev et prod)
     runs-on: ubuntu-latest
@@ -74,7 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup
-      - name: Build du front
+      # build:web lance aussi tsc et les tests vitest du front (web/package.json).
+      - name: Build du front (et tests du front)
         run: npm run build:web
       - name: API simulee repond sur chaque route
         run: |
@@ -85,7 +77,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [static, tests, web-tests, synth, build-mock]
+    needs: [static, tests, synth, build-mock]
     if: ${{ always() }}
     steps:
       - name: Tous les jobs de controle sont verts
