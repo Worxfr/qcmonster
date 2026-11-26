@@ -765,16 +765,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/docs/{docId}/exercices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Exercices de la fiche et points deja gagnes (eleve seul; handler exo-list, E1) */
+        get: operations["listExercices"];
+        put?: never;
+        /** Demande un exercice (generation asynchrone; handler exo-post, E1) */
+        post: operations["createExercice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercices/{exoId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Enonce, avancement et indices deja vus; jamais le bareme, les attendus ni la solution (handler exo-get, E1) */
+        get: operations["getExercice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercices/{exoId}/indice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Indice suivant (1, 2 puis 3); chaque indice retire 20 % des points (handler exo-hint-post, E1) */
+        post: operations["getExerciceHint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercices/{exoId}/solution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Solution redigee; ferme les points de l'exercice (handler exo-solution-post, E1) */
+        post: operations["getExerciceSolution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercices/{exoId}/copies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ouvre une copie et renvoie des envois pre-signes, une page par envoi (handler copies-create, E1) */
+        post: operations["createCopie"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/copies/{copieId}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lance la correction. Aucun corps: le serveur calcule lui-meme l'empreinte des pages (handler copies-submit, E1) */
+        post: operations["submitCopie"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/copies/{copieId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Etat et retour de la correction; credite les points a la premiere lecture d'une copie corrigee (idempotent; handler copie-get, E1) */
+        get: operations["getCopie"];
+        put?: never;
+        post?: never;
+        /** Supprime la copie et son retour (handler copie-delete, E1) */
+        delete: operations["deleteCopie"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Error: {
             /**
-             * @description `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris" | "matiere_non_prevue" | "plafond_exercices" | "fiche_trop_courte" | "pas_encore" | "trop_tot" | "deja_en_cours" | "quota_copies" | "plafond_copies" | "copie_deja_rendue" | "solution_vue" | "en_correction";
             message: string;
             /**
              * Format: date
@@ -1144,6 +1265,110 @@ export interface components {
             /** @description Taille de la banque de questions (v1.7): un nombre, jamais un contenu (visible aussi par le parent). Absent pour une fiche ancienne. */
             questionCount?: number;
             sectionIndex?: number;
+            /** @description Exercices de la fiche (1.9.0): un nombre, jamais un contenu */
+            exerciceCount?: number;
+        };
+        /** @enum {string} */
+        ExerciceEtat: "generation" | "prete" | "echec";
+        ExerciceResume: {
+            exoId: string;
+            titre?: string;
+            etat: components["schemas"]["ExerciceEtat"];
+            /**
+             * @description XP maximal de l'exercice
+             * @enum {integer}
+             */
+            points: 10;
+            meilleurMilli?: number;
+            xpPaye: number;
+            solutionVue: boolean;
+        };
+        ExerciceList: {
+            items: components["schemas"]["ExerciceResume"][];
+        };
+        ExerciceCreated: {
+            exoId: string;
+            etat: components["schemas"]["ExerciceEtat"];
+        };
+        /** @description Ce que l'eleve peut voir. AUCUN champ pour le bareme, les attendus, la valeur finale, les indices non vus ni la solution (test de contrat). */
+        Exercice: {
+            exoId: string;
+            docId: string;
+            etat: components["schemas"]["ExerciceEtat"];
+            titre?: string;
+            /** @description Texte avec LaTeX `$...$` (controle par le serveur, rendu KaTeX) */
+            enonce?: string;
+            /** @enum {integer} */
+            points: 10;
+            indicesVus: number;
+            /** @enum {integer} */
+            indicesTotal: 3;
+            /** @description Indices deja demandes, dans l'ordre */
+            indicesDonnes: string[];
+            nbCopies: number;
+            copiesRestantes: number;
+            solutionVue: boolean;
+        };
+        ExerciceHint: {
+            rang: number;
+            texte: string;
+            indicesRestants: number;
+        };
+        ExerciceSolution: {
+            solution: string;
+        };
+        CopieCreateRequest: {
+            pages: number;
+            /** @enum {string} */
+            contentType: "image/jpeg" | "image/png";
+        };
+        CopieEnvoi: {
+            page: number;
+            url: string;
+            fields: {
+                [key: string]: string;
+            };
+        };
+        CopieCreateResponse: {
+            copieId: string;
+            envois: components["schemas"]["CopieEnvoi"][];
+            /** Format: date-time */
+            expireA: string;
+        };
+        CopieSubmitResponse: {
+            /** @enum {string} */
+            etat: "en_correction";
+        };
+        /** @enum {string} */
+        CopieEtat: "a_envoyer" | "en_correction" | "corrigee" | "illisible" | "echec" | "annulee";
+        CopieEtape: {
+            id: string;
+            libelle: string;
+            /** @enum {string} */
+            statut: "ok" | "partiel" | "faux" | "absent" | "reporte";
+            indice: string;
+        };
+        Copie: {
+            copieId: string;
+            exoId: string;
+            etat: components["schemas"]["CopieEtat"];
+            /**
+             * @description Seulement pour `echec`
+             * @enum {string}
+             */
+            motif?: "copie_deja_rendue" | "budget" | "technique" | "plafond_cout";
+            /** @description Seulement pour `corrigee` */
+            etapes?: components["schemas"]["CopieEtape"][];
+            finale?: {
+                libelle: string;
+                /** @enum {string} */
+                statut: "juste" | "fausse" | "absente";
+            };
+            scoreMilli?: number;
+            bilan?: string;
+            xpGagne?: number;
+            solutionVue: boolean;
+            badges?: string[];
         };
         DocList: {
             items: components["schemas"]["DocSummary"][];
@@ -1478,8 +1703,11 @@ export interface components {
             questionId: string;
             /** @description Position de la question dans la session */
             rank: number;
-            /** @enum {string} */
-            kind: "qcm" | "gap";
+            /**
+             * @description `exo` (1.9.0): etape d'un exercice (`<docId>:exo:<nn>#<etapeId>`), sans aucun texte
+             * @enum {string}
+             */
+            kind: "qcm" | "gap" | "exo";
             correct: boolean;
             attempts: number;
             firstTry: boolean;
@@ -1726,6 +1954,8 @@ export interface components {
         DocId: string;
         CoursId: string;
         FolderId: string;
+        ExoId: string;
+        CopieId: string;
         TestId: string;
         /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
         SchoolYear: string;
@@ -4191,6 +4421,415 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listExercices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                docId: components["parameters"]["DocId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exercices de la fiche (5 au plus) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "exoId": "01JEXAMPLE0DOC0000000000AA-01",
+                     *           "titre": "Vitesse moyenne",
+                     *           "etat": "prete",
+                     *           "points": 10,
+                     *           "meilleurMilli": 600,
+                     *           "xpPaye": 6,
+                     *           "solutionVue": false
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExerciceList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createExercice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                docId: components["parameters"]["DocId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Generation lancee; l'ecran interroge `GET /exercices/{exoId}` */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "exoId": "01JEXAMPLE0DOC0000000000AA-01",
+                     *       "etat": "generation"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExerciceCreated"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte` ou `etat_invalide` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "matiere_non_prevue",
+                     *       "message": "Les exercices existent pour les maths et la physique-chimie"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getExercice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exoId: components["parameters"]["ExoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exercice (l'enonce est absent tant que `etat` = `generation` ou `echec`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "exoId": "01JEXAMPLE0DOC0000000000AA-01",
+                     *       "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *       "etat": "prete",
+                     *       "titre": "Vitesse moyenne",
+                     *       "enonce": "Un cycliste roule 30 km en 1,5 h. Calcule sa vitesse moyenne en $\\\\mathrm{km/h}$.",
+                     *       "points": 10,
+                     *       "indicesVus": 0,
+                     *       "indicesTotal": 3,
+                     *       "indicesDonnes": [],
+                     *       "nbCopies": 0,
+                     *       "copiesRestantes": 3,
+                     *       "solutionVue": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Exercice"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getExerciceHint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exoId: components["parameters"]["ExoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Indice */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "rang": 1,
+                     *       "texte": "Pense a la formule qui relie distance et duree.",
+                     *       "indicesRestants": 2
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExerciceHint"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getExerciceSolution: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exoId: components["parameters"]["ExoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Solution */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "solution": "On utilise $v = d / t$, donc $v = 30 / 1{,}5 = 20$ km/h."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExerciceSolution"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `pas_encore`: ni correction, ni 3 indices suivis de 10 minutes */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "pas_encore",
+                     *       "message": "Essaie d'abord l'exercice"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createCopie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exoId: components["parameters"]["ExoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "pages": 2,
+                 *       "contentType": "image/jpeg"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CopieCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Copie `a_envoyer`. Une seule par eleve, en ouvrir une nouvelle remplace l'ancienne. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "copieId": "01JEXAMPLE0COPIE00000000AA",
+                     *       "envois": [
+                     *         {
+                     *           "page": 1,
+                     *           "url": "https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/",
+                     *           "fields": {
+                     *             "key": "copies/01JEXAMPLE0STU0000000000AA/01JEXAMPLE0COPIE00000000AA/p1",
+                     *             "Content-Type": "image/jpeg"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "expireA": "2026-12-01T10:10:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CopieCreateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "plafond_copies",
+                     *       "message": "Tu as deja rendu cet exercice 3 fois"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    submitCopie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                copieId: components["parameters"]["CopieId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Correction lancee; l'ecran interroge `GET /copies/{copieId}` */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "etat": "en_correction"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CopieSubmitResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies` ou `etat_invalide` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "trop_tot",
+                     *       "message": "Prends le temps de faire l'exercice"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getCopie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                copieId: components["parameters"]["CopieId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Copie */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "copieId": "01JEXAMPLE0COPIE00000000AA",
+                     *       "exoId": "01JEXAMPLE0DOC0000000000AA-01",
+                     *       "etat": "corrigee",
+                     *       "etapes": [
+                     *         {
+                     *           "id": "e1",
+                     *           "libelle": "Choisir la formule",
+                     *           "statut": "ok",
+                     *           "indice": "Bien vu."
+                     *         },
+                     *         {
+                     *           "id": "e2",
+                     *           "libelle": "Calculer",
+                     *           "statut": "faux",
+                     *           "indice": "Relis ton calcul de la division."
+                     *         }
+                     *       ],
+                     *       "finale": {
+                     *         "libelle": "Vitesse moyenne",
+                     *         "statut": "fausse"
+                     *       },
+                     *       "scoreMilli": 600,
+                     *       "bilan": "1 etape sur 2",
+                     *       "xpGagne": 6,
+                     *       "solutionVue": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Copie"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    deleteCopie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                copieId: components["parameters"]["CopieId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Copie supprimee */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `en_correction`: la correction tourne encore */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "en_correction",
+                     *       "message": "La correction est en cours"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
         };
     };
 }

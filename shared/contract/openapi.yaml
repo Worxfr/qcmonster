@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.8.0
+  version: 1.9.0
   description: |
-    Contrat d'API QCMonster (contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.9.0 (E1, docs/E1-design.md, issue #43): exercices de raisonnement a la demande (`/docs/{docId}/exercices`, `/exercices/{exoId}`, indices, solution) et correction de la copie photographiee (`/exercices/{exoId}/copies`, `/copies/{copieId}`), `kind: exo` dans les lignes de test, `DocSummary.exerciceCount`, codes d'erreur `matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte`, `pas_encore`, `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies`, `copie_deja_rendue`, `solution_vue`, `en_correction`; contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -1139,6 +1139,178 @@ paths:
         '429':
           description: Limite quotidienne de codes atteinte
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: Limite de 20 codes par jour atteinte } } }
+  /docs/{docId}/exercices:
+    get:
+      operationId: listExercices
+      tags: [exercices]
+      summary: Exercices de la fiche et points deja gagnes (eleve seul; handler exo-list, E1)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '200':
+          description: Exercices de la fiche (5 au plus)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExerciceList' }
+              example: { items: [{ exoId: 01JEXAMPLE0DOC0000000000AA-01, titre: Vitesse moyenne, etat: prete, points: 10, meilleurMilli: 600, xpPaye: 6, solutionVue: false }] }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createExercice
+      tags: [exercices]
+      summary: Demande un exercice (generation asynchrone; handler exo-post, E1)
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '202':
+          description: Generation lancee; l'ecran interroge `GET /exercices/{exoId}`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExerciceCreated' }
+              example: { exoId: 01JEXAMPLE0DOC0000000000AA-01, etat: generation }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte` ou `etat_invalide`"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: matiere_non_prevue, message: "Les exercices existent pour les maths et la physique-chimie" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /exercices/{exoId}:
+    get:
+      operationId: getExercice
+      tags: [exercices]
+      summary: Enonce, avancement et indices deja vus; jamais le bareme, les attendus ni la solution (handler exo-get, E1)
+      parameters: [{ $ref: '#/components/parameters/ExoId' }]
+      responses:
+        '200':
+          description: Exercice (l'enonce est absent tant que `etat` = `generation` ou `echec`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Exercice' }
+              example: { exoId: 01JEXAMPLE0DOC0000000000AA-01, docId: 01JEXAMPLE0DOC0000000000AA, etat: prete, titre: Vitesse moyenne, enonce: 'Un cycliste roule 30 km en 1,5 h. Calcule sa vitesse moyenne en $\\mathrm{km/h}$.', points: 10, indicesVus: 0, indicesTotal: 3, indicesDonnes: [], nbCopies: 0, copiesRestantes: 3, solutionVue: false }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /exercices/{exoId}/indice:
+    post:
+      operationId: getExerciceHint
+      tags: [exercices]
+      summary: Indice suivant (1, 2 puis 3); chaque indice retire 20 % des points (handler exo-hint-post, E1)
+      parameters: [{ $ref: '#/components/parameters/ExoId' }]
+      responses:
+        '200':
+          description: Indice
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExerciceHint' }
+              example: { rang: 1, texte: "Pense a la formule qui relie distance et duree.", indicesRestants: 2 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /exercices/{exoId}/solution:
+    post:
+      operationId: getExerciceSolution
+      tags: [exercices]
+      summary: Solution redigee; ferme les points de l'exercice (handler exo-solution-post, E1)
+      parameters: [{ $ref: '#/components/parameters/ExoId' }]
+      responses:
+        '200':
+          description: Solution
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExerciceSolution' }
+              example: { solution: 'On utilise $v = d / t$, donc $v = 30 / 1{,}5 = 20$ km/h.' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`pas_encore`: ni correction, ni 3 indices suivis de 10 minutes"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: pas_encore, message: "Essaie d'abord l'exercice" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /exercices/{exoId}/copies:
+    post:
+      operationId: createCopie
+      tags: [exercices]
+      summary: Ouvre une copie et renvoie des envois pre-signes, une page par envoi (handler copies-create, E1)
+      parameters: [{ $ref: '#/components/parameters/ExoId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CopieCreateRequest' }
+            example: { pages: 2, contentType: image/jpeg }
+      responses:
+        '201':
+          description: "Copie `a_envoyer`. Une seule par eleve, en ouvrir une nouvelle remplace l'ancienne."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CopieCreateResponse' }
+              example:
+                copieId: 01JEXAMPLE0COPIE00000000AA
+                envois: [{ page: 1, url: 'https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/', fields: { key: copies/01JEXAMPLE0STU0000000000AA/01JEXAMPLE0COPIE00000000AA/p1, Content-Type: image/jpeg } }]
+                expireA: '2026-12-01T10:10:00Z'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies`"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: plafond_copies, message: "Tu as deja rendu cet exercice 3 fois" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /copies/{copieId}/submit:
+    post:
+      operationId: submitCopie
+      tags: [exercices]
+      summary: "Lance la correction. Aucun corps: le serveur calcule lui-meme l'empreinte des pages (handler copies-submit, E1)"
+      parameters: [{ $ref: '#/components/parameters/CopieId' }]
+      responses:
+        '202':
+          description: Correction lancee; l'ecran interroge `GET /copies/{copieId}`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CopieSubmitResponse' }
+              example: { etat: en_correction }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies` ou `etat_invalide`"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: trop_tot, message: "Prends le temps de faire l'exercice" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /copies/{copieId}:
+    get:
+      operationId: getCopie
+      tags: [exercices]
+      summary: Etat et retour de la correction; credite les points a la premiere lecture d'une copie corrigee (idempotent; handler copie-get, E1)
+      parameters: [{ $ref: '#/components/parameters/CopieId' }]
+      responses:
+        '200':
+          description: Copie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Copie' }
+              example:
+                copieId: 01JEXAMPLE0COPIE00000000AA
+                exoId: 01JEXAMPLE0DOC0000000000AA-01
+                etat: corrigee
+                etapes: [{ id: e1, libelle: Choisir la formule, statut: ok, indice: "Bien vu." }, { id: e2, libelle: Calculer, statut: faux, indice: "Relis ton calcul de la division." }]
+                finale: { libelle: Vitesse moyenne, statut: fausse }
+                scoreMilli: 600
+                bilan: 1 etape sur 2
+                xpGagne: 6
+                solutionVue: false
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      operationId: deleteCopie
+      tags: [exercices]
+      summary: Supprime la copie et son retour (handler copie-delete, E1)
+      parameters: [{ $ref: '#/components/parameters/CopieId' }]
+      responses:
+        '204': { description: Copie supprimee }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`en_correction`: la correction tourne encore"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: en_correction, message: "La correction est en cours" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -1148,6 +1320,8 @@ components:
     DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     CoursId: { name: coursId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     FolderId: { name: folderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    ExoId: { name: exoId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    CopieId: { name: copieId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     TestId: { name: testId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     SchoolYear: { name: schoolYear, in: query, required: false, schema: { type: string, pattern: '^[0-9]{4}-[0-9]{4}$' }, description: "Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027" }
     TestLimit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
@@ -1180,7 +1354,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris], description: "`pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris, matiere_non_prevue, plafond_exercices, fiche_trop_courte, pas_encore, trop_tot, deja_en_cours, quota_copies, plafond_copies, copie_deja_rendue, solution_vue, en_correction], description: "E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -1567,6 +1741,108 @@ components:
         coursId: { type: string, description: "Cours complet d'ou vient la fiche (v1.3); absent pour une fiche ancienne ou si le cours a ete supprime" }
         questionCount: { type: integer, minimum: 0, description: "Taille de la banque de questions (v1.7): un nombre, jamais un contenu (visible aussi par le parent). Absent pour une fiche ancienne." }
         sectionIndex: { type: integer, minimum: 0, maximum: 5 }
+        exerciceCount: { type: integer, minimum: 0, maximum: 5, description: "Exercices de la fiche (1.9.0): un nombre, jamais un contenu" }
+    ExerciceEtat: { type: string, enum: [generation, prete, echec] }
+    ExerciceResume:
+      type: object
+      required: [exoId, etat, points, xpPaye, solutionVue]
+      properties:
+        exoId: { type: string }
+        titre: { type: string, maxLength: 80 }
+        etat: { $ref: '#/components/schemas/ExerciceEtat' }
+        points: { type: integer, enum: [10], description: "XP maximal de l'exercice" }
+        meilleurMilli: { type: integer, minimum: 0, maximum: 1000 }
+        xpPaye: { type: integer, minimum: 0, maximum: 10 }
+        solutionVue: { type: boolean }
+    ExerciceList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, maxItems: 5, items: { $ref: '#/components/schemas/ExerciceResume' } }
+    ExerciceCreated:
+      type: object
+      required: [exoId, etat]
+      properties:
+        exoId: { type: string }
+        etat: { $ref: '#/components/schemas/ExerciceEtat' }
+    Exercice:
+      type: object
+      description: "Ce que l'eleve peut voir. AUCUN champ pour le bareme, les attendus, la valeur finale, les indices non vus ni la solution (test de contrat)."
+      required: [exoId, docId, etat, points, indicesVus, indicesTotal, indicesDonnes, nbCopies, copiesRestantes, solutionVue]
+      properties:
+        exoId: { type: string }
+        docId: { type: string }
+        etat: { $ref: '#/components/schemas/ExerciceEtat' }
+        titre: { type: string, maxLength: 80 }
+        enonce: { type: string, maxLength: 1500, description: "Texte avec LaTeX `$...$` (controle par le serveur, rendu KaTeX)" }
+        points: { type: integer, enum: [10] }
+        indicesVus: { type: integer, minimum: 0, maximum: 3 }
+        indicesTotal: { type: integer, enum: [3] }
+        indicesDonnes: { type: array, maxItems: 3, items: { type: string, maxLength: 200 }, description: "Indices deja demandes, dans l'ordre" }
+        nbCopies: { type: integer, minimum: 0, maximum: 3 }
+        copiesRestantes: { type: integer, minimum: 0, maximum: 3 }
+        solutionVue: { type: boolean }
+    ExerciceHint:
+      type: object
+      required: [rang, texte, indicesRestants]
+      properties:
+        rang: { type: integer, minimum: 1, maximum: 3 }
+        texte: { type: string, maxLength: 200 }
+        indicesRestants: { type: integer, minimum: 0, maximum: 2 }
+    ExerciceSolution:
+      type: object
+      required: [solution]
+      properties:
+        solution: { type: string, maxLength: 2500 }
+    CopieCreateRequest:
+      type: object
+      required: [pages, contentType]
+      properties:
+        pages: { type: integer, minimum: 1, maximum: 3 }
+        contentType: { type: string, enum: [image/jpeg, image/png] }
+    CopieEnvoi:
+      type: object
+      required: [page, url, fields]
+      properties:
+        page: { type: integer, minimum: 1, maximum: 3 }
+        url: { type: string }
+        fields: { type: object, additionalProperties: { type: string } }
+    CopieCreateResponse:
+      type: object
+      required: [copieId, envois, expireA]
+      properties:
+        copieId: { type: string }
+        envois: { type: array, minItems: 1, maxItems: 3, items: { $ref: '#/components/schemas/CopieEnvoi' } }
+        expireA: { type: string, format: date-time }
+    CopieSubmitResponse:
+      type: object
+      required: [etat]
+      properties:
+        etat: { type: string, enum: [en_correction] }
+    CopieEtat: { type: string, enum: [a_envoyer, en_correction, corrigee, illisible, echec, annulee] }
+    CopieEtape:
+      type: object
+      required: [id, libelle, statut, indice]
+      properties:
+        id: { type: string }
+        libelle: { type: string, maxLength: 120 }
+        statut: { type: string, enum: [ok, partiel, faux, absent, reporte] }
+        indice: { type: string, maxLength: 200 }
+    Copie:
+      type: object
+      required: [copieId, exoId, etat, solutionVue]
+      properties:
+        copieId: { type: string }
+        exoId: { type: string }
+        etat: { $ref: '#/components/schemas/CopieEtat' }
+        motif: { type: string, enum: [copie_deja_rendue, budget, technique, plafond_cout], description: "Seulement pour `echec`" }
+        etapes: { type: array, maxItems: 6, items: { $ref: '#/components/schemas/CopieEtape' }, description: "Seulement pour `corrigee`" }
+        finale: { type: object, required: [libelle, statut], properties: { libelle: { type: string, maxLength: 120 }, statut: { type: string, enum: [juste, fausse, absente] } } }
+        scoreMilli: { type: integer, minimum: 0, maximum: 1000 }
+        bilan: { type: string, maxLength: 120 }
+        xpGagne: { type: integer, minimum: 0, maximum: 10 }
+        solutionVue: { type: boolean }
+        badges: { type: array, items: { type: string } }
     DocList:
       type: object
       required: [items]
@@ -1911,7 +2187,7 @@ components:
       properties:
         questionId: { type: string }
         rank: { type: integer, minimum: 1, description: Position de la question dans la session }
-        kind: { type: string, enum: [qcm, gap] }
+        kind: { type: string, enum: [qcm, gap, exo], description: "`exo` (1.9.0): etape d'un exercice (`<docId>:exo:<nn>#<etapeId>`), sans aucun texte" }
         correct: { type: boolean }
         attempts: { type: integer, minimum: 1, maximum: 2 }
         firstTry: { type: boolean }
