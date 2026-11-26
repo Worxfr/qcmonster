@@ -83,6 +83,11 @@ for (const [label, viewport] of [['PC', { width: 1280, height: 900 }], ['mobile'
       await expect(page.locator('button.cf-sent.is-added')).toContainText('se divisent');
       await expect(page.getByText('3 changements sur 20 au plus')).toBeVisible();
       await shot(page, `3-trois-changements-${label}`);
+      // Marge basse: tout en bas de la page, le bouton d'envoi n'est pas sous la barre fixe (revue #103 m3).
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const send = await page.getByRole('button', { name: 'Enregistrer la modification' }).boundingBox();
+      const bar = await page.locator('nav.tabs').boundingBox();
+      expect(send && bar && send.y + send.height <= bar.y).toBe(true);
       await page.getByRole('button', { name: 'Enregistrer la modification' }).click();
       await expect(page.getByRole('heading', { name: 'Modification en cours' })).toBeVisible();
       await expect(page.getByText(/Je prépare tes changements/)).toBeVisible();

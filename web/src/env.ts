@@ -11,3 +11,6 @@ export const CONFIG_ERROR: string | null =
   !API_URL ? 'Configuration manquante : VITE_API_URL.' : !MOCK_AUTH && (!COGNITO_CLIENT_ID || !COGNITO_POOL_ID) ? 'Configuration manquante : VITE_COGNITO_POOL_ID et VITE_COGNITO_CLIENT_ID.' : null;
 // Inscription et recuperation du mot de passe: client Cognito -signup (public, SignUp/ConfirmSignUp/ForgotPassword seulement). Absent = fonction masquee.
 export const SIGNUP_ENABLED: boolean = MOCK_AUTH || (!CONFIG_ERROR && !!COGNITO_SIGNUP_CLIENT_ID);
+
+/** M1 #90: ecran « Modifier ce cours ». Ferme par defaut, comme `REVISE_ENABLED` cote serveur; a ouvrir ensemble (VITE_REVISE_ENABLED=true). */
+export const REVISE_ENABLED: boolean = e.VITE_REVISE_ENABLED === 'true';

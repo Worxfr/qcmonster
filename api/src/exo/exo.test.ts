@@ -682,4 +682,24 @@ describe('M1 #90: un exercice retire par une modification du cours', () => {
     expect(r).toBe('echec'); // moins de 2 affirmations restantes
     expect(m.calls).toHaveLength(0);
   });
+  it('createExo: un exercice retire ne compte plus dans les 5 (le 6e est accepte)', async () => {
+    const w = await world();
+    for (let nn = 1; nn <= 5; nn++) await readyExo(w, nn);
+    await rejects(createExo(w.t.deps, w.ctx, 'doc1', w.invoker), 409, 'plafond_exercices');
+    await w.t.store.commit([{ item: { ...(await w.t.store.get(keys.exo('doc1', 2)))!, retiree: true }, when: 'any' }]);
+    expect((await createExo(w.t.deps, w.ctx, 'doc1', w.invoker)).etat).toBe('generation');
+  });
+  it('une copie a_envoyer d\'un exercice retire: 409 avec un message clair (pas un 404)', async () => {
+    const w = await world();
+    const ref = await readyExo(w, 1);
+    await getExo(w.t.deps, w.ctx, ref);
+    w.t.clk.advance(61_000);
+    const c = await createCopie(w.t.deps, w.ctx, ref, { pages: 1, contentType: 'image/jpeg' }, w.files);
+    w.files.objects.set(pageKey(SID, c.copieId, 1), new TextEncoder().encode('photo'));
+    await w.t.store.commit([{ item: { ...(await w.t.store.get(keys.exo('doc1', 1)))!, retiree: true }, when: 'any' }]);
+    const e = await submitCopie(w.t.deps, w.ctx, c.copieId, w.starter, w.files).then(() => undefined, (x: unknown) => x);
+    expect(e).toBeInstanceOf(HttpError);
+    expect((e as HttpError).status).toBe(409);
+    expect((e as HttpError).message).toMatch(/retiré après une correction du cours/);
+  });
 });

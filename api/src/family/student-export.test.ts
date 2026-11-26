@@ -113,6 +113,17 @@ describe('demande et lecture', () => {
 });
 
 describe('construction en flux', () => {
+  it('M1 #90: les affirmations retirees ne sont pas dans l\'archive, les autres oui', async () => {
+    const e = env();
+    await seed(e.t, { nQcm: 1, nGap: 0 });
+    const k = keys.doc(SID, 'doc1');
+    await e.t.store.commit([{ item: { ...(await e.t.store.get(k))!, claimsRetired: [1] }, when: 'any' }]);
+    for (const n of [1, 2]) await e.t.store.commit([{ item: { ...keys.claim('doc1', n), texte: `Affirmation numero ${n}`, origine: {}, type: 'factuelle', aRisque: false }, when: 'any' }]);
+    const { exportId } = await requestExport(e.deps, studentCtx);
+    await buildStudentExport(e.deps, { sid: SID, exportId });
+    const exp = JSON.parse(unzip(Buffer.concat(e.written)).get('export.json')!.toString());
+    expect(exp.docs[0].claims.map((c: { text: string }) => c.text)).toEqual(['Affirmation numero 2']);
+  });
   it('zip complet: texte, tests avec reponses, figures sans compression; lien re-signe a chaque lecture', async () => {
     const e = env();
     await seed(e.t, { nQcm: 1, nGap: 0 });
