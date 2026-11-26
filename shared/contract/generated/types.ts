@@ -991,8 +991,9 @@ export interface components {
         RecallItem: {
             /** @enum {string} */
             kind: "date" | "formule" | "definition" | "nombre";
+            /** @description Texte de l'affirmation citee, COPIE par le serveur (le modele ne choisit que `claimId` et `kind`), jamais reecrit */
             text: string;
-            /** @description Affirmation d'ou vient l'element: il reprend ses dates, nombres et formules mot pour mot (controle par le serveur) */
+            /** @description Affirmation d'ou vient l'element (`Doc.claims`) */
             claimId: string;
             /** @description true: l'affirmation est `verifiee`. false: elle est `non_verifiable` (reprise du cours, signalee comme telle). Une affirmation en `erreur` n'est jamais reprise. */
             verified: boolean;

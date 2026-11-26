@@ -270,6 +270,7 @@ describe('contrat v1.5 (R1): relecture en blocs, figures, fiche en paragraphes',
     expect(typeof ex.summary).toBe('string');
     expect(ex.recall[0].claimId).toBe(ex.claims[0].claimId);
     expect(zodSchemas.RecallItemSchema.safeParse({ kind: 'formule', text: 'E = mc2', claimId: '01', verified: false }).success).toBe(true);
+    expect(zodSchemas.RecallItemSchema.safeParse({ kind: 'definition', text: 'x'.repeat(1000), claimId: '01', verified: true }).success).toBe(true); // copie d'une affirmation (Claim.text: 1000)
     expect(zodSchemas.RecallItemSchema.safeParse({ kind: 'dessin', text: 'x', claimId: '01', verified: true }).success).toBe(false);
   });
   it('cours: marques de verification par phrase, statut jamais "non_factuelle"', () => {

@@ -14,17 +14,18 @@ Statut : conception, aucune ligne de code applicatif. Contrat additif `1.5.0` da
 | D6 | Couleurs | **Deux couleurs pour deux moments.** Avant confirmation : confiance de **lecture** (sûr, douteux, corrigé, retiré). Après vérification, dans le cours et la fiche : résultat de **vérification** (vérifié, erreur, non vérifiable). Jamais le mot « vérifié » à l'écran de relecture. |
 | D7 | Édition en place | Toucher une phrase la remplace par un champ de texte au même endroit. Les identifiants de phrase ne changent jamais, donc rien à recoller pour la vérification. Pas de fusion ni de découpe de phrases en v1. |
 | D8 | Fiche | `Doc.body` (jusqu'à 8 paragraphes avec intertitre facultatif) et `Doc.recall` (rappel final de dates, formules, définitions, nombres). `summary` est conservé pour les clients 1.4. |
-| D9 | Rappel final | Généré avec la fiche, mais **chaque nombre, date et formule est contrôlé par le code** contre le texte de l'affirmation citée. Une affirmation en erreur n'est jamais reprise. Une affirmation non vérifiable est reprise avec la mention « non vérifié ». |
+| D9 | Rappel final | Le modèle ne choisit que `claimId` et `kind` ; **le code copie le texte de l'affirmation citée** dans le rappel. Une affirmation en erreur n'est jamais reprise. Une affirmation non vérifiable est reprise avec la mention « non vérifié ». |
 | D10 | Coût | Environ +0,0002 € par page lue, +0,0003 € par fiche. Négligeable devant le plafond de 0,15 € par page, qui ne change pas. |
-| D11 | Rognage | Fait par le serveur avec `sharp` (Lambda arm64) à partir d'un cadre normalisé donné par le modèle. |
+| D11 | Rognage | Fait par le serveur avec `sharp`, en **couche Lambda arm64 réservée à `transcribe`** (jamais dans le paquet commun), à partir d'un cadre normalisé donné par le modèle. Repli : figure décrite en texte, sans image. |
+| D12 | Identifiants | Blocs et figures sont renumérotés avec un décalage à l'écriture dans le cours : uniques à l'échelle du cours, compatibles avec l'ajout de pages (F10). |
 
-## 1. Ce qui existe (main `3563d56`, contrat 1.4.0)
+## 1. Ce qui existe (main `781e9c2`, contrat 1.4.1)
 
 - `api/src/pipeline/steps.ts` : `readWindow` envoie 1 à 4 images à Haiku et reçoit `{"pages":[{"page","lines":[...],"suite"}]}`. `assemblePages` (`text.ts`) découpe en phrases, recolle les phrases coupées par un saut de page et donne `p<page>-s<n>`.
 - Un appel de classement unique donne type, matière, sujet et sections suggérées. Les phrases sont écrites en `JOB#<id>/TEXT#<page>` (TTL 7 jours).
 - `web/src/screens/confirm/ConfirmView.tsx` : une carte par phrase, correction par `textarea` (`AutoGrow`), coupes en sections (`sections.ts`), sauvegarde de la saisie dans `sessionStorage` (`storage.ts`), zoom photo (`PhotoViewer`).
 - À la confirmation, le cours corrigé est écrit (`COURS#<id>`, `COURS#<id>#T<nn>`), la photo est supprimée, puis `extract` tire des affirmations par phrase (`phraseId`, `extrait`) et `verify-run` les vérifie. La fiche a un `resume` d'un seul bloc (3 à 6 phrases) et des QCM.
-- `Claim` n'expose pas la phrase d'origine alors que `CLAIM#` la porte (`origine.phrase_id`).
+- `Claim` n'expose pas la phrase d'origine alors que `CLAIM#` la porte (`origine.phraseId`, `shared/items.ts`).
 - `ConfirmRequest.removed` (retrait de phrases) a été demandé à la relecture de la PR #40 mais n'existe ni dans le contrat ni dans le code de main. Il est défini ici (§7) parce que la vue en paragraphes ne peut pas se concevoir sans lui.
 
 ## 2. Modèle de données : des blocs au-dessus des phrases
@@ -52,10 +53,12 @@ Un JSON d'objets typés coûte des jetons par bloc et casse facilement à la tro
 ```
 {"pages":[{"page":1,"suite":false,
   "md":"# Titre\n\nPremière phrase. ~Phrase douteuse.\n\n- élément\n- élément\n\n= E = mc²\n\n[[f1]]",
-  "figures":[{"id":"f1","box":[0.1,0.4,0.8,0.35],"kind":"schema","alt":"...","legende":"Fig. 1 ..."}]}]}
+  "figures":[{"id":"f1","box":[0.1,0.4,0.8,0.35],"kind":"schema","alt":"...","caption":"Fig. 1 ..."}]}]}
 ```
 
 Marqueurs : `#`, `##`, `###` (titre), `- ` (puce), `1. ` (liste numérotée), `= ` (formule), ligne vide (nouveau paragraphe), `~` en début de ligne (lecture douteuse), `[[f<n>]]` (position d'une figure). Le code reste maître : une fonction pure `parseBlocks(md, figures)` produit lignes, blocs et figures, puis réutilise `assemblePages` pour le recollage. Si le Markdown est vide ou illisible, repli sur l'ancien format `lines` (une ligne = un paragraphe d'une phrase) : l'élève voit l'ancienne liste, rien n'échoue.
+
+Les noms du prompt sont ceux du contrat (`kind`, `alt`, `caption`, `box`) ; le code fait la correspondance avec les champs du contrat sans traduction (`Figure.figureId` = `id` du modèle, préfixé §2.5).
 
 Contrôles du code (jamais fiés au modèle) : `box` dans [0,1] et surface entre 3 % et 90 % de la page, 8 figures au plus par scan, `[[f<n>]]` sans figure déclarée ignoré, figure déclarée sans marqueur ajoutée en fin de page, `alt` nettoyé comme `title` (chevrons, caractères invisibles), noms de personnes déjà remplacés par `[nom]` par la consigne existante.
 
@@ -66,7 +69,23 @@ Contrôles du code (jamais fiés au modèle) : `box` dans [0,1] et surface entre
 | Blocs d'un job | `JOB#<jobId>` / `BLOCKS` | `blocks[]`, métadonnées des figures (sans URL) | TTL 7 jours, comme `TEXT#` |
 | Blocs du cours | `STUDENT#<sid>` / `COURS#<coursId>#B` | `blocks[]`, `figures[]` (`figureId`, `page`, `kind`, `alt`, `caption`) | Vie du cours |
 
+Aucun nettoyage par TTL seul : `JOB#<id>/BLOCKS` est supprimé **explicitement** partout où `JOB#<id>/TEXT#` l'est aujourd'hui (`api/src/scans/delete.ts`, `api/src/cours/cours.ts` fonction `del`, et `failJob`/`purgeScan` de `job.ts`), avec un test qui compte les éléments avant et après.
+
 Taille : 400 blocs au plus à environ 100 octets, soit moins de 40 Ko (limite de 400 Ko). Un seul écrivain par type (lot API). `deleteCoursTree` supprime déjà `COURS#<id>#T` ; il doit supprimer aussi `COURS#<id>#B` (le test existant compte les éléments avant et après). Le drapeau `doubt` n'est **pas** conservé dans le cours : il n'a de sens qu'avant la confirmation.
+
+### 2.5 Bornes du contrat et repli
+
+Le contrat plafonne `blocks` à 400, `Block.sentenceIds` à 200, `figures` à 8, `removed` et `marks` à 500. Or `ReadOut` accepte 400 lignes par page sur 10 pages. Le code applique ces règles **avant** d'écrire, sans jamais faire échouer le scan :
+
+1. Plus de 8 figures : on garde les 8 premières dans l'ordre du document, les autres sont ignorées (leur place reste un paragraphe vide, supprimé).
+2. Plus de 200 phrases dans un paragraphe : le paragraphe est coupé en blocs consécutifs de 200 phrases au plus.
+3. Plus de 400 blocs : **pas de couche de blocs** pour ce scan (`blocks` absent, l'écran affiche la liste de phrases comme aujourd'hui). Les phrases, elles, ne sont jamais tronquées.
+4. `Cours.marks` : 500 marques au plus, les affirmations `erreur` d'abord, puis `non_verifiable`, puis `verifiee`. Le plafond de 60 affirmations par fiche et de 6 fiches (360) le rend inatteignable en pratique, la règle ne sert que de garde.
+5. `ConfirmRequest.removed` au-delà de 500 : 400 `requete_invalide` (l'écran propose « tout retirer jusqu'à la fin » en plusieurs envois seulement si ce cas arrive en pratique ; non prévu en v1).
+
+### 2.6 Identifiants uniques à l'échelle du cours (extension par F10)
+
+La lecture d'un job numérote `b1…`, `f1…` à partir de 1. Un ajout de pages (F10) rejoue la lecture dans un nouveau job. **Règle : les identifiants du job restent locaux au job (le contrat de lecture ne change pas) ; au moment d'écrire dans le cours, le serveur renumérote les blocs et figures avec un décalage** (`b<n + nombre de blocs du cours>`, `f<n + plus grand numéro de figure du cours>`). La clé S3 finale utilise l'identifiant renuméroté, donc une figure ajoutée n'écrase jamais une figure existante. `COURS#<id>#B` est réécrit par une écriture conditionnelle sur la version de l'élément (compteur `v`), sous le même verrou que l'ajout de pages de F10 : en cas de conflit, la seconde confirmation relit, renumérote et réessaie. Les identifiants de phrase suivent la règle de F10 (numéros de page décalés). Les numéros de figure du cours peuvent donc ne pas être contigus. Le renvoi de F10 à « P14 » doit pointer vers **P15** ci-dessous.
 
 Un cours ancien n'a pas de `COURS#<id>#B` : l'API ne renvoie ni `blocks` ni `figures`, l'écran affiche les phrases comme aujourd'hui.
 
@@ -88,11 +107,21 @@ Les questions « légender un schéma » (#43) sont hors périmètre ; la struct
 
 ### 3.2 Cycle de vie
 
-1. **Lecture** (`transcribe`) : le modèle donne un cadre normalisé. Le code lit l'image de la page, ajoute 4 % de marge, rogne avec `sharp`, ré-encode en JPEG qualité 80 sur 1200 px au plus (cela retire les métadonnées EXIF, dont la position GPS), et écrit `scans/<sid>/<jobId>/fig/<figureId>.jpg` dans le **bucket des scans**. Ce préfixe est supprimé avec la photo (`s3.deleteAll(scansPrefix)` existant) et par la règle de cycle de vie de 1 jour.
-2. **Relecture** : `GET /jobs/{id}/transcription` renvoie les figures avec une URL pré-signée de 5 minutes. L'élève garde ou retire chacune et peut corriger le texte alternatif.
-3. **Confirmation** : dans l'étape qui écrit le cours, les figures gardées sont copiées (`CopyObject`) vers `figures/<sid>/<coursId>/<figureId>.jpg` du bucket `figures`, **avant** la suppression de la photo, puis `COURS#<id>#B` est écrit. L'opération est idempotente (même clé de destination). Une figure absente de `ConfirmRequest.figures` n'est pas conservée : le défaut protège la donnée.
-4. **Lecture du cours et de la fiche** : URL pré-signée de 5 minutes, élève seulement.
-5. **Suppression** : `DELETE /cours/{id}` supprime le préfixe `figures/<sid>/<coursId>/` ; suppression d'un élève : préfixe `figures/<sid>/` ; suppression de famille : préfixe de chaque élève (même mécanisme que pour Cognito et les photos : le handler, pas `TreeDb`, parle à S3). `failJob` supprime aussi le préfixe du cours en cas d'échec.
+1. **Lecture** (`transcribe`, rôle `procRole`) : le modèle donne un cadre normalisé. Le code lit l'image de la page, ajoute 4 % de marge, rogne avec `sharp`, ré-encode en JPEG qualité 80 sur 1200 px au plus (cela retire les métadonnées EXIF, dont la position GPS), et écrit `scans/<sid>/<jobId>/fig/<figureId>.jpg` dans le **bucket des scans**. Ce préfixe est supprimé avec la photo (`s3.deleteAll(scansPrefix)` existant) et par la règle de cycle de vie de 1 jour, y compris si l'élève n'ouvre jamais la relecture (12 heures avant expiration, puis suppression). Cette écriture déclenche la règle EventBridge `ScanUploaded` (préfixe `scans/`) : `scanStart` reçoit jusqu'à 8 événements par scan dont la clé ne correspond pas à `scans/<sid>/<job>/<n>` et sort sans effet. Aucun danger, quelques invocations de plus ; accepté plutôt que de sortir les recadrages du préfixe `scans/` (qui obligerait à ajouter un second préfixe à tous les nettoyages).
+2. **Relecture** : `GET /jobs/{id}/transcription` (`readRole`) renvoie les figures avec une URL pré-signée de 5 minutes sur le recadrage temporaire. L'élève garde ou retire chacune et peut corriger le texte alternatif.
+3. **Confirmation** (`jobsConfirm`, `api/src/pipeline/api.ts`, rôle `confirmRole`). Ordre, pour qu'aucune étape ne laisse d'état à moitié fait :
+   1. validation de la requête (`figureId` inconnu : 400, rien n'est modifié) ;
+   2. **copie** (`CopyObject`) des figures gardées de `scans/<sid>/<jobId>/fig/<id>.jpg` vers `figures/<sid>/<coursId>/<id final>.jpg`, **avant** la transition `a_confirmer → verification`, pendant que la photo existe encore ; l'écriture est idempotente (même clé de destination) ;
+   3. une erreur S3 pendant la copie renvoie une erreur réessayable (503 `indisponible`) **sans changer l'état du job** : l'élève renvoie la confirmation, rien n'est perdu ;
+   4. écriture de `COURS#<id>#B`, puis transition ;
+   5. **course perdue** (la transition échoue parce que le job a été annulé ou a expiré entre-temps) : le chemin existant qui supprime le cours orphelin supprime aussi `figures/<sid>/<coursId>/` ;
+   6. la photo et le préfixe `fig/` temporaire sont supprimés après la transition, comme aujourd'hui.
+   Une figure absente de `ConfirmRequest.figures` n'est pas copiée : le défaut protège la donnée.
+4. **Lecture du cours et de la fiche** : URL pré-signée de 5 minutes pour l'élève seul (`coursReadRole`, `readRole`).
+5. **Suppression, dans cet ordre** pour qu'une suppression interrompue se reprenne : le préfixe `figures/` S3 est supprimé **avant** l'en-tête et l'arbre DynamoDB, de sorte que tant qu'une image existe, l'élément qui permet de la retrouver existe aussi.
+   - `DELETE /cours/{id}` (`cours-delete`, `coursRole`) : `figures/<sid>/<coursId>/` d'abord, puis `deleteCoursTree` (qui supprime aussi `COURS#<id>#B`), puis `JOB#<jobId>/TEXT#` et `JOB#<jobId>/BLOCKS`.
+   - Suppression d'un élève : `figures/<sid>/` d'abord, puis `deleteStudentTree`. Suppression de famille : `figures/<sid>/` de chaque élève (liste lue avant), puis `deleteFamilyTree`. C'est le handler, pas `TreeDb`, qui parle à S3 (comme pour Cognito et les photos).
+   - `failJob` supprime aussi le préfixe `figures/` du cours.
 
 Si l'élève supprime le cours en gardant les fiches (`fiches=garder`), les figures partent avec le cours : la fiche perd ses images (elle garde son texte). Raison : une seule durée de vie pour une image, pas de copie orpheline.
 
@@ -103,9 +132,15 @@ Si l'élève supprime le cours en gardant les fiches (`fiches=garder`), les figu
 - Le parent ne lit pas le texte du cours : il ne lit pas non plus ses figures (`CoursMeta` n'a que `figureCount`). Même règle, sans exception.
 - Conséquences juridiques : durée, finalité et destinataires sont ajoutés au registre (T3) et à la politique, et un risque est ajouté à l'AIPD. Les textes sont dans le commit séparé (§11).
 
-### 3.4 Rognage : `sharp` côté serveur
+### 3.4 Rognage : `sharp` en couche Lambda réservée à `transcribe`
 
-Le dépôt n'a aucune bibliothèque d'image. Choix : `sharp` (binaire natif arm64, Lambda `transcribe` à 1024 Mo). Alternative écartée : recadrer dans le navigateur et téléverser l'image. Elle évite le binaire natif, mais ouvre à un compte d'élève une écriture de fichier arbitraire dans un bucket conservé (validation du type, de la taille et du contenu à refaire côté serveur) et dépend d'un appareil qui n'est pas fiable. Point à confirmer : P7.
+Le dépôt n'a aucune bibliothèque d'image. `pipeline-stack.ts` construit un seul paquet `esbuild` (`lambda.Code.fromAsset(bundle())`) partagé par toutes les fonctions, qui diffèrent par leur export (`index.<handler>`). `sharp` est un binaire natif (`@img/sharp-linux-arm64`), qui ne doit **jamais** entrer dans ce paquet commun (taille et démarrage à froid de 20 fonctions pour une seule qui en a besoin).
+
+**Décision : une couche Lambda (`lambda.LayerVersion`, architecture arm64, runtime Node) contenant `sharp`, attachée à la seule fonction `transcribe`.** Le paquet commun déclare `sharp` en `external` et `figures.ts` l'importe dynamiquement (`await import('sharp')`) ; seules les fonctions où la couche est présente le trouvent. La couche est fabriquée par un script de lot B (`npm install --os=linux --cpu=arm64 --include=optional sharp` dans un dossier `nodejs/`, non versionné, exécuté avant `cdk synth` en CI). Pourquoi une couche plutôt qu'un second asset : le code de `transcribe` reste dans le paquet commun (un seul chemin de build), la couche se reconstruit rarement et se teste seule. Alternative écartée : un second `Code.fromAsset` pour `transcribe` seul, qui oblige à dupliquer le build du code applicatif. Autre alternative écartée : recadrer dans le navigateur et téléverser l'image, qui ouvre à un compte d'élève une écriture de fichier arbitraire dans un bucket conservé.
+
+**Repli si `sharp` est indisponible** (import en échec, couche absente, image illisible, ou délai dépassé) : la figure est conservée **sans image** (`Figure.url` absente), avec son `alt` et sa légende, c'est-à-dire « figure décrite en texte ». Le scan n'échoue jamais pour cela, et l'élève voit « Schéma décrit en texte, image non disponible ». Un journal sans contenu (`step: figure-crop`, `status: error`) permet de compter les replis. Point à confirmer : P7.
+
+Risque non mesuré : taille de la couche (de l'ordre de 15 à 25 Mo décompressée, limite Lambda 250 Mo au total) et durée de rognage (estimée 100 ms par figure).
 
 ### 3.5 Risque non mesuré
 
@@ -171,21 +206,23 @@ La sortie de lecture devient `Transcription.pages` (phrases, inchangé) + `block
 Le prompt `generatePrompt` demande, en plus de ce qu'il produit aujourd'hui :
 
 ```
-"fiche": {"paragraphes":[{"titre":"...","texte":"...","claimIds":["01","02"]}],
-          "rappel":[{"type":"date|formule|definition|nombre","texte":"...","claimId":"03"}]}
+"fiche": {"paragraphes":[{"heading":"...","text":"...","claimIds":["01","02"]}],
+          "rappel":[{"kind":"date|formule|definition|nombre","claimId":"03"}]}
 ```
 
 Règles de code, vérifiées après l'appel (`validFiche`, fonction pure testée comme `validQcm`) :
 
 1. 6 paragraphes au plus, 150 mots au plus chacun, 350 au total ; chaque `claimId` cité existe parmi les affirmations de la fiche.
 2. Un élément de rappel doit citer une affirmation existante qui n'est ni en `erreur` ni `non_factuelle`.
-3. **Chaque nombre, date et expression de formule du texte du rappel doit figurer dans le texte de l'affirmation citée** (comparaison après `normalize`, chiffres comparés tels quels). Un élément qui ne passe pas est supprimé, jamais corrigé. Un rappel de type `formule` doit contenir `=`.
+3. **Le modèle ne choisit que `claimId` et `kind`. Le texte du rappel est copié par le code depuis l'affirmation citée** (`RecallItem.text` = texte de l'affirmation, jusqu'à 1 000 caractères, comme `Claim.text`). Le modèle n'écrit donc aucun mot du rappel : une date, une formule ou une définition inventée est impossible par construction, y compris une définition sans chiffre, que le contrôle de nombres n'aurait pas vue. Un élément dont `claimId` est inconnu est supprimé ; un `kind` `formule` sur une affirmation sans `=` est rétrogradé en `definition`. Les paragraphes de fiche ne sont contrôlés que sur l'existence de leurs `claimIds` (leur texte est écrit par le modèle à partir des affirmations, comme le `resume` actuel).
 4. `verified` vaut vrai si l'affirmation est `verifiee`, faux si elle est `non_verifiable` (l'élément est repris du cours et affiché avec la mention « non vérifié »). Cela suit la règle actuelle : une affirmation non vérifiée sert au résumé, jamais aux questions.
 5. Si la sortie est illisible ou ne passe pas, repli sur le `resume` actuel (un paragraphe, pas de rappel). Aucune fiche n'échoue pour cela.
 
+`Doc.figures` : **toutes les figures des blocs de la section de la fiche** (de `fromSentenceId` jusqu'à la phrase qui précède la section suivante). `docs-read` retrouve la section par `DocSummary.sectionIndex` et `coursId`, lit l'en-tête du cours et `COURS#<id>#B`, et ne renvoie rien si le cours n'existe plus. Élève seulement : le lot A ajoute un test qui vérifie qu'un compte parent ne reçoit jamais `figures` ni `body`/`recall` liés au cours (la lecture parent d'une fiche, si elle existe, n'a pas ces champs).
+
 `Doc.summary` reste rempli (paragraphes joints par une ligne vide, sans le rappel) pour les clients 1.4. Les QCM, les trous et leur contrôle de résolution sont inchangés et ne lisent jamais le rappel ni les descriptions de figures.
 
-Pourquoi un contrôle de code plutôt que de faire confiance au modèle : une date ou une formule fausse dans un rappel est l'erreur la plus nuisible d'une fiche, parce que le rappel est la partie qu'un élève retient. Le contrôle est peu coûteux et vérifie ce qui compte.
+Pourquoi la copie par le code : une date ou une formule fausse dans un rappel est l'erreur la plus nuisible d'une fiche, parce que le rappel est la partie qu'un élève retient. La copie supprime la classe d'erreur au lieu de la détecter, et réduit la sortie du modèle (pas de texte de rappel à produire).
 
 ## 9. Coût Claude par page
 
@@ -221,37 +258,58 @@ Aucune route nouvelle : les URL des figures sont pré-signées dans les réponse
 
 ## 11. Confidentialité (commit séparé)
 
-Le commit « docs(legal): R1 » modifie `docs/legal/registre.md` (T3), `politique-confidentialite.md`, `aipd-brouillon.md` et `sous-traitants.md` (aucune nouveauté : AWS déjà sous-traitant). Il ne touche pas `shared/policy.ts` : `POLICY_VERSION` reste `2026-11-26`. **Les textes sont à valider par le propriétaire** ; une modification de la durée ou de la nature d'une donnée conservée est une information nouvelle pour les familles, donc le relèvement de `POLICY_VERSION` (et le nouveau consentement qui en découle) sera décidé par le propriétaire à la mise en production du lot, pas avant (P10).
+Le commit « docs(legal): R1 » modifie `docs/legal/registre.md` (T3), `politique-confidentialite.md` et `aipd-brouillon.md`. `sous-traitants.md` n'est **pas** modifié : aucun nouveau sous-traitant (AWS, déjà listé, héberge aussi le bucket des figures). La politique dit aussi ce que deviennent les découpages si l'élève n'ouvre jamais la relecture : supprimés avec la photo, au plus tard dans les 2 jours. Il ne touche pas `shared/policy.ts` : `POLICY_VERSION` reste `2026-11-26`. **Les textes sont à valider par le propriétaire** ; une modification de la durée ou de la nature d'une donnée conservée est une information nouvelle pour les familles, donc le relèvement de `POLICY_VERSION` (et le nouveau consentement qui en découle) sera décidé par le propriétaire à la mise en production du lot, pas avant (P10).
 
 ## 12. Découpage en lots et fichiers propres
 
-Un seul propriétaire par fichier. Les lots A et C peuvent avancer en parallèle dès que le contrat 1.5.0 est fusionné (le lot C travaille contre `npm run mock`, dont les exemples couvrent les nouveaux champs).
+Un seul propriétaire par fichier. Les lots A et C peuvent avancer en parallèle dès que le contrat 1.5.0 est fusionné (le lot C travaille contre `npm run mock`). **Le contrat 1.6.0 (F10, ajout de pages, PR #84) attend la fusion de R1-A** : F10-A et R1-A partagent `api.ts`, `steps-doc.ts`, `text.ts`, `items.ts` et `COURS#<id>#B` (§2.6).
 
 ### Lot R1-A : API et pipeline
 
-- `api/src/pipeline/blocks.ts` (nouveau : `parseBlocks`, `validFiche`, validations de cadres) et son test
-- `api/src/pipeline/prompts.ts`, `steps.ts` (`readWindow`, `transcribe`), `steps-doc.ts` (`generate`, étape qui écrit le cours), `text.ts` (recollage de blocs), `ports.ts` (port d'image `crop`)
-- `api/src/pipeline/figures.ts` (nouveau : rognage, copie vers `figures`)
-- `api/src/handlers/` : `jobs-transcription`, `jobs-confirm` (figures, removed), `cours-api` (blocks, figures, marks), `docs-read` (body, recall, figures, `Claim.sentenceId`), suppression d'élève et de famille (préfixe `figures/`)
-- `api/src/cours/*`
-- `shared/ddb/keys.ts`, `shared/items.ts`, `shared/delete-tree.ts` (+ test de comptage), `docs/data-model.md` (propriétaire : L1c)
-- `golden/` et `eval/` : jeu d'essai de 10 pages avec schémas, mesure de cadres et de marquages douteux
-- Test de contrat : exemples valides, 400 sur `figureId` inconnu, `removed` retiré en début de section
+- `api/src/pipeline/blocks.ts` (nouveau : `parseBlocks`, bornes §2.5, `validFiche`, copie du rappel) et son test
+- `api/src/pipeline/figures.ts` (nouveau : rognage `sharp` par import dynamique, repli sans image, copie vers `figures/`, renumérotation §2.6)
+- `api/src/pipeline/prompts.ts`, `steps.ts` (`readWindow`, `transcribe`), `steps-doc.ts` (`generate`), `text.ts` (recollage de blocs), `ports.ts` (ports `crop` et `figures`)
+- `api/src/pipeline/api.ts` (**`jobsConfirm`** : validation, copie des figures avant la transition, course perdue, `removed`, `jobsTranscription`, `docsRead`), `api/src/pipeline/job.ts` (`failJob`, `endWithoutDoc`, `purgeScan` : suppression de `figures/` et de `JOB#/BLOCKS`), `api/src/pipeline/entry.ts` (câblage des ports)
+- `api/src/scans/delete.ts` et `api/src/cours/*` (`cours.ts` `del`, marques, lecture des blocs) : suppression de `JOB#/BLOCKS`, ordre S3 puis DynamoDB (§3.2 point 5)
+- suppression d'élève et de famille : `api/src/family/students.ts`, `api/src/family/family.ts` (S3 `figures/<sid>/` avant `deleteStudentTree` / `deleteFamilyTree`)
+- `shared/ddb/keys.ts`, `shared/items.ts`, `shared/delete-tree.ts` (+ test de comptage), `shared/names.ts` (paramètre SSM `data/figuresBucket`, avec le lot B), `docs/data-model.md` : **édités par le lot A seul, relus par le propriétaire de L1c** (règle du contrat et du modèle de données)
+- `mock/**` et `e2e/mock-api/**` : exemples et simulateur d'API des nouveaux champs (propriétaire : lot A ; le lot C les lit)
+- `golden/` et `eval/` : jeu d'essai de 10 pages avec schémas, mesure des cadres et des marquages douteux
+- Tests : contrat (400 sur `figureId` inconnu, `removed` de début de section), bornes §2.5, rappel copié, repli sans `sharp`, ordre de suppression, parent sans `figures`
 
 ### Lot R1-B : infra
 
-- `infra/lib/data-stack.ts` : bucket `figures` (chiffré, TLS, accès public bloqué, CORS non nécessaire, pas de cycle de vie par âge), paramètre SSM
-- `infra/lib/pipeline-stack.ts` : `sharp` (bundling arm64, `externalModules`), mémoire de `transcribe` (1024 Mo), droits S3 sur `figures`
-- `infra/lib/api-stack.ts` : droits de lecture/suppression de `figures` pour `cours-api`, `docs-read`, suppression d'élève et de famille ; droits de signature
-- `infra/test/*` : tests de synthèse (bucket privé, chiffrement, aucun droit hors préfixe, aucun droit pour le rôle d'export parent)
+Les droits des fonctions HTTP sont dans `infra/lib/pipeline-stack.ts` (pas dans `api-stack.ts`, qui ne porte que la table des routes), ceux de la suppression d'élève et de famille dans `infra/lib/game-stack.ts`.
+
+- `infra/lib/data-stack.ts` : bucket `figures` (chiffré, TLS exigé, accès public bloqué, CORS non nécessaire, **aucun cycle de vie par âge**, `RemovalPolicy.DESTROY` en dev comme `Scans`), paramètre SSM `data/figuresBucket`
+- `shared/names.ts` : nom du paramètre SSM (avec le lot A, un seul éditeur : lot B pour cette ligne)
+- `infra/lib/pipeline-stack.ts` : couche `sharp` attachée à `transcribe` seul, `sharp` en `external` du paquet commun, mémoire de `transcribe` 512 → 1024 Mo, et les droits ci-dessous
+- `infra/lib/game-stack.ts` : rôle `admin` de `students-delete` et `family-admin`
+- `infra/test/*` : tests de synthèse (bucket privé et chiffré, aucun droit hors préfixe, aucun droit `figures` sur les rôles parent ou d'export, couche absente des autres fonctions)
+- script de fabrication de la couche et étape de CI associée
 - Estimation de coût avant déploiement, à valider par le propriétaire ; toutes les ressources taguées `Project`, `Environment`, `ManagedBy`, `Owner`
+
+Droits exacts à ajouter (S3 = ressource de l'objet ; `scans` = bucket des photos, `figures` = nouveau bucket) :
+
+| Rôle (fonctions) | Droit ajouté | Pourquoi |
+|---|---|---|
+| `procRole` (`transcribe`, `fail`, `expire`…) | S3 `PutObject` sur `scans/*/fig/*` ; `Get`/`Delete`/`List` existants conservés | écrire les recadrages temporaires ; `fail` supprime aussi `figures/*` : voir ligne suivante |
+| `procRole` (`fail`, `expire`) | S3 `ListBucket` (préfixe `figures/`) et `DeleteObject` sur `figures/*` | nettoyage après échec |
+| `confirmRole` (`jobs-confirm`) | S3 `GetObject` sur `scans/*` (source de la copie) ; `PutObject` et `DeleteObject` sur `figures/*` ; DynamoDB inchangé (`STUDENT#*`, `JOB#*`, `BatchWriteItem`) | copie avant la transition, suppression en cas de course perdue |
+| `readRole` (`jobs-get`, `jobs-transcription`, `docs-read`) | S3 `GetObject` sur `figures/*` (signature) ; DynamoDB inchangé | URL de figures de la fiche ; les recadrages temporaires sont déjà couverts par `scans/*` |
+| `coursReadRole` (`cours-api`) | S3 `GetObject` sur `figures/*` ; DynamoDB `GetItem`/`Query` sur `DOC#*` **en plus** de `STUDENT#*` | signer les figures ; `Cours.marks` lit `CLAIM#` et `VERDICT#` sous `DOC#<id>` |
+| `coursRole` (`cours-delete`) | S3 `ListBucket` (préfixe `figures/`) et `DeleteObject` sur `figures/*` | suppression du cours (§3.2 point 5) |
+| `scansDeleteRole` (`scans-delete`) | aucun : le recadrage est sous `scans/*` (déjà `DeleteObject`) | |
+| `admin` de `game-stack.ts` (`students-delete`, `family-admin`) | S3 `ListBucket` et `DeleteObject` sur `figures/*` (en plus de `scans/*`, `exports/*`) | suppression d'un élève ou d'une famille |
+
+Justification de la lecture `DOC#*` pour `cours-api` : la partition `DOC#<id>` n'est pas clé par élève, donc la condition de clé IAM ne peut pas l'isoler ; l'isolation est faite par le handler, qui ne lit que les `docId` listés dans les sections de l'en-tête `COURS#<id>` de l'élève (déjà lu dans `STUDENT#<sid>`). Le lot A le teste (un `docId` étranger placé dans l'en-tête n'est pas lu). Alternative écartée : écrire les marques à la fin de la vérification (`finalize`), qui ajoute un écrivain et oblige `docs-delete` à les nettoyer.
 
 ### Lot R1-C : site
 
 - `web/src/screens/confirm/` : `ConfirmView.tsx` (vue document), nouveau `DocView.tsx` (blocs et phrases), `FigureCard.tsx`, `sections.ts` (coupes entre blocs), `storage.ts` (retraits, figures), `confirm.css`, tests
-- `web/src/screens/Cours.tsx` (blocs, figures, marques de vérification, interrupteur), `web/src/screens/Doc.tsx` (paragraphes, rappel, figures)
+- `web/src/screens/Cours.tsx` (blocs, figures, marques, interrupteur), `web/src/screens/Doc.tsx` (paragraphes, rappel, figures)
 - `web/src/api.ts`, `web/src/types.ts`, `web/src/labels.ts`
-- `e2e/` : parcours relecture (douteux, correction en place, retrait, figure gardée et refusée), captures PC et mobile
+- `e2e/**` (hors `e2e/mock-api/**`, propriété du lot A) : parcours relecture (douteux, correction en place, retrait, figure gardée et refusée, repli sans image), captures PC et mobile
 
 ### Lot R1-D : textes légaux (après validation)
 
@@ -259,9 +317,9 @@ Un seul propriétaire par fichier. Les lots A et C peuvent avancer en parallèle
 
 ### Ordre
 
-1. PR de conception (celle-ci), puis fusion du contrat 1.5.0.
+1. PR de conception (celle-ci), puis fusion du contrat 1.5.0. Le contrat 1.6.0 de F10 vient après R1-A.
 2. R1-A et R1-C en parallèle ; R1-B avant le premier déploiement dev de R1-A.
-3. Mesure sur le jeu d'essai (cadres, marquages douteux, taux de troncature) **avant** d'ouvrir le lot en production.
+3. Mesure sur le jeu d'essai (cadres, marquages douteux, troncature, taux de repli de `sharp`) **avant** d'ouvrir le lot en production.
 
 ## 13. Points à trancher (défaut proposé)
 
@@ -273,17 +331,20 @@ Un seul propriétaire par fichier. Les lots A et C peuvent avancer en parallèle
 | P4 | Fiche gardée après suppression du cours : garde-t-elle ses images ? | Non, les figures partent avec le cours |
 | P5 | Ajout d'une phrase oubliée à la relecture | Hors v1 (corriger une phrase, pas en ajouter) |
 | P6 | Édition du cours après confirmation | Hors v1 (supprimer et rescanner) |
-| P7 | Rognage serveur (`sharp`) ou dans le navigateur | Serveur, avec `sharp` |
-| P8 | Si moins de 70 % des cadres sont corrects à la mesure | Description seule (sans image) ; second appel avec un modèle plus grand seulement sur accord du propriétaire |
+| P7 | Rognage serveur ou dans le navigateur ; empaquetage de `sharp` | Serveur ; `sharp` en couche Lambda arm64 réservée à `transcribe`, jamais dans le paquet commun ; repli « figure décrite en texte, sans image » |
+| P8 | Si moins de 70 % des cadres sont corrects à la mesure (10 pages : contrôle de fumée, pas une mesure statistique ; viser 30 pages si possible) | Description seule (sans image) ; second appel avec un modèle plus grand seulement sur accord du propriétaire |
 | P9 | `SINGLE_CALL_PAGES` 4 ou 3 | Rester à 4, passer à 3 si plus de 10 % de replis à la mesure |
-| P10 | Relever `POLICY_VERSION` pour R1 | Oui à la mise en production du lot (nouvelle donnée conservée), pas dans cette PR |
+| P10 | Relever `POLICY_VERSION` pour R1 | Oui, **avant le premier déploiement (dev compris) qui conserve une figure**, pas seulement à la mise en production ; pas dans cette PR |
 | P11 | Seuil de 40 % de phrases douteuses | 40 %, à ajuster à la mesure |
 | P12 | `ConfirmRequest.removed` défini ici | Oui, dans le contrat 1.5.0 (absent de main) |
 | P13 | Formules : texte brut ou LaTeX | Texte brut (`E = mc²`) en v1 |
 | P14 | Export de la famille : figures de l'élève dans l'archive | Non en v1 (`figureCount` seulement) ; l'élève peut les voir dans son cours |
+| P15 | Identifiants de blocs et de figures dans un cours qui s'étend (ajout de pages, F10) | Locaux au job à la lecture, **renumérotés avec un décalage à l'écriture dans le cours** : uniques à l'échelle du cours (§2.6) ; `COURS#<id>#B` réécrit sous le verrou de F10. F10 renvoie à P15 (et non P14) |
 
 ## 14. Ce qui n'a pas été mesuré
 
 - Précision des cadres de figures de Haiku, taux de lecture douteuse bien calibré, taille réelle des sorties Markdown : tout est estimé. Aucun appel de modèle n'a été fait pour cette conception.
-- Le coût du rognage et la taille du paquet `sharp` dans le bundle des Lambda ne sont pas mesurés.
+- Le coût du rognage, la taille de la couche `sharp` et le taux de repli « sans image » ne sont pas mesurés.
+- Les droits IAM du §12 sont lus dans `pipeline-stack.ts` et `game-stack.ts` de main, rien n'a été synthétisé (`cdk synth` non lancé).
+- `npm run mock:check` (serveur Prism) n'a pas été lancé sur les nouveaux exemples.
 - Les textes légaux sont des brouillons non relus par un juriste.
