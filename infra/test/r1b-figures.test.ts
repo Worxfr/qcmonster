@@ -103,7 +103,7 @@ for (const env of ENVS) {
         expect(as.every((a) => a.startsWith('s3:'))).toBe(true);
       }
       // aucune instruction S3 sur les objets d'un bucket sans prefixe
-      for (const s of all.filter((x) => acts(x).some((a) => a.startsWith('s3:') && a !== 's3:ListBucket'))) expect(text(s.Resource)).toMatch(/\/(scans|figures|exports)\//);
+      for (const s of all.filter((x) => acts(x).some((a) => a.startsWith('s3:') && a !== 's3:ListBucket'))) expect(text(s.Resource)).toMatch(/\/(scans|figures|exports|copies)\//);
     });
 
     it('tableau des droits: procRole, confirm, read, cours-read, cours', () => {

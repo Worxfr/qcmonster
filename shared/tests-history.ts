@@ -93,7 +93,7 @@ export function decodeCursor(c: string): string | undefined {
 export interface TestLine {
   q: string;
   r: number;
-  k: 'qcm' | 'gap';
+  k: 'qcm' | 'gap' | 'exo';
   ok: boolean;
   n: number;
   f: boolean;
@@ -124,13 +124,13 @@ export interface TestItem {
 export const scorePct = (correct: number, total: number): number => (total > 0 ? Math.round((100 * correct) / total) : 0);
 
 /** Question terminee: l'eleve a deja le droit de voir la bonne reponse (juste, 2 essais, ou texte a trous repondu). */
-export const lineDone = (l: Pick<TestLine, 'ok' | 'n' | 'k'>): boolean => l.ok || l.n >= 2 || l.k === 'gap';
+export const lineDone = (l: Pick<TestLine, 'ok' | 'n' | 'k'>): boolean => l.ok || l.n >= 2 || l.k !== 'qcm';
 
 /**
  * Ajoute ou met a jour la ligne d'une question dans le passage. Une question non terminee continue (essai 2, `f` conserve);
  * rejouee apres etre terminee, elle repart a 1 essai et garde l'XP deja gagnee. Au plus MAX_ITEMS lignes.
  */
-export function upsertLine(items: TestLine[], a: { q: string; rank: number; k: 'qcm' | 'gap'; correct: boolean; xp: number; at: string; choice: string }): TestLine[] {
+export function upsertLine(items: TestLine[], a: { q: string; rank: number; k: 'qcm' | 'gap' | 'exo'; correct: boolean; xp: number; at: string; choice: string }): TestLine[] {
   const c = a.choice.slice(0, MAX_CHOICE);
   const i = items.findIndex((l) => l.q === a.q);
   if (i < 0) {
@@ -199,7 +199,7 @@ export function toSummary(it: Record<string, unknown>, testId: string): TestSumm
 export interface QuestionStatus {
   questionId: string;
   rank: number;
-  kind: 'qcm' | 'gap';
+  kind: 'qcm' | 'gap' | 'exo';
   correct: boolean;
   attempts: number;
   firstTry: boolean;

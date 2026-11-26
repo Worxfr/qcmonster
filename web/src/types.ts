@@ -61,3 +61,14 @@ export type FicheParagraph = S['FicheParagraph'];
 export type RecallItem = S['RecallItem'];
 /** Export asynchrone de l'eleve (contrat 1.5.1): `state` en_cours | pret (avec `archive`) | echec. */
 export type ExportState = S['ExportStatus'];
+// E1 (contrat 1.9): exercices de raisonnement et correction de la copie photographiee.
+export type Exercice = S['Exercice'];
+export type ExerciceResume = S['ExerciceResume'];
+export type ExerciceCreated = S['ExerciceCreated'];
+export type ExerciceHint = S['ExerciceHint'];
+export type ExerciceSolution = S['ExerciceSolution'];
+export type CopieCreateResponse = S['CopieCreateResponse'];
+export type CopieEnvoi = S['CopieEnvoi'];
+export type CopieSubmitResponse = S['CopieSubmitResponse'];
+export type Copie = S['Copie'];
+export type CopieEtape = S['CopieEtape'];

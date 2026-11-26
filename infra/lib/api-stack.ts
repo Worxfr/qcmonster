@@ -97,16 +97,27 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   // contract-v1.5.1 (R1-A): archive de l'eleve, construite en asynchrone. Fonctions `me-export-archive` et `student-export-build` dans pipeline-stack (lot R1-B).
   { route: 'POST /me/export/archive', handler: 'me-export-archive', owner: 'pipeline', throttle: { rate: 1, burst: 2 } },
   { route: 'GET /me/export/archive/{exportId}', handler: 'me-export-archive', owner: 'pipeline' },
+  // contract-v1.9 (E1): exercices de raisonnement et correction de copie. Limites de debit: docs/E1-design.md section 12.
+  { route: 'GET /docs/{docId}/exercices', handler: 'exo-list', owner: 'game', throttle: { rate: 10, burst: 20 } },
+  { route: 'POST /docs/{docId}/exercices', handler: 'exo-post', owner: 'game', throttle: { rate: 1, burst: 3 } },
+  { route: 'GET /exercices/{exoId}', handler: 'exo-get', owner: 'game', throttle: { rate: 10, burst: 20 } },
+  { route: 'POST /exercices/{exoId}/indice', handler: 'exo-hint-post', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /exercices/{exoId}/solution', handler: 'exo-solution-post', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /exercices/{exoId}/copies', handler: 'copies-create', owner: 'game', throttle: { rate: 1, burst: 3 } },
+  { route: 'POST /copies/{copieId}/submit', handler: 'copies-submit', owner: 'game', throttle: { rate: 1, burst: 3 } },
+  { route: 'GET /copies/{copieId}', handler: 'copie-get', owner: 'game', throttle: { rate: 5, burst: 10 } },
+  { route: 'DELETE /copies/{copieId}', handler: 'copie-delete', owner: 'game', throttle: { rate: 2, burst: 5 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
-export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A'> = {
+export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1'> = {
   'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'practice-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3', 'students-login-id-post': 'L3',
   'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-mark-read': 'L3', 'family-create': 'L3', 'admin-invitations': 'L3',
   'scans-list': 'FEAT-A', 'scans-delete': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A', 'cours-delete': 'FEAT-A',
   'tests-read': 'L3', 'family-progress': 'L3', 'family-export-archive': 'L3', 'me-export-archive': 'R1-A',
+  'exo-list': 'E1', 'exo-post': 'E1', 'exo-get': 'E1', 'exo-hint-post': 'E1', 'exo-solution-post': 'E1', 'copies-create': 'E1', 'copies-submit': 'E1', 'copie-get': 'E1', 'copie-delete': 'E1',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */

@@ -55,7 +55,9 @@ describe('Pipeline (L2a)', () => {
         const read = actions(statements(t, /pipelineapiread/i));
         expect(read.filter((a) => (/^(dynamodb|s3):/.test(a) && writes.test(a)) || a.startsWith('states:'))).toEqual([]);
         const del = actions(statements(t, /pipelineapidelete/i));
-        expect(del.filter((a) => /^(s3|states|bedrock):/.test(a) || /PutItem/.test(a))).toEqual([]);
+        // E1: la seule action hors DynamoDB est DeleteObject sur copies/* (images des copies de la fiche, cles exactes); ni lecture, ni liste, ni ecriture S3
+        expect(del.filter((a) => /^(s3|states|bedrock):/.test(a) || /PutItem/.test(a))).toEqual(['s3:DeleteObject']);
+        expect(JSON.stringify(statements(t, /pipelineapidelete/i).filter((x) => [x.Action].flat().some((a) => a.startsWith('s3:'))).map((x) => x.Resource))).toMatch(/^\[.*\/copies\/\*.*\]$/);
         // Q1: seule ecriture en plus, UpdateItem sur STUDENT# (reecriture d'un passage multi-fiches), jamais sans condition sur la cle de partition
         const upd = statements(t, /pipelineapidelete/i).filter((x) => [x.Action].flat().includes('dynamodb:UpdateItem'));
         expect(upd).toHaveLength(1);
@@ -216,8 +218,8 @@ describe('Pipeline (L2a): relecture PR #14', () => {
             if (!costRead) expect(res).toContain('index/GSI1');
           }
           // R1-B: trois prefixes seulement, jamais un bucket entier: scans/ et exports/ (bucket des photos), figures/ (bucket des figures)
-          if (as.some((a) => a.startsWith('s3:') && a !== 's3:ListBucket')) expect(res).toMatch(/\/(scans|exports|figures)\/\*/);
-          if (as.includes('s3:ListBucket')) expect(JSON.stringify(x)).toMatch(/(scans|figures)\/\*/);
+          if (as.some((a) => a.startsWith('s3:') && a !== 's3:ListBucket')) expect(res).toMatch(/\/(scans|exports|figures|copies)\/\*/);
+          if (as.includes('s3:ListBucket')) expect(JSON.stringify(x)).toMatch(/(scans|figures)\/\*/); // E1: jamais de ListBucket sur copies/ ici
           if (as.some((a) => a.startsWith('bedrock:'))) expect(res).not.toContain('"*"');
         }
       });
@@ -301,7 +303,7 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
         ]);
         // R1-B: hors DynamoDB, la lecture signe des figures (GetObject) et la suppression liste et efface le prefixe figures/; jamais d'ecriture
         expect(own(/pipelineapicoursread/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual(['s3:GetObject']);
-        expect(own(/^pipelineapicoursrole/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket']);
+        expect(own(/^pipelineapicoursrole/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:ListBucket']); // figures/ (suppression et liste) + copies/ (E1, suppression seule)
         for (const re of [/pipelineapicoursread/i, /^pipelineapicoursrole/i]) expect(own(re).filter((a) => a === 'dynamodb:PutItem')).toEqual([]);
       });
       it('scans-delete: role etroit (ni confirmRole, ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#)', () => {
@@ -309,7 +311,7 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
         expect(flat(/pipelineapiscansdelete/i)).toEqual([
           { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['FAMILY#*', 'STUDENT#*', 'JOB#*', 'DOC#*'] },
         ]);
-        expect(own(/pipelineapiscansdelete/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:ListBucket', 's3:ListBucket', 'states:SendTaskFailure']); // scans/ + figures/ (F10)
+        expect(own(/pipelineapiscansdelete/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:DeleteObject', 's3:ListBucket', 's3:ListBucket', 'states:SendTaskFailure']); // scans/ + figures/ (F10) + copies/ (E1, suppression seule)
       });
       it("jobs-confirm: role propre = droits d'ecriture + suppression du cours durable (STUDENT#, JOB#); le role d'ecriture ne supprime rien; l'etape fail supprime", () => {
         expect(fnRole('jobs-confirm').role).toMatch(/pipelineapiconfirm/i);

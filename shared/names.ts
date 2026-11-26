@@ -12,7 +12,26 @@ export const ssmParam = (env: Env, path: string) => `/qcm/${env}/${path}`;
 export const FIGURES_BUCKET_PARAM = 'data/figuresBucket';
 
 /** Roles IAM des Lambda de traitement (crees par L2a/L2b); l'action du budget securite-40 les cible. */
-export const processingRoleNames = (env: Env) => [`qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`];
+export const processingRoleNames = (env: Env) => [`qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`, exoRoleName(env), copieRoleName(env)];
+
+// --- E1 (docs/E1-design.md): exercices de raisonnement et correction de copie (#43).
+/** Role de `exo-gen` (Haiku seulement) et role de `copie-correct` / `copie-fail` (Haiku et Sonnet). Tous deux appellent Bedrock: ils sont dans `processingRoleNames`. */
+export const exoRoleName = (env: Env) => `qcm-${env}-exo-role`;
+export const copieRoleName = (env: Env) => `qcm-${env}-copie-role`;
+/** Prefixe S3 des photos de copie dans le bucket des scans: `copies/<eleve>/<copie>/p<n>`. Regle S3 de 1 jour du bucket. */
+export const COPIES_PREFIX = 'copies/';
+/** Machine d'etats `copie`: une execution par copie, nommee par `copieId`. Entree sans aucun contenu. */
+export const copieStateMachineName = (env: Env) => `qcm-${env}-copie`;
+/** Fonctions E1 (hors handlers `game`): generation, correction et nettoyage apres echec. */
+export const EXO_FUNCTIONS = { gen: 'exo-gen', correct: 'copie-correct', fail: 'copie-fail' } as const;
+/** Plafonds de cout (design E1 section 9): par correction et par generation, en euros. */
+export const COPIE_COST_CAP_EUR = 0.08;
+export const EXO_GEN_COST_CAP_EUR = 0.02;
+/** Quota de pages de copie, SEPARE de celui des scans: 40 par eleve et par mois, 100 par famille en prod, x10 en dev. */
+export const copieQuotaDefaults = (env: Env) => {
+  const k = env === 'prod' ? 1 : 10;
+  return { studentPages: 40 * k, familyPages: 100 * k };
+};
 
 /** Noms des fonctions Lambda par handler (design-v2 section 6). */
 export const fn = (env: Env, handler: string) => `qcm-${env}-${handler}`;

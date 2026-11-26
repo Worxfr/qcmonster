@@ -54,7 +54,21 @@ export const keys = {
   invite: (code: string): Key => ({ PK: `INVITE#${sha256(code)}`, SK: 'META' }),
   /** Compteur et audit des codes crees par un administrateur: un element par code et par jour (n = 1..limite). actor = hache du `sub`, jamais le code. */
   inviteAudit: (actor: string, date: string, n: number): Key => ({ PK: `INVITE#AUDIT#${actor}#${date}`, SK: `N#${String(n).padStart(2, '0')}` }),
-  /** token = jeton d'activation en clair; seul son hache est stocke. */
+  // --- E1 (exercices de raisonnement et correction de copie, docs/E1-design.md section 2). Aucune table ni index nouveau.
+  /** Exercice pret et valide, ecrit par `exo-gen` seul (attribute_not_exists). `nn` sur 2 chiffres, jamais reutilise. */
+  exo: (docId: string, nn: number): Key => ({ PK: `DOC#${docId}`, SK: `EXO#${String(nn).padStart(2, '0')}` }),
+  /** Progression de l'eleve sur un exercice, creee par `exo-post` des la demande de generation. */
+  exop: (sid: string, docId: string, nn: number): Key => ({ PK: `STUDENT#${sid}`, SK: `EXOP#${docId}:${String(nn).padStart(2, '0')}` }),
+  copie: (sid: string, copieId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `COPIE#${copieId}` }),
+  /** Pages de copie du mois, par partition (eleve ou famille). `ttl` 40 jours. Quota SEPARE de celui des scans. */
+  copieQ: (pk: string, month: string): Key => ({ PK: pk, SK: `COPIEQ#${month}` }),
+  /** Compteurs du jour (corrections, generations), `ttl` 2 jours. */
+  copieJ: (sid: string, day: string): Key => ({ PK: `STUDENT#${sid}`, SK: `COPIEJ#${day}` }),
+  /** Verrou: la copie `a_envoyer` de l'eleve (une seule). */
+  copieOuv: (sid: string): Key => ({ PK: `STUDENT#${sid}`, SK: 'COPIEOUV' }),
+  /** Verrou: la correction en cours de l'eleve (une seule). */
+  copieActive: (sid: string): Key => ({ PK: `STUDENT#${sid}`, SK: 'COPIEACTIVE' }),
+  /** Jeton d'activation en clair; seul son hache est stocke. */
   activation: (token: string): Key => ({ PK: `ACTIVATION#${sha256(token)}`, SK: 'META' }),
 };
 

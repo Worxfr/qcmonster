@@ -42,7 +42,7 @@ export interface Db {
 /** Adaptateur vers le port de suppression en cascade de shared/delete-tree.ts (cles seules). */
 export const treeDbFrom = (db: Db): TreeDb => ({
   list: async (pk, skPrefix) =>
-    (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) })),
+    (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) })),
   remove: (ks) => db.remove(ks),
   async mutateTest(key, fn) {
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -74,6 +74,8 @@ export interface ScanStore {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   list(prefix: string): Promise<string[]>;
   deleteAll(prefix: string): Promise<void>;
+  /** E1: supprime des cles EXACTES (images de copie `copies/<eleve>/<copie>/p<n>`): aucun droit de liste sur ce prefixe. */
+  deleteKeys(keys: string[]): Promise<void>;
 }
 /** Bucket des figures conservees (R1): `figures/<eleve>/<cours>/<figure>.jpg`, URL pre-signee de 5 minutes, jamais d'acces public. */
 export interface FigureStore {
@@ -312,6 +314,9 @@ export function memoryScanStore(): ScanStore & { objects: Map<string, Uint8Array
     },
     async deleteAll(prefix) {
       for (const k of [...objects.keys()]) if (k.startsWith(prefix)) objects.delete(k);
+    },
+    async deleteKeys(keys) {
+      for (const k of keys) objects.delete(k);
     },
   };
 }

@@ -36,6 +36,7 @@ const summary = (d: Item) => {
     ...(topic ? { topic } : {}),
     ...(str(d.dossierId) ? { folderId: str(d.dossierId) } : {}),
     ...(typeof d.nbQuestions === 'number' ? { questionCount: d.nbQuestions } : {}), // Q1: un nombre, jamais un contenu
+    ...(typeof d.nbExercices === 'number' ? { exerciceCount: d.nbExercices } : {}), // E1: un nombre, jamais un contenu
     ...(str(d.coursId) ? { coursId: str(d.coursId) } : {}),
     ...(typeof d.sectionIndex === 'number' ? { sectionIndex: d.sectionIndex } : {}),
   };
@@ -108,7 +109,7 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
 export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const c = await callerOf(ctx, event);
   const { sid, doc } = await findDoc(ctx, c, pathId(event, 'docId'));
-  const n = await deleteDocTree(treeDbFrom(ctx.db), sid, pathId(event, 'docId'));
+  const n = await deleteDocTree(treeDbFrom(ctx.db), sid, pathId(event, 'docId'), { deleteFiles: (ks) => ctx.s3.deleteKeys(ks) });
   if (n === 0) return fail('introuvable', 'Introuvable');
   // Le texte du cours (TEXT#, TTL 7 jours) part avec la fiche: une suppression demandee efface aussi la transcription.
   if (typeof doc.jobId === 'string') {

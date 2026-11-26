@@ -219,6 +219,52 @@ describe.each(ENVS)('M2: aucune identite ne peut invoquer Bedrock hors du garde 
   });
 });
 
+describe.each(ENVS)('M2 (E1): quatre roles de traitement, modeles par role (%s)', (env) => {
+  const tpls = realTemplates(env);
+  /** Ressources et conditions Bedrock (aplaties) accordees a un role nomme, toutes politiques confondues. */
+  const bedrockOf = (roleName: string): string[] => {
+    const out: string[] = [];
+    for (const { json } of tpls) {
+      const res = json.Resources ?? {};
+      for (const r of Object.values(res)) {
+        if (r.Type !== 'AWS::IAM::Policy') continue;
+        const names = list(r.Properties?.Roles).map((x) => res[(x as { Ref: string }).Ref]?.Properties?.RoleName);
+        if (!names.includes(roleName)) continue;
+        for (const st of stmtsOf(r.Properties?.PolicyDocument)) {
+          if (st.Effect !== 'Allow' || !list(st.Action).some((a) => String(a).startsWith('bedrock:'))) continue;
+          out.push(...list(st.Resource).map(flat), ...Object.values(st.Condition ?? {}).flatMap((c) => Object.values(c as Json).flatMap((v) => list(v).map(flat))));
+        }
+      }
+    }
+    return out;
+  };
+  it('processingRoleNames: pipeline, verify, exo et copie', () => {
+    expect(processingRoleNames(env)).toEqual([`qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`, `qcm-${env}-exo-role`, `qcm-${env}-copie-role`]);
+  });
+  it('exo-role: Haiku seulement (aucune trace de Sonnet, ni dans les ressources ni dans les conditions)', () => {
+    const b = bedrockOf(`qcm-${env}-exo-role`);
+    expect(b.filter((x) => /haiku/i.test(x)).length).toBeGreaterThan(0);
+    expect(b.filter((x) => /sonnet/i.test(x))).toEqual([]);
+  });
+  it('copie-role: Haiku et Sonnet', () => {
+    const b = bedrockOf(`qcm-${env}-copie-role`);
+    expect(b.some((x) => /haiku/i.test(x))).toBe(true);
+    expect(b.some((x) => /sonnet/i.test(x))).toBe(true);
+  });
+  it("aucun autre role que les quatre (et eval-run en dev) n'a bedrock:InvokeModel", () => {
+    const holders = new Set<string>();
+    for (const { json } of tpls) {
+      const res = json.Resources ?? {};
+      for (const r of Object.values(res)) {
+        if (r.Type !== 'AWS::IAM::Policy') continue;
+        if (!stmtsOf(r.Properties?.PolicyDocument).some((st) => st.Effect === 'Allow' && list(st.Action).some((a) => String(a) === 'bedrock:InvokeModel'))) continue;
+        for (const x of list(r.Properties?.Roles)) holders.add(String(res[(x as { Ref: string }).Ref]?.Properties?.RoleName));
+      }
+    }
+    expect([...holders].sort()).toEqual([...bedrockRoles(env)].sort());
+  });
+});
+
 describe('M2: role OIDC de deploiement (infra-bootstrap/setup-oidc.sh)', () => {
   const script = readFileSync(new URL('../../infra-bootstrap/setup-oidc.sh', import.meta.url), 'utf8');
   const policy = /POLICY="\$\(cat <<JSON\n([\s\S]*?)\nJSON/.exec(script)?.[1] ?? '';

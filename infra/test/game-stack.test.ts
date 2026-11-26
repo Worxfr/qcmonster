@@ -31,8 +31,8 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
   it('une fonction par handler du lot L3, nommee comme le veut la stack Api', () => {
     const names = fns.map((f) => f.Properties.FunctionName as string).sort();
     expect(names).toEqual(GAME_HANDLERS.map((h) => `qcm-${env}-${h.name}`).sort());
-    // Les handlers du lot sont exactement ceux que la table ROUTES attribue a L3.
-    const l3 = [...new Set(ROUTES.map((r) => r.handler).filter((h) => HANDLER_LOT[h] === 'L3'))].sort();
+    // Les handlers du lot sont exactement ceux que la table ROUTES attribue a L3 et a E1 (les fonctions `exo-gen`, `copie-correct` et `copie-fail` sont dans la stack Exo).
+    const l3 = [...new Set(ROUTES.map((r) => r.handler).filter((h) => HANDLER_LOT[h] === 'L3' || HANDLER_LOT[h] === 'E1'))].sort();
     expect(GAME_HANDLERS.map((h) => h.name).sort()).toEqual(l3);
     for (const f of fns) {
       expect(f.Properties).toMatchObject({ Runtime: 'nodejs22.x', Architectures: ['arm64'] });
@@ -60,7 +60,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 
   it('moindre privilege: ressources nommees, jamais de joker, rien sur Bedrock, roles distincts du traitement', () => {
     const byRole = statementsByRole(t);
-    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'archive', 'invite', 'loginId', 'manage', 'play', 'progress', 'read', 'readDocs'].map((k) => `qcm-${env}-game-${k}-role`).sort());
+    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'archive', 'copieDelete', 'copieStart', 'invite', 'loginId', 'manage', 'play', 'progress', 'read', 'readDocs'].map((k) => `qcm-${env}-game-${k}-role`).sort());
     for (const [role, stmts] of Object.entries(byRole)) {
       expect(processingRoleNames(env)).not.toContain(role);
       for (const s of stmts) {
@@ -78,7 +78,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
   it('DynamoDB: chaque instruction est limitee a des partitions (dynamodb:LeadingKeys)', () => {
     const byRole = statementsByRole(t);
     const leading = (k: string) => (byRole[`qcm-${env}-game-${k}-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('dynamodb:'))).map((s) => (s as unknown as { Condition?: Record<string, Record<string, string[]>> }).Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']);
-    for (const k of ['read', 'readDocs', 'progress', 'archive', 'play', 'account', 'manage', 'admin', 'activation', 'invite', 'loginId']) for (const l of leading(k)) expect(l, k).toBeDefined();
+    for (const k of ['read', 'readDocs', 'progress', 'archive', 'play', 'account', 'manage', 'admin', 'activation', 'invite', 'loginId', 'copieStart', 'copieDelete']) for (const l of leading(k)) expect(l, k).toBeDefined();
     // La route publique n'atteint que les liens d'activation et la famille (lecture de l'eleve).
     expect(leading('activation').flat().sort()).toEqual(['ACTIVATION#*', 'FAMILY#*']);
     expect(leading('read').flat()).not.toContain('ACTIVATION#*');
@@ -122,9 +122,10 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 
   it('photos: le role de suppression ne liste et n\'efface que sous scans/', () => {
     const s3 = (statementsByRole(t)[`qcm-${env}-game-admin-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('s3:')));
-    // R1-B: + figures/ (liste du prefixe et suppression), jamais de lecture
+    // R1-B: + figures/ (liste du prefixe et suppression), jamais de lecture. E1: copies/ s'ajoute aux instructions de scans/ (liste avec condition de prefixe, suppression).
     expect(s3.flatMap(actions).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:ListBucket', 's3:ListBucket']);
     expect(JSON.stringify(s3)).toContain('scans/*');
+    expect(JSON.stringify(s3)).toContain('copies/*');
     expect(JSON.stringify(s3)).toContain('figures/*');
   });
 

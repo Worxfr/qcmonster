@@ -1,0 +1,66 @@
+/* E1: exercices et retour de copie. Clair, vif, joyeux; memes variables que style.css, aucun theme sombre. */
+.exo-title { font-size: 1.55rem; line-height: 1.2; overflow-wrap: anywhere; }
+.chip-soft { background: #ede9fe; color: #4c1d95; }
+.btn-exo { background: var(--pink); }
+.btn-alt { color: #fff; }
+.exo-empty { background: #f5f3ff; border-radius: 14px; padding: .8rem 1rem; font-weight: 600; }
+.exo-wait { background: #fef9c3; color: #713f12; border-radius: 14px; padding: .7rem 1rem; font-weight: 700; }
+
+.exo-list { list-style: none; margin: .8rem 0; padding: 0; display: grid; gap: .6rem; }
+.exo-row { display: flex; align-items: center; gap: .8rem; padding: .7rem .8rem; border: 2px solid var(--line); border-left: 8px solid #a78bfa; border-radius: 14px; background: #faf5ff; }
+.exo-row.exo-generation { border-left-color: #f59e0b; background: #fffbeb; }
+.exo-row.exo-echec { border-left-color: #f97316; background: #fff7ed; }
+.exo-row .grow { display: grid; gap: .1rem; overflow-wrap: anywhere; }
+.exo-row .btn { margin: 0; flex: none; text-decoration: none; }
+.exo-ico { font-size: 1.7rem; flex: none; }
+.exo-sub { display: block; }
+
+/* Enonce: le texte garde ses retours a la ligne; une formule trop large defile sans faire deborder la page. */
+.exo-enonce { font-size: 1.2rem; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; background: #f5f3ff; border: 2px dashed #a78bfa; border-radius: 16px; padding: 1rem 1.1rem; margin-top: .6rem; }
+.exo-enonce .math-display, .exo-solution .math-display { display: block; overflow-x: auto; max-width: 100%; }
+.exo-hints { list-style: none; margin: 0 0 .6rem; padding: 0; display: grid; gap: .5rem; }
+.exo-hints li { display: flex; gap: .7rem; align-items: flex-start; background: #ecfeff; border: 2px solid #67e8f9; border-radius: 14px; padding: .6rem .8rem; overflow-wrap: anywhere; }
+.exo-hint-n { flex: none; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--alt); color: #fff; display: grid; place-items: center; font-weight: 800; }
+
+.exo-photo-btns { display: grid; gap: .5rem; margin-top: .6rem; }
+.exo-photo-btns .btn { margin: 0; }
+.exo-camera { background: var(--pink); font-size: 1.3rem; padding: 1.3rem 1rem; box-shadow: 0 5px 0 #831843; }
+.exo-gallery { width: 100%; }
+.exo-thumbs { grid-template-columns: repeat(auto-fill, minmax(min(150px, 45%), 1fr)); }
+.exo-thumbs .btn { width: 100%; margin: 0; }
+.thumbs.exo-thumbs .thumb img { display: block; width: 100%; height: 220px; aspect-ratio: auto; object-fit: contain; background: #fffdf5; border-radius: 10px; }
+@media (min-width: 720px) { .exo-photo-btns { grid-template-columns: 2fr 1fr; align-items: stretch; } }
+
+.exo-warn { background: #fff7ed; border: 2px solid #fb923c; color: #7c2d12; border-radius: 14px; padding: .8rem 1rem; margin-top: .6rem; }
+.exo-warn p { margin-top: 0; }
+.exo-solution { background: #f0fdf4; border: 2px solid #86efac; border-radius: 14px; padding: .8rem 1rem; white-space: pre-line; overflow-wrap: anywhere; }
+.exo-solution h3 { margin-bottom: .3rem; color: var(--ok); }
+.exo-illisible { background: #fff7ed; border: 2px solid #fb923c; color: #7c2d12; border-radius: 14px; padding: .9rem 1rem; font-size: 1.1rem; font-weight: 700; }
+
+/* Attente de la correction */
+.exo-wait-card { text-align: center; padding: .5rem 0 1rem; }
+.exo-wait-ico { font-size: 3.2rem; margin: 0; }
+.exo-dots { display: flex; justify-content: center; gap: .5rem; }
+.exo-dots span { width: 14px; height: 14px; border-radius: 50%; background: var(--brand); animation: exo-bounce 1s infinite ease-in-out; }
+.exo-dots span:nth-child(2) { background: var(--pink); animation-delay: .15s; }
+.exo-dots span:nth-child(3) { background: #f59e0b; animation-delay: .3s; }
+@keyframes exo-bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } }
+
+/* Retour */
+.exo-bilan { font-size: 1.5rem; font-weight: 800; color: var(--brand); margin: .2rem 0 .6rem; }
+.exo-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+.exo-step { border: 2px solid var(--line); border-left: 8px solid #a78bfa; border-radius: 14px; padding: .7rem .9rem; background: #fff; min-width: 0; }
+.exo-step-head { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; justify-content: space-between; margin: 0; }
+.exo-step-label { font-weight: 700; flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.exo-step-hint { margin: .45rem 0 0; color: var(--ink); overflow-wrap: anywhere; }
+.exo-tag { display: inline-block; border-radius: 999px; padding: .15rem .8rem; font-weight: 800; font-size: .92rem; flex: none; }
+.exo-s-ok { border-left-color: #22c55e; background: #f7fef9; } .exo-tag-ok { background: var(--ok-bg); color: var(--ok); }
+.exo-s-partiel { border-left-color: #eab308; background: #fffef5; } .exo-tag-partiel { background: #fef9c3; color: #713f12; }
+.exo-s-faux { border-left-color: #f97316; background: #fffaf5; } .exo-tag-faux { background: var(--warn-bg); color: var(--warn); }
+.exo-s-absent { border-left-color: #94a3b8; } .exo-tag-absent { background: #e2e8f0; color: #1e293b; }
+.exo-s-reporte { border-left-color: #38bdf8; background: #f5fcff; } .exo-tag-reporte { background: #e0f2fe; color: #075985; }
+.exo-final { border-width: 3px; border-left-width: 8px; }
+.exo-ia { margin: 1rem 0 0; background: #f5f3ff; border-radius: 12px; padding: .7rem .9rem; font-size: .95rem; color: var(--ink); }
+.exo-actions { display: grid; gap: .5rem; }
+.exo-actions .btn { margin: 0; text-decoration: none; }
+@media (min-width: 720px) { .exo-actions { grid-template-columns: 1fr 1fr; } .exo-actions .btn-big { grid-column: 1 / -1; } }

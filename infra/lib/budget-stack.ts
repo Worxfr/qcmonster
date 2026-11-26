@@ -6,7 +6,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
 import type { Construct } from 'constructs';
-import { costThresholdsFor, METRIC_COST_MONTH, METRIC_NAMESPACE, processingRoleNames, type Env } from '../../shared/names.js';
+import { costThresholdsFor, METRIC_COST_MONTH, METRIC_NAMESPACE, processingRoleNames, stackName, type Env } from '../../shared/names.js';
 import { USD_PER_EUR } from '../../shared/pricing.js';
 
 export interface BudgetStackProps extends StackProps {
@@ -91,6 +91,11 @@ export class BudgetStack extends Stack {
       // L'action cible les roles de L2a/L2b (crees plus tard): elle echouerait au deploiement tant qu'ils n'existent pas.
       // Activee par `-c budgetAction=true` une fois pipeline et verify deployes (docs/ops/bootstrap.md).
       if (this.node.tryGetContext('budgetAction') === 'true' || this.node.tryGetContext('budgetAction') === true) {
+        // Les roles cibles (par nom) doivent exister: la pile du budget se deploie APRES les piles qui les creent (pipeline-role, verify-role, exo-role, copie-role).
+        for (const dep of ['pipeline', 'verify', 'exo']) {
+          const st = scope.node.tryFindChild(stackName(envName, dep));
+          if (st instanceof Stack) this.addStackDependency(st);
+        }
         new budgets.CfnBudgetsAction(this, 'SecurityAction', {
           budgetName: 'QCMonster-securite-40',
           notificationType: 'ACTUAL',

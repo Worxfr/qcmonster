@@ -133,7 +133,7 @@ export function memoryStore(): Store & { items: Map<string, Item>; failNextCommi
   };
 }
 
-const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
+const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
 
 /** Adaptateur `TreeDb` (shared/delete-tree.ts) au-dessus d'un Store: pour les tests; en production on passe `dynamoTreeDb` de shared. */
 export const storeTreeDb = (store: Store): TreeDb => ({

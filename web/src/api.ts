@@ -5,6 +5,7 @@ import type {
   Student, ActivationResponse, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
   TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, ExportState,
+  Exercice, ExerciceResume, ExerciceCreated, ExerciceHint, ExerciceSolution, CopieCreateResponse, CopieSubmitResponse, Copie,
 } from './types';
 
 export class ApiError extends Error {
@@ -101,6 +102,17 @@ export const api = {
   /** Re-acceptation de la politique en vigueur (parent). */
   acceptPolicy: (b: FamilyCreateRequest) => call<void>('POST', '/family/policy', b),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),
+  /** Exercices (E1, eleve seul: 403 pour un parent). */
+  exercices: (docId: string) => call<{ items: ExerciceResume[] }>('GET', `/docs/${e(docId)}/exercices`),
+  createExercice: (docId: string) => call<ExerciceCreated>('POST', `/docs/${e(docId)}/exercices`),
+  exercice: (exoId: string) => call<Exercice>('GET', `/exercices/${e(exoId)}`),
+  exerciceHint: (exoId: string) => call<ExerciceHint>('POST', `/exercices/${e(exoId)}/indice`),
+  exerciceSolution: (exoId: string) => call<ExerciceSolution>('POST', `/exercices/${e(exoId)}/solution`),
+  createCopie: (exoId: string, pages: number, contentType: string) => call<CopieCreateResponse>('POST', `/exercices/${e(exoId)}/copies`, { pages, contentType }),
+  /** Aucun corps: le serveur calcule lui-meme l'empreinte des pages. */
+  submitCopie: (copieId: string) => call<CopieSubmitResponse>('POST', `/copies/${e(copieId)}/submit`),
+  copie: (copieId: string) => call<Copie>('GET', `/copies/${e(copieId)}`),
+  deleteCopie: (copieId: string) => call<void>('DELETE', `/copies/${e(copieId)}`),
 };
 
 /** Envoi direct vers S3 avec l'URL POST pre-signee: les champs d'abord, le fichier en dernier (exigence S3). */

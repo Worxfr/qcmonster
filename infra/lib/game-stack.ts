@@ -1,4 +1,4 @@
-import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { ArnFormat, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -7,18 +7,19 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
 import { webOriginFor } from './data-stack.js';
-import { fn, FIGURES_BUCKET_PARAM, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
+import { e1Statements } from './e1-access.js';
+import { copieStateMachineName, COPIES_PREFIX, EXO_FUNCTIONS, fn, FIGURES_BUCKET_PARAM, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
 
 export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId';
+type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId' | 'copieStart' | 'copieDelete';
 interface HandlerDef {
   name: string;
   role: RoleKey;
   /** Variables d'environnement en plus de TABLE_NAME et QCM_ENV. */
-  needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET' | 'FIGURES_BUCKET')[];
+  needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET' | 'FIGURES_BUCKET' | 'COPIE_STATE_MACHINE_ARN' | 'EXO_GEN_FUNCTION')[];
   /** Memoire (Mo) et delai (s) si differents du defaut (256 Mo, 10 s; 30 s pour le role admin). */
   memoryMb?: number;
   timeoutS?: number;
@@ -54,6 +55,18 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'activation-post', role: 'activation', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
   // contract-v1.2 (A1): codes d'invitation parent par un administrateur (groupe Cognito `admin`)
   { name: 'admin-invitations', role: 'invite' },
+  // contract-v1.9 (E1, docs/E1-design.md section 11): exercices et copies. Droits de chaque handler: shared/exo-access.ts (source unique, lue par infra/test/e1-access.test.ts).
+  { name: 'exo-list', role: 'play' },
+  { name: 'exo-get', role: 'play' },
+  { name: 'exo-post', role: 'play', needs: ['EXO_GEN_FUNCTION'] }, // lance `exo-gen` en asynchrone (lambda:InvokeFunction sur cette seule fonction)
+  { name: 'exo-hint-post', role: 'play' },
+  { name: 'exo-solution-post', role: 'play' },
+  { name: 'copie-get', role: 'play' }, // credit a la premiere lecture d'une copie corrigee (ecrit PROFILE, TEST#...); ne lit jamais S3
+  // Role dedie sans Bedrock: signe l'envoi des pages, controle qu'elles sont la, demarre la machine `copie`. Jamais GetObject.
+  { name: 'copies-create', role: 'copieStart', needs: ['SCANS_BUCKET'] },
+  { name: 'copies-submit', role: 'copieStart', needs: ['SCANS_BUCKET', 'COPIE_STATE_MACHINE_ARN'] },
+  // Ecart au design (qui le mettait dans `play`): `play` n'a pas DeleteItem, par choix. Role dedie: DeleteItem STUDENT# et DeleteObject copies/*.
+  { name: 'copie-delete', role: 'copieDelete', needs: ['SCANS_BUCKET'] },
 ];
 
 export const gameRoleName = (env: Env, key: RoleKey) => `qcm-${env}-game-${key}-role`;
@@ -78,6 +91,10 @@ export class GameStack extends Stack {
     const apiId = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'api/id'));
     const scansBucket = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'data/scansBucket'));
     const figuresBucket = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, FIGURES_BUCKET_PARAM));
+    const scansBucketArn = `arn:${this.partition}:s3:::${scansBucket}`;
+    // E1: fonction de generation et machine `copie` (stack Exo), referencees par NOM: pas d'import entre stacks.
+    const exoGenArn = this.formatArn({ service: 'lambda', resource: 'function', resourceName: fn(envName, EXO_FUNCTIONS.gen), arnFormat: ArnFormat.COLON_RESOURCE_NAME });
+    const copieMachineArn = this.formatArn({ service: 'states', resource: 'stateMachine', resourceName: copieStateMachineName(envName), arnFormat: ArnFormat.COLON_RESOURCE_NAME });
     const poolArn = this.formatArn({ service: 'cognito-idp', resource: 'userpool', resourceName: userPoolId });
     const webOrigin = webOriginFor(this, envName);
 
@@ -116,7 +133,9 @@ export class GameStack extends Stack {
         new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['exports/*'] } } }),
       ],
       // Jeu: lit fiches/questions/verdicts (DOC#), ecrit PROFILE, DAY, ATT (STUDENT#), WEEK, quotas, bonus, signalements (FAMILY#).
-      play: [ddb(READ, [...FAM, ...STU, 'DOC#*']), ddb(WRITE, [...FAM, ...STU])],
+      // E1: `exo-post` lance la generation (exo-gen) en asynchrone; ce droit est limite a cette fonction, appelee par son nom (pas d'import entre stacks).
+      // Jamais DeleteItem (copie-delete a son propre role) ni S3.
+      play: [ddb(READ, [...FAM, ...STU, 'DOC#*']), ddb(WRITE, [...FAM, ...STU]), new iam.PolicyStatement({ actions: ['lambda:InvokeFunction'], resources: [exoGenArn] })],
       // Creation: famille (groupe parent, famille_id) et eleve (utilisateur Cognito sans message), lien d'activation.
       account: [ddb([...READ, ...WRITE, 'DeleteItem'], [...FAM, 'ACTIVATION#*']), cognito(['AdminCreateUser', 'AdminAddUserToGroup', 'AdminUpdateUserAttributes', 'AdminGetUser', 'AdminDeleteUser'])],
       // Gestion: nouveau lien, suspension (desactive le compte et revoque ses jetons), quota.
@@ -125,8 +144,8 @@ export class GameStack extends Stack {
       admin: [
         ddb([...READ, 'DeleteItem', 'BatchWriteItem'], [...FAM, ...STU, 'DOC#*', 'JOB#*', 'ACTIVATION#*'], true),
         cognito(['AdminDeleteUser']),
-        new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*', 'exports/*'] } } }),
-        new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`, `arn:${this.partition}:s3:::${scansBucket}/exports/*`] }),
+        new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*', 'exports/*', `${COPIES_PREFIX}*`] } } }),
+        new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`, `arn:${this.partition}:s3:::${scansBucket}/exports/*`, `arn:${this.partition}:s3:::${scansBucket}/${COPIES_PREFIX}*`] }), // E1: copies/ (liste puis suppression, jamais de lecture)
         // R1-B: figures conservees de l'eleve ou de la famille supprimee (liste du prefixe figures/ puis suppression). Pas de lecture.
         new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${figuresBucket}`], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } }),
         new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${figuresBucket}/figures/*`] }),
@@ -138,6 +157,10 @@ export class GameStack extends Stack {
       activation: [ddb([...READ, 'PutItem', 'DeleteItem'], ['ACTIVATION#*', ...FAM]), cognito(['AdminSetUserPassword'])],
       // Codes d'invitation: PutItem sur INVITE#* seulement (code et audit). Ni lecture, ni Cognito, ni autre partition (audit securite 2).
       invite: [ddb(['PutItem'], ['INVITE#*'])],
+      // E1: DynamoDB et S3 DERIVES de shared/exo-access.ts (aucun GetObject); en plus, demarrer la machine `copie` et aucune autre.
+      copieStart: [...e1Statements('copieStart', { env: envName, tableArn, bucketArn: scansBucketArn }), new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [copieMachineArn] })],
+      // E1: lit l'eleve et la famille, supprime la copie (STUDENT#) et ses images par cles exactes. Ni liste, ni lecture S3.
+      copieDelete: e1Statements('copieDelete', { env: envName, tableArn, bucketArn: scansBucketArn }),
     };
 
     const roles = {} as Record<RoleKey, iam.Role>;
@@ -149,7 +172,7 @@ export class GameStack extends Stack {
       for (const st of policies[key]) roles[key].addToPolicy(st);
     }
 
-    const extra = { USER_POOL_ID: userPoolId, WEB_ORIGIN: webOrigin, SCANS_BUCKET: scansBucket, FIGURES_BUCKET: figuresBucket };
+    const extra = { USER_POOL_ID: userPoolId, WEB_ORIGIN: webOrigin, SCANS_BUCKET: scansBucket, FIGURES_BUCKET: figuresBucket, COPIE_STATE_MACHINE_ARN: copieMachineArn, EXO_GEN_FUNCTION: fn(envName, EXO_FUNCTIONS.gen) };
     for (const h of GAME_HANDLERS) {
       const logGroup = new logs.LogGroup(this, `Logs-${h.name}`, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
       logGroup.grantWrite(roles[h.role]); // journaux de CETTE fonction seulement

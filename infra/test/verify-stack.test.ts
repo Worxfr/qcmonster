@@ -161,6 +161,7 @@ describe.each(ENVS)('Metrique de cout (%s)', (env) => {
         }
       }
     }
-    expect(holders.sort()).toEqual([`qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`]);
+    // E1: exo-role et copie-role ecrivent aussi le compteur de cout (ce sont les 4 roles de processingRoleNames)
+    expect(holders.sort()).toEqual([`qcm-${env}-copie-role`, `qcm-${env}-exo-role`, `qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`]);
   });
 });
