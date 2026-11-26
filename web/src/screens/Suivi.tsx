@@ -2,7 +2,7 @@ import { api } from '../api';
 import { Mascot } from '../components/Mascot';
 import { ScoreBadge, TestList } from '../components/TestList';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
-import { toneOf, fmtWhen, KIND_LABEL, modeLabel, verdict } from '../history';
+import { toneOf, fmtWhen, KIND_LABEL, lineLabel, modeLabel, verdict } from '../history';
 import { useLoad } from '../hooks';
 import { plural, stageLabel, subjectClass, subjectLabel } from '../labels';
 import type { ScanStage } from '../types';
@@ -130,7 +130,7 @@ export function SuiviTest({ sid, testId }: { sid: string; testId: string }) {
             const v = verdict(q);
             return (
               <li key={q.questionId} className={`q-card q-row ${q.correct ? 'q-ok' : 'q-ko'}`}>
-                <span className="q-num">Question {q.rank}</span>
+                <span className="q-num">{lineLabel(q)}</span>
                 <span className="muted">{KIND_LABEL[q.kind] ?? ''}</span>
                 <span className={`pill ${v.cls}`}><span aria-hidden="true">{v.icon}</span> {v.text}</span>
                 <span className="muted">{q.xpGained} XP</span>

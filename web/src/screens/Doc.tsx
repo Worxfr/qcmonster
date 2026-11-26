@@ -10,6 +10,7 @@ import { folderError } from './Folders';
 import { SizePicker } from './Practice';
 import type { Claim } from '../types';
 import { Rich } from '../components/Math';
+import { hasExercices } from '../exo';
 import { FigureView } from './confirm/FigureCard';
 import './confirm/confirm.css';
 
@@ -80,6 +81,7 @@ export function DocView({ id, claimId }: { id: string; claimId?: string }) {
           </section>
         ) : null}
         <SizePicker value={size} onChange={setSize} />
+        {hasExercices(doc.subject) && <button className="btn btn-big btn-exo" onClick={() => go(`/exercices/${encodeURIComponent(id)}`)}>✏️ Un exercice</button>}
         <button className="btn btn-big" onClick={() => go(`/quiz/${encodeURIComponent(id)}${size === 10 ? '' : `?size=${size}`}`)}>🎮 S'entraîner</button>
       </Card>
       <FolderCard docId={id} initial={doc.folderId ?? ''} />

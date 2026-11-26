@@ -26,6 +26,15 @@ Decision du proprietaire (2026-11-24, relevee le 2026-11-25 puis le 2026-11-26, 
 - Tout travail de prompt qui peut se faire sur le jeu dore avec le faux modele se fait ainsi. Les appels reels sont des commandes explicites (`eval.yml`, mode `real`), jamais un test ordinaire.
 - Si le compteur de dev atteint 100 EUR, les essais s'arretent: la suite se discute avec le proprietaire, on ne releve pas le plafond de soi-meme.
 
+## Exercices et correction de copie (E1, `docs/E1-design.md` section 9)
+
+- **Plafond par correction: `COPIE_COST_CAP_EUR` = 0,08 EUR**; **par generation d'exercice: `EXO_GEN_COST_CAP_EUR` = 0,02 EUR**. `jobSpentEur` est obligatoire (refus AVANT l'appel quand le plafond est atteint); le dernier appel peut le depasser d'un appel, comme pour les scans. Plafond atteint: copie `echec`, motif `plafond_cout`, pages remboursees.
+- **Pire cas par copie: 0,16 EUR** (revue #100 M6). La tache `corriger` de la machine `copie` est reprise une fois sur erreur de service ou de limitation de debit; le plafond de 0,08 EUR vaut par execution de la Lambda (la depense est tenue en memoire), donc une copie peut couter deux plafonds. Pire cas par eleve et par mois (40 pages, 1 page par copie): 40 x 0,16 = 6,4 EUR en theorie, borne en pratique par le garde mensuel ci-dessous.
+- Garde mensuel et plafond d'essais de dev: les memes que pour les scans (`costGateFor`); `copies-submit` repond 429 `budget_epuise` au-dela du seuil de blocage.
+- Estimations (NON MESUREES, tailles supposees): environ 0,0075 EUR pour une copie d'une page, 0,018 EUR pour trois pages, 0,0014 EUR par generation. Pire cas par eleve et par mois (40 pages): environ 0,24 EUR.
+- Le quota de **pages de copie** (40 par eleve et par mois, 100 par famille en prod, x10 en dev) est SEPARE de celui des scans.
+- Mesure reelle avant ouverture: hors CI, 20 copies factices, 3 appels reels au plus par copie, budget d'environ 0,5 EUR, commande explicite.
+
 ## Test M2: qui peut appeler Bedrock (`infra/test/m2-bedrock.test.ts`)
 
 Le garde de cout ne protege que le code qui passe par `shared/bedrock.ts`. M2 verifie que **aucune autre identite** ne peut invoquer un modele. Le test synthetise TOUTES les stacks de l'application (dev et prod, y compris celles qu'un lot ajoutera) et echoue si:

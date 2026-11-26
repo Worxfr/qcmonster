@@ -5,7 +5,7 @@ import type { ZodType } from 'zod';
 import { log } from '../../../shared/log/index.js';
 import { PSEUDO_REFUSED_MESSAGE, PSEUDO_TAKEN_MESSAGE } from '../../../shared/pseudo-rules.js';
 
-export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question' | 'pseudo_refuse' | 'pseudo_pris';
+export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question' | 'pseudo_refuse' | 'pseudo_pris' | 'matiere_non_prevue' | 'plafond_exercices' | 'fiche_trop_courte' | 'pas_encore' | 'trop_tot' | 'deja_en_cours' | 'quota_copies' | 'plafond_copies' | 'copie_deja_rendue' | 'solution_vue' | 'en_correction';
 
 /** Erreur attendue, convertie en reponse du contrat. Toute autre erreur est journalisee (code seul) puis devient un 500 generique: rien n'est relance, donc le runtime Lambda ne journalise ni message ni pile (A4). */
 export class HttpError extends Error {
@@ -13,6 +13,7 @@ export class HttpError extends Error {
     readonly status: number,
     readonly code: ErrorCode,
     message: string,
+    readonly resetDate?: string,
   ) {
     super(message);
   }
@@ -132,7 +133,7 @@ export function wrap(step: string, fn: (event: APIGatewayProxyEventV2WithJWTAuth
     } catch (e) {
       if (e instanceof HttpError) {
         log({ step, status: 'rejected', durationMs: Date.now() - t0 });
-        return json(e.status, { code: e.code, message: e.message });
+        return json(e.status, { code: e.code, message: e.message, ...(e.resetDate ? { resetDate: e.resetDate } : {}) });
       }
       const name = e instanceof Error ? e.name : '';
       log({ step, status: 'error', durationMs: Date.now() - t0, errorCode: /^[A-Za-z0-9]{1,64}$/.test(name) ? name : 'Unknown' });

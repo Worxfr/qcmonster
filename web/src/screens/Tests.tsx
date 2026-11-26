@@ -1,7 +1,7 @@
 import { api } from '../api';
 import { ScoreBadge, TestList } from '../components/TestList';
 import { Card, ErrorBox, Loading } from '../components/ui';
-import { encouragement, fmtWhen, KIND_LABEL, modeLabel, verdict } from '../history';
+import { encouragement, fmtWhen, KIND_LABEL, lineLabel, modeLabel, verdict } from '../history';
 import { useLoad } from '../hooks';
 import { subjectClass, subjectLabel } from '../labels';
 import type { TestDetail } from '../types';
@@ -69,11 +69,12 @@ function QuestionCard({ q }: { q: Question }) {
   return (
     <li className={`q-card ${q.correct ? 'q-ok' : 'q-ko'}`}>
       <p className="q-head">
-        <span className="q-num">Question {q.rank}</span>
+        <span className="q-num">{lineLabel(q)}</span>
         <span className="muted">{KIND_LABEL[q.kind] ?? ''}</span>
         <span className={`pill ${v.cls}`}><span aria-hidden="true">{v.icon}</span> {v.text}</span>
+        {q.kind === 'exo' && <span className="muted">{q.xpGained} XP</span>}
       </p>
-      <p className="prompt">{q.prompt ?? "Cette question n'existe plus dans la fiche."}</p>
+      {q.kind !== 'exo' && <p className="prompt">{q.prompt ?? "Cette question n'existe plus dans la fiche."}</p>}
       {q.choices && q.choices.length > 0 ? (
         <ul className="q-choices" aria-label="Les choix">
           {q.choices.map((c) => {

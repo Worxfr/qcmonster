@@ -5,7 +5,7 @@ import type { Key } from './ddb/keys.js';
 import { recount, type TestLine } from './tests-history.js';
 
 /** Port minimal: liste les cles d'une partition (avec prefixe de SK facultatif) et supprime des cles. */
-export type TreeKey = Key & { studentId?: string; docId?: string; docIds?: string[] };
+export type TreeKey = Key & { studentId?: string; docId?: string; docIds?: string[]; /** E1: nombre de pages d'une COPIE#, pour deduire les cles S3 exactes. */ pages?: number };
 /** Resultat de `mutateTest`: supprimer l'element, le garder tel quel, ou l'ecrire reecrit. */
 export type TestMutation = 'supprimer' | 'garder' | Record<string, unknown>;
 export interface TreeDb {
@@ -35,11 +35,16 @@ async function removeAll(db: TreeDb, ks: Key[]): Promise<number> {
  * Controle d'appartenance: si la fiche n'est pas liee a l'eleve (`STUDENT#<sid>` / `DOC#<docId>`), ne supprime RIEN et renvoie 0
  * (un handler qui passe un docId pris dans l'URL ne peut pas effacer la fiche d'un autre eleve).
  */
-export async function deleteDocTree(db: TreeDb, sid: string, docId: string, opts: { garderTests?: boolean } = {}): Promise<number> {
+export async function deleteDocTree(db: TreeDb, sid: string, docId: string, opts: { garderTests?: boolean; /** E1: supprime ces cles S3 EXACTES (images de copie) AVANT toute suppression DynamoDB (S3 d'abord: interrompue, la reprise retrouve les elements). */ deleteFiles?: (keys: string[]) => Promise<void> } = {}): Promise<number> {
   assertIds(sid, docId);
   const link = (await db.list(`STUDENT#${sid}`, `DOC#${docId}`)).filter((k) => k.SK === `DOC#${docId}`);
   if (link.length === 0) return 0;
+  // E1: copies de cette fiche (images a supprimer, cles exactes deduites de `pages`) et progressions des exercices (EXOP#). EXO# part avec DOC#<docId>.
+  const copies = (await db.list(`STUDENT#${sid}`, 'COPIE#')).filter((k) => k.docId === docId);
+  const files = copies.flatMap((k) => Array.from({ length: Math.min(3, Math.max(0, k.pages ?? 0)) }, (_, i) => `copies/${sid}/${k.SK.slice('COPIE#'.length)}/p${i + 1}`));
+  if (files.length && opts.deleteFiles) await opts.deleteFiles(files);
   let n = await removeAll(db, await db.list(`DOC#${docId}`));
+  n += await removeAll(db, [...copies, ...(await db.list(`STUDENT#${sid}`, `EXOP#${docId}:`))].map(({ PK, SK }) => ({ PK, SK })));
   // Historique des tests (H1, decision P2): les passages sur cette fiche partent avec elle (`docId` est porte par chaque element TEST#).
   // Q1: un passage sur plusieurs fiches (`docIds` de 2 fiches ou plus) perd seulement les lignes de cette fiche; les autres passages partent comme avant.
   if (!opts.garderTests) {
@@ -149,12 +154,12 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, slee
             TableName: table,
             KeyConditionExpression: skPrefix ? 'PK = :p AND begins_with(SK, :s)' : 'PK = :p',
             ExpressionAttributeValues: skPrefix ? { ':p': pk, ':s': skPrefix } : { ':p': pk },
-            ProjectionExpression: 'PK, SK, studentId, docId, docIds',
+            ProjectionExpression: 'PK, SK, studentId, docId, docIds, pages',
             ExclusiveStartKey: start,
             ConsistentRead: true, // un element ecrit juste avant ne doit pas echapper a une suppression (RGPD)
           }),
         );
-        for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
+        for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
         start = r.LastEvaluatedKey;
       } while (start);
       return out;

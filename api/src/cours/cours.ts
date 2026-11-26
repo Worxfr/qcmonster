@@ -67,7 +67,7 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   for (let i = 0; i < docs.length; i += BATCH) {
     await mapLimit(docs.slice(i, i + BATCH), BATCH, async (d) => {
       const docId = d.SK.slice('DOC#'.length);
-      if (fiches === 'supprimer') await deleteDocTree(tree, sid, docId);
+      if (fiches === 'supprimer') await deleteDocTree(tree, sid, docId, { deleteFiles: (ks) => ctx.s3.deleteKeys(ks) });
       else await ctx.db.update({ PK: d.PK, SK: d.SK }, { remove: ['coursId', 'sectionIndex', 'sectionCount'], cond: { exists: true } });
     });
   }

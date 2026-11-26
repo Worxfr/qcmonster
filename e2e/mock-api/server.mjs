@@ -43,7 +43,7 @@ const suffix = () => Array.from({ length: 5 }, (_, i) => SUFFIX[(++sfx * 7 + i *
 
 let S;
 function reset({ role = 'eleve', family = true, student = true, pagesLimit = 20 } = {}) {
-  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, tokens: new Map(), archives: 0, bank: new Set(), seen: new Set(), docXp: new Map(), draw: null };
+  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, tokens: new Map(), archives: 0, bank: new Set(), seen: new Set(), docXp: new Map(), draw: null, exo: newExo() };
   if (family && student) S.students.push({ studentId: 'stu1', pseudo: 'lila-7k2fm', loginId: 'lila-7k2fm', displayName: 'Lila', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 });
 }
 reset();
@@ -90,7 +90,7 @@ function studentProgress() {
   const bySubj = new Map();
   for (const t of S.tests) { const a = bySubj.get(t.matiere) ?? []; a.push(t.scorePct); bySubj.set(t.matiere, a); }
   const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
-  const docs = S.tests.length ? H_SUBJ.map(([matiere, titre], k) => { const mine = S.tests.filter((t) => t.docId === `doc${k}`); return { docId: `doc${k}`, titre, matiere, pages: 2, createdAt: iso(), tests: mine.length, bestScorePct: Math.max(...mine.map((t) => t.scorePct)), lastScorePct: mine[0].scorePct, lastTestAt: mine[0].startedAt }; }) : [];
+  const docs = S.tests.length ? H_SUBJ.map(([matiere, titre], k) => { const mine = S.tests.filter((t) => t.docId === `doc${k}`); if (!mine.length) return null; return { docId: `doc${k}`, titre, matiere, pages: 2, createdAt: iso(), tests: mine.length, bestScorePct: Math.max(...mine.map((t) => t.scorePct)), lastScorePct: mine[0].scorePct, lastTestAt: mine[0].startedAt }; }).filter(Boolean) : [];
   const weeks = S.tests.length ? ['2026-W44', '2026-W45', '2026-W46', '2026-W47'].map((week, i) => ({ week, tests: 2 + i, avgScorePct: [40, 60, 80, 95][i], activeDays: 2 + i })) : [];
   return {
     student: S.students[0], progress: progress(), docs, scans: [], weeks,
@@ -359,6 +359,169 @@ function confirm(j, b) {
   return null;
 }
 
+// ---- E1: exercices et correction de copie (contrat 1.9.0). Petit automate fidele au contrat; aucun appel de modele. ----
+// Horloge simulee (`S.exo.skew`, avance par POST /__test/exo) pour le delai de 60 s, les 10 minutes avant la solution, le jour. Aucune attente reelle.
+// shortcut: les corrections sont deterministes (1re: 2 etapes sur 4 et finale fausse; ensuite: tout juste); les copies se resolvent a la 2e interrogation.
+const EXO_STEPS_1 = [
+  { id: 'e1', libelle: 'Choisir la bonne formule', statut: 'ok', indice: 'Bien vu : tu relies la distance et la durée.' },
+  { id: 'e2', libelle: 'Convertir la durée', statut: 'partiel', indice: "Regarde l'unité de la durée avant de calculer." },
+  { id: 'e3', libelle: 'Calculer le quotient', statut: 'faux', indice: 'Relis ton calcul de la division.' },
+];
+const EXO_STEPS_2 = EXO_STEPS_1.map((s) => ({ ...s, statut: 'ok', indice: 'Bien joué.' }));
+const EXO_ENONCES = [
+  ['Vitesse moyenne', 'Un cycliste roule 30 km en 1,5 h.\nCalcule sa vitesse moyenne en $\\mathrm{km/h}$.\nOn rappelle que $v = \\dfrac{d}{t}$.'],
+  ['Une fonction affine', 'Soit $f(x) = 3x - 5$.\nCalcule $f(4)$, puis trouve le nombre $x$ tel que $f(x) = 7$.'],
+  ['Énergie cinétique', 'Une balle de masse $m = 0{,}2\\ \\mathrm{kg}$ roule à $v = 3\\ \\mathrm{m/s}$.\nCalcule son énergie cinétique $E_c = \\dfrac{1}{2} m v^2$.'],
+  ['Pourcentage', 'Un article coûte 40 €. Son prix augmente de $15\\ \\%$.\nCalcule le nouveau prix.'],
+  ['Théorème de Pythagore', 'Un triangle $ABC$ est rectangle en $A$ avec $AB = 6$ et $AC = 8$.\nCalcule $BC$.'],
+];
+function newExo() {
+  return { exos: [], copies: [], skew: 0, day: 1, seq: 0, pagesUsed: 0, correctionsToday: 0, genToday: new Map(), flags: { illisible: 0, quota: false, tooShort: false } };
+}
+const exoNow = () => Date.now() + S.exo.skew;
+const exoMonth = () => new Date(exoNow()).toISOString().slice(0, 7);
+const nextMonth = () => { const d = new Date(exoNow()); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString(); };
+const maxXp = (exo) => Math.round(10 * (1 - 0.2 * exo.indicesDonnes.length));
+const exoResume = (x) => ({ exoId: x.exoId, titre: x.titre, etat: x.etat, points: 10, ...(x.meilleurMilli !== undefined ? { meilleurMilli: x.meilleurMilli } : {}), xpPaye: x.xpPaye, solutionVue: x.solutionVue });
+const exoPublic = (x) => {
+  const ready = x.etat === 'prete';
+  return {
+    exoId: x.exoId, docId: x.docId, etat: x.etat, ...(ready ? { titre: x.titre, enonce: x.enonce } : {}), points: 10,
+    indicesVus: x.indicesDonnes.length, indicesTotal: 3, indicesDonnes: x.indicesDonnes, nbCopies: x.nbCopies, copiesRestantes: Math.max(0, 3 - x.nbCopies), solutionVue: x.solutionVue,
+  };
+};
+function addExo(docId, etat = 'prete') {
+  const k = S.exo.exos.filter((x) => x.docId === docId).length;
+  const [titre, enonce] = EXO_ENONCES[k % EXO_ENONCES.length];
+  const x = { exoId: `${docId}.${String(k + 1).padStart(2, '0')}`, docId, etat, polls: 0, titre, enonce, indicesDonnes: [], lastHintAt: 0, openedAt: 0, nbCopies: 0, xpPaye: 0, solutionVue: false, hints: ['Pense à la formule qui relie les grandeurs.', "Regarde les unités : sont-elles les mêmes partout ?", 'Écris chaque calcul sur une ligne, puis vérifie le résultat.'] };
+  S.exo.exos.push(x);
+  return x;
+}
+const stepsOf = (c) => (c.k >= 2 ? EXO_STEPS_2 : EXO_STEPS_1);
+
+/** Credit a la premiere lecture d'une copie corrigee (idempotent), comme `GET /copies/{id}` du contrat. */
+function creditCopie(c, exo) {
+  if (c.credite) return;
+  c.credite = true;
+  const doc = S.docs.find((d) => d.docId === exo.docId);
+  const gain = exo.solutionVue ? 0 : Math.max(0, Math.floor(maxXp(exo) * (c.scoreMilli / 1000)) - exo.xpPaye);
+  c.xpGagne = gain;
+  exo.xpPaye += gain;
+  exo.meilleurMilli = Math.max(exo.meilleurMilli ?? 0, c.scoreMilli);
+  S.xp += gain;
+  const steps = stepsOf(c);
+  const lines = [...steps.map((s, i) => ({ id: s.id, ok: s.statut === 'ok', rank: i + 1 })), { id: 'f', ok: c.finale.statut === 'juste', rank: steps.length + 1 }];
+  const nn = exo.exoId.split('.').pop();
+  const test = {
+    testId: `01JF5EX0${String(S.exo.seq++).padStart(18, '0')}`, docId: exo.docId, titre: doc?.title ?? exo.titre, matiere: doc?.subject ?? 'maths', mode: 'exercice', schoolYear: schoolYearOf(Date.now()), startedAt: iso(), endedAt: iso(),
+    total: lines.length, answered: lines.length, correct: lines.filter((l) => l.ok).length, firstTry: c.k === 1 ? lines.filter((l) => l.ok).length : 0, scorePct: Math.round((100 * lines.filter((l) => l.ok).length) / lines.length), xpGained: gain, status: 'complet',
+    questions: lines.map((l) => ({ questionId: `${exo.docId}:exo:${nn}#${l.id}`, rank: l.rank, kind: 'exo', correct: l.ok, attempts: 1, firstTry: c.k === 1 && l.ok, xpGained: 0, answeredAt: iso() })),
+  };
+  S.tests.unshift(test);
+}
+function copieOut(c, exo) {
+  if (c.etat === 'en_correction' && ++c.gets >= 3) { // resolue a la 3e interrogation (le mode strict de React en fait 2 au montage)
+    if (S.exo.flags.illisible > 0) { S.exo.flags.illisible -= 1; c.etat = 'illisible'; }
+    else { c.etat = 'corrigee'; exo.nbCopies += 1; c.k = exo.nbCopies; const st = stepsOf(c); c.scoreMilli = c.k >= 2 ? 1000 : 600; c.finale = { libelle: 'Vitesse moyenne', statut: c.k >= 2 ? 'juste' : 'fausse' }; const good = st.filter((s) => s.statut === 'ok').length + (c.k >= 2 ? 1 : 0); c.bilan = `${good} ${good > 1 ? 'étapes' : 'étape'} sur ${st.length + 1}`; }
+    S.exo.correctionsToday += 1;
+  }
+  if (c.etat === 'corrigee') creditCopie(c, exo);
+  const base = { copieId: c.copieId, exoId: c.exoId, etat: c.etat, solutionVue: exo.solutionVue };
+  if (c.etat !== 'corrigee') return base;
+  return { ...base, etapes: stepsOf(c), finale: c.finale, scoreMilli: c.scoreMilli, bilan: c.bilan, xpGagne: c.xpGagne };
+}
+
+/** Routes E1. Renvoie true si la requete est traitee. Le parent n'a acces a rien (403). */
+function exoRoutes(res, m, seg, b, parent) {
+  const E = S.exo;
+  const isDocExo = seg[1] === 'docs' && seg[3] === 'exercices';
+  const isExo = seg[1] === 'exercices' && seg[2];
+  const isCopie = seg[1] === 'copies' && seg[2];
+  if (!isDocExo && !isExo && !isCopie) return false;
+  if (parent) return err(res, 403, 'interdit', 'Interdit'), true;
+  const nf = () => (err(res, 404, 'introuvable', 'Introuvable'), true);
+  const id = decodeURIComponent(seg[2] ?? '');
+  if (isDocExo) {
+    const d = S.docs.find((x) => x.docId === id);
+    if (!d) return nf();
+    if (m === 'GET') return send(res, 200, { items: E.exos.filter((x) => x.docId === id).map(exoResume) }), true;
+    if (m === 'POST') {
+      if (!['maths', 'physique'].includes(d.subject)) return err(res, 409, 'matiere_non_prevue', 'Les exercices existent pour les maths et la physique-chimie'), true;
+      if (E.flags.tooShort) return err(res, 409, 'fiche_trop_courte', 'Cette fiche est trop courte'), true;
+      if (E.exos.filter((x) => x.docId === id).length >= 5 || (E.genToday.get(id) ?? 0) >= 1 || [...E.genToday.values()].reduce((a, n) => a + n, 0) >= 5) return err(res, 409, 'plafond_exercices', 'Tu as atteint la limite d’exercices'), true;
+      E.genToday.set(id, (E.genToday.get(id) ?? 0) + 1);
+      const x = addExo(id, 'generation');
+      return send(res, 202, { exoId: x.exoId, etat: 'generation' }), true;
+    }
+    return false;
+  }
+  if (isExo) {
+    const x = E.exos.find((e) => e.exoId === id);
+    if (!x) return nf();
+    if (m === 'GET' && !seg[3]) {
+      if (x.etat === 'generation' && ++x.polls >= 3) x.etat = 'prete'; // prete a la 3e interrogation
+      if (x.etat === 'prete' && !x.openedAt) x.openedAt = exoNow();
+      return send(res, 200, exoPublic(x)), true;
+    }
+    if (m === 'POST' && seg[3] === 'indice') {
+      if (x.indicesDonnes.length >= 3) return err(res, 409, 'etat_invalide', 'Plus d’indice'), true;
+      x.indicesDonnes.push(x.hints[x.indicesDonnes.length]);
+      x.lastHintAt = exoNow();
+      return send(res, 200, { rang: x.indicesDonnes.length, texte: x.indicesDonnes.at(-1), indicesRestants: 3 - x.indicesDonnes.length }), true;
+    }
+    if (m === 'POST' && seg[3] === 'solution') {
+      const corrected = E.copies.some((c) => c.exoId === id && c.etat === 'corrigee');
+      if (!x.solutionVue && !corrected && !(x.indicesDonnes.length === 3 && exoNow() - x.lastHintAt >= 600e3)) return err(res, 409, 'pas_encore', "Essaie d'abord l'exercice"), true;
+      x.solutionVue = true;
+      return send(res, 200, { solution: 'On utilise $v = \\dfrac{d}{t}$, donc $v = \\dfrac{30}{1{,}5} = 20\\ \\mathrm{km/h}$.' }), true;
+    }
+    if (m === 'POST' && seg[3] === 'copies') {
+      if (!(b.pages >= 1 && b.pages <= 3) || !['image/jpeg', 'image/png'].includes(b.contentType)) return err(res, 400, 'requete_invalide', 'Demande invalide'), true;
+      if (E.copies.some((c) => c.etat === 'en_correction')) return err(res, 409, 'deja_en_cours', 'Une correction est déjà en cours'), true;
+      if (E.flags.quota || E.pagesUsed + b.pages > 40) return send(res, 409, { code: 'quota_copies', message: 'Plus assez de pages de copie ce mois-ci', resetDate: nextMonth() }), true;
+      if (x.nbCopies >= 3 || E.correctionsToday >= 5) return err(res, 409, 'plafond_copies', 'Tu as déjà rendu cet exercice 3 fois'), true;
+      E.copies = E.copies.filter((c) => c.etat !== 'a_envoyer'); // une seule copie a envoyer: la nouvelle remplace l'ancienne
+      const copieId = `01JCOPIE${String(++E.seq).padStart(18, '0')}`;
+      E.copies.push({ copieId, exoId: id, etat: 'a_envoyer', pages: b.pages, received: 0, gets: 0 });
+      const envois = Array.from({ length: b.pages }, (_, i) => ({ page: i + 1, url: `${BASE}/__s3c/${copieId}/${i + 1}`, fields: { key: `copies/stu1/${copieId}/p${i + 1}`, 'Content-Type': b.contentType } }));
+      return send(res, 201, { copieId, envois, expireA: iso(Date.now() + 600e3) }), true;
+    }
+    return false;
+  }
+  const c = E.copies.find((k) => k.copieId === id);
+  const exo = c && E.exos.find((e) => e.exoId === c.exoId);
+  if (!c || !exo) return nf();
+  if (m === 'POST' && seg[3] === 'submit') {
+    if (c.etat !== 'a_envoyer') return err(res, 409, 'etat_invalide', 'Cette copie est déjà envoyée'), true;
+    if (c.received < c.pages) return err(res, 400, 'requete_invalide', 'Il manque une page'), true;
+    if (E.copies.some((k) => k.etat === 'en_correction')) return err(res, 409, 'deja_en_cours', 'Une correction est déjà en cours'), true;
+    if (exo.nbCopies >= 3 || E.correctionsToday >= 5) return err(res, 409, 'plafond_copies', 'Tu as déjà rendu cet exercice 3 fois'), true;
+    if (exoNow() - exo.openedAt < 60e3) return err(res, 409, 'trop_tot', "Prends le temps de faire l'exercice"), true;
+    E.pagesUsed += c.pages;
+    c.etat = 'en_correction';
+    return send(res, 202, { etat: 'en_correction' }), true;
+  }
+  if (m === 'GET' && !seg[3]) return send(res, 200, copieOut(c, exo)), true;
+  if (m === 'DELETE' && !seg[3]) {
+    if (c.etat === 'en_correction') return err(res, 409, 'en_correction', 'La correction est en cours'), true;
+    E.copies = E.copies.filter((k) => k !== c);
+    return send(res, 204), true;
+  }
+  return false;
+}
+
+/** Pilotage des tests: horloge, jour suivant, quota atteint, copie illisible, fiche trop courte, exercices deja prets (`seed`). */
+function exoTest(b) {
+  const E = S.exo;
+  if (b.skewMs) E.skew += Number(b.skewMs);
+  if (b.nextDay) { E.day += 1; E.genToday.clear(); E.correctionsToday = 0; }
+  if (b.quota !== undefined) E.flags.quota = !!b.quota;
+  if (b.illisible !== undefined) E.flags.illisible = Number(b.illisible);
+  if (b.tooShort !== undefined) E.flags.tooShort = !!b.tooShort;
+  if (b.seed) for (let i = 0; i < b.seed.count; i++) { const x = addExo(b.seed.docId); if (b.seed.xpPaye && i === 0) { x.xpPaye = b.seed.xpPaye; x.meilleurMilli = 600; } }
+  return { exos: E.exos.map((x) => x.exoId), copies: E.copies.length };
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, BASE);
   const p = url.pathname;
@@ -369,6 +532,13 @@ const server = createServer(async (req, res) => {
     const j = S.jobs.find((x) => x.jobId === p.split('/')[2]);
     if (S.fail === 's3') return err(res, 500, 'erreur', 'panne');
     if (j) { j.received += 1; j.bytes += body.length; if (j.received >= j.pages) { j.state = 'transcription'; j.readyAt = Date.now() + T_READ; } }
+    return send(res, 204);
+  }
+  if (p.startsWith('/__s3c/')) { // faux S3 des copies: une page par POST
+    const body = await readBody(req);
+    const c = S.exo.copies.find((x) => x.copieId === p.split('/')[2]);
+    if (S.fail === 's3') return err(res, 500, 'erreur', 'panne');
+    if (c && body.length) c.received += 1;
     return send(res, 204);
   }
   if (p.startsWith('/__photo/')) {
@@ -382,6 +552,7 @@ const server = createServer(async (req, res) => {
   if (p === '/__test/role') { S.role = b.role === 'parent' ? 'parent' : 'eleve'; return send(res, 200, { ok: true }); }
   if (p === '/__test/history') { seedHistory(b); return send(res, 200, { tests: S.tests.length }); }
   if (p === '/__test/policy') { S.policyOutdated = b.outdated !== false; return send(res, 200, { ok: true }); }
+  if (p === '/__test/exo') return send(res, 200, exoTest(b));
   if (p === '/__test/fail') { S.fail = b.mode ?? null; return send(res, 200, { ok: true }); }
   if (p === '/__test/state') return send(res, 200, { jobs: S.jobs.length, docs: S.docs.length, cours: S.cours.length, pagesRemaining: S.pagesLimit - used(), uploadedBytes: S.jobs.reduce((a, j) => a + j.bytes, 0) });
   const parent = S.role === 'parent';
@@ -398,6 +569,7 @@ const server = createServer(async (req, res) => {
     return send(res, 201, { userId: 'u-parent', role: 'parent', familyId: 'fam1' });
   }
   if (!S.family) return err(res, 404, 'introuvable', 'Introuvable');
+  if (exoRoutes(res, m, seg, b, parent)) return;
   switch (`${m} ${p}`) {
     case 'GET /me/progress': return send(res, 200, progress());
     case 'GET /me/tests': return parent ? err(res, 403, 'interdit', 'Interdit') : send(res, 200, testPage(url.searchParams));
@@ -466,7 +638,7 @@ const server = createServer(async (req, res) => {
       S.folders.push(f);
       return send(res, 201, folderOut(f));
     }
-    case 'GET /docs': return send(res, 200, { items: S.docs.map(({ claims: _c, summary: _s, ...d }) => d) });
+    case 'GET /docs': return send(res, 200, { items: S.docs.map(({ claims: _c, summary: _s, ...d }) => ({ ...d, exerciceCount: S.exo.exos.filter((x) => x.docId === d.docId).length })) });
     case 'POST /practice/session': return parent ? err(res, 403, 'interdit', 'Interdit') : practice(res, b);
     case 'POST /answers': {
       const bq = [...S.bank].some((d) => String(b.questionId).startsWith(`${d}-`));

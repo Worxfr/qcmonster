@@ -163,3 +163,18 @@ Aucun nouvel element: des attributs s'ajoutent a des elements existants (docs/F1
 
 - Restauration (`restoreAfterFailedAppend`, `api/src/pipeline/append.ts`): fiches du job, textes `> pagesBefore`, en-tete et blocs ramenes a la base, images des nouvelles figures, copie de travail, `restoredAt`, puis verrou. Idempotente; chaque ecriture sur le cours exige `appendJobId = <ce job>`. Le cours n'est jamais supprime par un echec d'ajout.
 - `jobIds` n'est pas nettoye par la restauration (ensemble DynamoDB): un `jobId` en trop est sans effet (`DELETE /cours` retire `coursId` des jobs qui existent encore).
+
+## E1: exercices et copies (contrat 1.9.0, `docs/E1-design.md` section 2)
+
+Aucune table, aucun index, aucun bucket nouveau. Nouveaux types d'elements:
+
+| Type | PK / SK | Ecrit par |
+|---|---|---|
+| `EXO` (enonce, etapes, finale, indices, solution; secrets, jamais dans le contrat) | `DOC#<docId>` / `EXO#<nn>` | `exo-gen` seul (`attribute_not_exists`) |
+| `EXOP` (progression: etat, indices vus, nombre de copies, XP paye, solution vue, empreintes SHA-256 des pages corrigees) | `STUDENT#<sid>` / `EXOP#<docId>:<nn>` | `exo-post`, `exo-get`, indices et solution (role `play`), `exo-gen` (etat), `copies-submit` (nombre de copies), `copie-correct` (empreintes), `copie-get` (XP) |
+| `COPIE` (etat, pages, statut par etape, note, XP; ni image, ni texte lu) | `STUDENT#<sid>` / `COPIE#<copieId>` | `copies-create`, `copies-submit`, `copie-correct`, `copie-fail`, `copie-get` (credit) |
+| `COPIEQ` (pages du mois, `ttl` 40 j; quota SEPARE des scans) | `STUDENT#<sid>` ou `FAMILY#<fid>` / `COPIEQ#<aaaa-mm>` | `copies-submit`, remboursement par `copie-fail` |
+| `COPIEJ` (compteurs du jour, `ttl` 2 j) | `STUDENT#<sid>` / `COPIEJ#<jour>` | `exo-post`, `copies-submit`, `copie-fail` |
+| Verrous `COPIEOUV` (copie a envoyer) et `COPIEACTIVE` (correction en cours) | `STUDENT#<sid>` / `COPIEOUV`, `COPIEACTIVE` | `copies-create`, `copies-submit`, liberes par `copie-correct` et `copie-fail` sous condition `copieId` |
+
+Images: `copies/<eleve>/<copie>/p<n>` dans le bucket des scans (regle S3 de 1 jour), supprimees par cles exactes des la fin de la correction. Historique: une entree `TEST#` de mode `exercice` par correction creditee, lignes `kind: exo` (`<docId>:exo:<nn>#<etape>`, finale `#f`), sans texte.

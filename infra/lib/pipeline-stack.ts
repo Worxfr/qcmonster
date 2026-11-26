@@ -15,7 +15,7 @@ import { buildSync } from 'esbuild';
 import type { Construct } from 'constructs';
 import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { CONFIRM_TIMEOUT_S, MACHINE_TIMEOUT_MIN_S, MAX_SECTIONS, machineTimeoutNeededS } from '../../shared/scans.js';
-import { fn, FIGURES_BUCKET_PARAM, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
+import { COPIES_PREFIX, fn, FIGURES_BUCKET_PARAM, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
 
 export interface PipelineStackProps extends StackProps {
   envName: Env;
@@ -110,6 +110,8 @@ export const API_FUNCTIONS = {
 export const EXPORT_FUNCTIONS = { 'me-export-archive': 'meExportArchiveHandler', 'student-export-build': 'studentExportBuildHandler' } as const;
 /** Fonction (et seule) qui recoit la couche `sharp`. */
 export const CROP_FUNCTION = 'crop-figures';
+/** Parametre SSM (sous /qcm/<env>/) de l'ARN de la couche `sharp`, reutilisee par `copie-correct` (E1). */
+export const SHARP_LAYER_PARAM = 'pipeline/sharpLayerArn';
 export const STEP_FUNCTIONS = {
   scanStart: ['scan-start', 'scanStartHandler'],
   awaitUpload: ['upload-await', 'awaitUploadHandler'],
@@ -214,6 +216,12 @@ export class PipelineStack extends Stack {
     // Suppression (docs-delete): lit pour verifier l'appartenance, supprime la fiche et le texte lu. Aucune photo.
     // Q1: supprimer une fiche d'un passage de test sur plusieurs fiches REECRIT ce passage (`mutateTest` = UpdateItem conditionnel a la version, STUDENT#), seule ecriture du role.
     deleteRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem']));
+    // E1 (design 5.2): supprimer une fiche supprime aussi les images des copies (cles exactes deduites de COPIE#.pages, SANS lister) AVANT l'arbre DynamoDB.
+    // La lecture des COPIE# (partition STUDENT#) est deja couverte par GetItem/Query ci-dessus; EXO# (partition DOC#), EXOP#, COPIE#, TEST# (STUDENT#) par DeleteItem/BatchWriteItem.
+    // Aucun GetObject ni ListBucket sur copies/.
+    const copieObjects = `${bucketArn}/${COPIES_PREFIX}*`;
+    const deleteCopies = () => new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [copieObjects] });
+    deleteRole.addToPolicy(deleteCopies());
     // FEAT-A. Toutes les conditions portent sur la cle de partition (IAM ne filtre pas la cle de tri: le code et ses tests gardent les types d'elements).
     const leading = (actions: string[], ...pks: string[]) =>
       new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`], conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': pks } } });
@@ -235,6 +243,7 @@ export class PipelineStack extends Stack {
     // photos (DeleteObject + ListBucket du prefixe scans/) et SendTaskFailure pour liberer la machine. Ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#.
     scansDeleteRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:PutItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*', 'JOB#*', 'DOC#*')); // F10: DOC#* pour la restauration d'un ajout dont la fin a ete interrompue (fiches du job)
     scansDeleteRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [objects] }));
+    scansDeleteRole.addToPolicy(deleteCopies()); // E1: supprimer un scan supprime ses fiches (deleteDocTree) donc les images de leurs copies
     scansDeleteRole.addToPolicy(listScans);
     scansDeleteRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:SendTaskFailure'], resources: ['*'] })); // l'API n'accepte pas de ressource
     // cours-api GET: lecture seule de COURS# (partition STUDENT#). Le parent n'a aucun droit.
@@ -243,6 +252,7 @@ export class PipelineStack extends Stack {
     // cours-delete: supprime le cours (STUDENT#), l'arbre de chaque fiche (DOC#), la copie de travail (JOB#), retire coursId (UpdateItem) et supprime les signalements (FAMILY#: Query + BatchWriteItem). Pas de PutItem, S3, Bedrock.
     coursRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'STUDENT#*', 'DOC#*', 'JOB#*'));
     coursRole.addToPolicy(leading(['dynamodb:Query', 'dynamodb:BatchWriteItem'], 'FAMILY#*'));
+    coursRole.addToPolicy(deleteCopies()); // E1: `fiches: 'supprimer'` appelle deleteDocTree (images des copies de ces fiches)
     // --- R1-B: bucket des figures (docs/R1-design.md 12). Jamais de joker de bucket; l'isolation par eleve est faite par le handler (cle construite avec le sid du jeton), pas par IAM.
     const listFigures = new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [figuresArn], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } });
     const figureGet = new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [figureObjects] });
@@ -379,6 +389,8 @@ export class PipelineStack extends Stack {
     };
     exportFns['me-export-archive'].addEnvironment('QCM_EXPORT_FUNCTION', fn(envName, 'student-export-build'));
     exportFns['me-export-archive'].addPermission('ApiGateway', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: this.formatArn({ service: 'execute-api', resource: apiId, resourceName: '*/*' }) });
+    // E1: la fonction `copie-correct` (stack Exo) reutilise cette couche: son ARN est publie dans SSM, lu par la stack Exo (qui depend de celle-ci).
+    new ssm.StringParameter(this, 'ParamSharpLayer', { parameterName: ssmParam(envName, SHARP_LAYER_PARAM), stringValue: sharpLayer.layerVersionArn });
     const S = STEP_FUNCTIONS;
     const fns = {
       scanStart: mk(...S.scanStart, triggerRole),

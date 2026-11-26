@@ -108,3 +108,42 @@ export function bigFile(mb: number): string {
   writeFileSync(f, Buffer.alloc(mb * 1024 * 1024, 1));
   return f;
 }
+
+/** Pilotage de l'automate d'exercices (E1, mode mock seulement). Horloge simulee: aucune attente reelle. */
+export const exoFake = {
+  async set(opts: { skewMs?: number; nextDay?: boolean; quota?: boolean; illisible?: number; tooShort?: boolean; seed?: { docId: string; count: number; xpPaye?: number } }) {
+    if (isMock) await post('/__test/exo', opts);
+  },
+  /** Fait passer les 60 s apres l'ouverture de l'exercice (sinon `trop_tot`). */
+  async wait60() {
+    await exoFake.set({ skewMs: 61_000 });
+  },
+};
+
+/** Petites pages de copie fabriquees par le navigateur (JPEG ou PNG valides, quelques Ko), ecrites dans e2e/.tmp. */
+export async function makeCopiePhotos(page: Page, count: number, type: 'jpeg' | 'png' = 'jpeg'): Promise<string[]> {
+  mkdirSync(TMP, { recursive: true });
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const b64 = await page.evaluate(([n, mime]) => {
+      const c = document.createElement('canvas');
+      c.width = 600;
+      c.height = 800;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#fffef8';
+      g.fillRect(0, 0, 600, 800);
+      g.strokeStyle = '#c7d2fe';
+      for (let y = 60; y < 800; y += 40) { g.beginPath(); g.moveTo(0, y); g.lineTo(600, y); g.stroke(); }
+      g.fillStyle = '#1e3a8a';
+      g.font = '30px cursive';
+      g.fillText(`Page ${n}`, 40, 50);
+      g.fillText('v = d / t = 30 / 1,5', 40, 130);
+      g.fillText('v = 20 km/h', 40, 210);
+      return c.toDataURL(mime as string, 0.6).split(',')[1];
+    }, [i + 1, `image/${type}`] as const);
+    const f = resolve(TMP, `copie-${i + 1}.${type === 'jpeg' ? 'jpg' : 'png'}`);
+    writeFileSync(f, Buffer.from(b64, 'base64'));
+    out.push(f);
+  }
+  return out;
+}

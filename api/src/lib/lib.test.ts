@@ -83,9 +83,11 @@ describe('aleatoire', () => {
 
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
-  const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
+  // E1: exo-gen, copie-correct et copie-fail sont invoquees par Lambda asynchrone et Step Functions (entree sans contenu), jamais par une route: pas de jeton.
+  const ASYNC = ['exo-gen.ts', 'copie-correct.ts', 'copie-fail.ts'];
+  const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts' && !ASYNC.includes(f));
   it('20 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(20);
+    expect(files).toHaveLength(29); // 20 + 9 handlers E1 de la pile Game
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT
@@ -243,14 +245,16 @@ describe('photos', () => {
     const client = {
       send: async (c: { constructor: { name: string }; input: Record<string, unknown> }) => {
         calls.push({ name: c.constructor.name, input: c.input });
+        if (c.constructor.name === 'ListObjectsV2Command' && String(c.input.Prefix).startsWith('copies/')) return {}; // E1: copies d'abord (aucune)
         if (c.constructor.name === 'ListObjectsV2Command') return page++ === 0 ? { Contents: [{ Key: 'scans/stu1/job1/0' }, {}], NextContinuationToken: 't' } : {};
         return { Errors: state.errors };
       },
     };
     await s3Photos('bucket-1', client as never).deleteForStudent('stu1');
-    expect(calls.map((c) => c.name)).toEqual(['ListObjectsV2Command', 'DeleteObjectsCommand', 'ListObjectsV2Command']);
-    expect(calls[0].input.Prefix).toBe('scans/stu1/');
-    expect((calls[1].input.Delete as { Objects: unknown[] }).Objects).toEqual([{ Key: 'scans/stu1/job1/0' }]);
+    expect(calls.map((c) => c.name)).toEqual(['ListObjectsV2Command', 'ListObjectsV2Command', 'DeleteObjectsCommand', 'ListObjectsV2Command']);
+    expect(calls[0].input.Prefix).toBe('copies/stu1/'); // E1: les copies d'abord
+    expect(calls[1].input.Prefix).toBe('scans/stu1/');
+    expect((calls[2].input.Delete as { Objects: unknown[] }).Objects).toEqual([{ Key: 'scans/stu1/job1/0' }]);
     calls.length = 0;
     await s3Photos('bucket-1', client as never).deleteForStudent('../x');
     expect(calls).toEqual([]);

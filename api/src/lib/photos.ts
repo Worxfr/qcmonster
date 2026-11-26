@@ -35,6 +35,7 @@ export function s3Photos(bucket: string, client: S3Client = new S3Client({}), fi
     },
     async deleteForStudent(studentId) {
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(studentId)) return; // jamais de prefixe construit a partir d'une valeur inattendue
+      await deletePrefix(client, bucket, `copies/${studentId}/`); // E1: copies en cours de correction (S3 d'abord, puis DynamoDB)
       let token: string | undefined;
       do {
         const l = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: `${SCAN_EVENT_PREFIX}${studentId}/`, ContinuationToken: token }));

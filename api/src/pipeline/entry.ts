@@ -68,6 +68,8 @@ export async function s3Store(bucket: string): Promise<ScanStore> {
       for (let keys = await list(prefix); keys.length; keys = await list(prefix)) {
         await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true } }));
       }
+    },    async deleteKeys(keys) {
+      if (keys.length) await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.slice(0, 1000).map((Key) => ({ Key })), Quiet: true } }));
     },
   };
 }

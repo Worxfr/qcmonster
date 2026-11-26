@@ -67,7 +67,7 @@ export function openFor(p: PlayProfile, questionId: string, now: number): { ok: 
 export interface AnswerFacts {
   docId: string;
   questionId: string;
-  kind: 'qcm' | 'gap';
+  kind: 'qcm' | 'gap' | 'exo';
   fiche: Item;
   correct: boolean;
   choice: string;
@@ -210,7 +210,7 @@ export async function getTestStatus(deps: Deps, studentId: string, testId: strin
 export interface QuestionResultView {
   questionId: string;
   rank: number;
-  kind: 'qcm' | 'gap';
+  kind: 'qcm' | 'gap' | 'exo';
   correct: boolean;
   attempts: number;
   firstTry: boolean;

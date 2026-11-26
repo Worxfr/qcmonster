@@ -8,6 +8,7 @@ export const UNTAGGABLE = new Set([
   'AWS::IAM::Policy',
   'AWS::IAM::ManagedPolicy',
   'AWS::Lambda::Permission',
+  'AWS::Lambda::EventInvokeConfig', // pas de tags dans CloudFormation (reglage d'appel asynchrone de exo-gen, E1)
   'AWS::Lambda::LayerVersion', // CloudFormation n'accepte pas de tags sur une version de couche (R1-B)
   'AWS::Cognito::UserPoolClient',
   'AWS::Cognito::UserPoolGroup',
