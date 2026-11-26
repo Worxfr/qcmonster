@@ -433,6 +433,24 @@ describe('FEAT-A (lot I): machine rejouee avec des handlers simules', () => {
     expect(r.calls.filter((c) => c.state === 'Generation').map((c) => c.input.index)).toEqual([0, 1]);
     expect(r.calls.find((c) => c.state === 'Verification')!.input).toEqual({ jobId: 'j1', docId: 'd0', budgetRestantCentimes: 40 });
   });
+  it('M1 (lecon de #100: un identifiant oublie dans Parameters): chaque etape recoit exactement les identifiants que son handler lit, sans valeur absente', async () => {
+    const ids = ['jobId', 'sid'];
+    const expected: Record<string, string[]> = {
+      ControleFichier: ids, Transcription: ids, RognageFigures: ids, PlanSections: ids, ConsommationQuota: ids, Finalisation: ids,
+      Extraction: [...ids, 'index'], Generation: [...ids, 'index'], CoutSection: [...ids, 'index', 'docId', 'verify'],
+      Verification: ['jobId', 'docId', 'budgetRestantCentimes'], AttenteEnvoi: [...ids, 'token'], AttenteConfirmation: [...ids, 'token'],
+    };
+    const ok = await go(base());
+    for (const c of ok.calls) {
+      expect(Object.keys(c.input).sort(), c.state).toEqual([...expected[c.state]].sort());
+      for (const [k, v] of Object.entries(c.input)) expect(v, `${c.state}.${k}`).not.toBeUndefined();
+    }
+    expect(new Set(ok.calls.map((c) => c.state))).toEqual(new Set(Object.keys(expected)));
+    // le filet recoit les memes identifiants plus l'erreur
+    const ko = await go(base({ Generation: () => { throw new Error('boom'); } }));
+    expect(Object.keys(ko.calls.find((c) => c.state === 'MarquerEchec')!.input).sort()).toEqual(['error', 'jobId', 'sid']);
+    for (const [k, v] of Object.entries(ko.calls.find((c) => c.state === 'MarquerEchec')!.input)) expect(v, k).not.toBeUndefined();
+  });
   it('une section sans affirmation (claims 0) passe a la suivante sans verify-run ni cout', async () => {
     const r = await go(base({ Extraction: (i: In) => ({ ok: true, docId: `d${i.index}`, claims: i.index === 0 ? 0 : 4, budgetRestantCentimes: i.index === 0 ? 0 : 40 }) }));
     expect(r.end).toBe('Fiche-publiee');

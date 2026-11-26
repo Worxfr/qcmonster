@@ -130,7 +130,7 @@ export async function buildStudentExport(deps: StudentExportDeps, i: { sid: stri
           omittedCourses++;
         }
       }
-      const texts = part.filter((x) => x.SK.startsWith(`COURS#${coursId}#T`)).map((t) => ({ page: t.page, sentences: t.sentences })).sort((p, q) => Number(p.page) - Number(q.page));
+      const texts = part.filter((x) => x.SK.startsWith(`COURS#${coursId}#T`)).map((t) => ({ page: t.page, sentences: (t.sentences as { added?: boolean }[] | undefined)?.map(({ added: _added, ...rest }) => rest) })).sort((p, q) => Number(p.page) - Number(q.page));
       return { ...coursMeta(h, existing), texts, ...(b ? { blocks: b.blocks, figures: b.figures } : {}) };
     });
 

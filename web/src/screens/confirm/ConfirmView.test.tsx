@@ -470,3 +470,96 @@ describe('503 à la confirmation avec images gardées', () => {
     expect((sent[2] as { figures: unknown[] }).figures).toEqual([{ figureId: 'f1', keep: false }]);
   });
 });
+
+describe('M1 #89: ajouter une phrase oubliée', () => {
+  const FILL45 = 'mot '.repeat(45).trim();
+  /** Ouvre la phrase n, puis « Ajouter une phrase après celle-ci », écrit le texte et valide. */
+  async function addAfter(n: number, text: string, opts: { newBlock?: boolean } = {}) {
+    await openSentence(n);
+    await userEvent.click(screen.getByRole('button', { name: /Ajouter une phrase après celle-ci/ }));
+    const box = await screen.findByLabelText(/Phrase oubliée à ajouter ici/);
+    await userEvent.type(box, text);
+    if (opts.newBlock) await userEvent.click(screen.getByRole('checkbox', { name: /nouveau paragraphe/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la phrase' }));
+  }
+
+  it('en milieu de paragraphe: la phrase apparaît à sa place, marquée « Ajoutée par toi », comptée, et part avec `added`', async () => {
+    stub({ ...tr([[FILL45, 'Deux.', 'Trois.']]), blocks: blocks(['p1-s1', 'p1-s2', 'p1-s3']) });
+    await open();
+    await addAfter(1, 'La phrase oubliée.');
+    expect(screen.getByText(/4 phrases, 0 corrigée, 1 ajoutée/)).toBeInTheDocument();
+    expect(sentenceBtn(2)).toHaveTextContent('La phrase oubliée.');
+    expect(sentenceBtn(2)).toHaveAccessibleName(/ajoutée par toi/i);
+    expect(sentenceBtn(3)).toHaveTextContent('Deux.');
+    await userEvent.click(screen.getByRole('button', { name: /C'est bon, vérifie/ }));
+    expect(lastSent().added).toEqual([{ key: 'n1', afterId: 'p1-s1', text: 'La phrase oubliée.' }]);
+    expect(lastSent().corrections).toEqual([]);
+  });
+
+  it('tout au début, puis en chaîne avec un nouveau paragraphe', async () => {
+    stub({ ...tr([[FILL45, 'Deux.']]), blocks: blocks(['p1-s1', 'p1-s2']) });
+    await open();
+    await userEvent.click(await screen.findByRole('button', { name: /Ajouter une phrase au début du texte/ }));
+    await userEvent.type(await screen.findByLabelText(/Phrase oubliée à ajouter ici/), 'Introduction oubliée.{Enter}');
+    expect(sentenceBtn(1)).toHaveTextContent('Introduction oubliée.');
+    await addAfter(1, 'Suite.', { newBlock: true });
+    expect(sentenceBtn(2)).toHaveTextContent('Suite.');
+    expect(sentenceBtn(1).closest('p')).not.toBe(sentenceBtn(2).closest('p'));
+    await userEvent.click(screen.getByRole('button', { name: /C'est bon, vérifie/ }));
+    expect(lastSent().added).toEqual([{ key: 'n1', afterId: null, text: 'Introduction oubliée.', newBlock: true }, { key: 'n2', afterId: 'n1', text: 'Suite.', newBlock: true }]);
+  });
+
+  it('modifier puis supprimer une phrase ajoutée: celle qui la suivait se raccroche', async () => {
+    stub({ ...tr([[FILL45, 'Deux.']]), blocks: blocks(['p1-s1', 'p1-s2']) });
+    await open();
+    await addAfter(1, 'Première.');
+    await addAfter(2, 'Seconde.');
+    const box = await openSentence(2);
+    await userEvent.type(box, ' Corrigée.{Enter}');
+    expect(sentenceBtn(2)).toHaveTextContent('Première. Corrigée.');
+    await openSentence(2);
+    await userEvent.click(screen.getByRole('button', { name: /Supprimer cette phrase ajoutée/ }));
+    expect(screen.getByText(/3 phrases, 0 corrigée, 1 ajoutée/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /C'est bon, vérifie/ }));
+    expect(lastSent().added).toEqual([{ key: 'n2', afterId: 'p1-s1', text: 'Seconde.' }]);
+  });
+
+  it('refus à l écran: trop court ou LaTeX interdit; rien n est envoyé', async () => {
+    stub({ ...tr([[FILL45, 'Deux.']]), blocks: blocks(['p1-s1', 'p1-s2']) });
+    await open();
+    await openSentence(1);
+    await userEvent.click(screen.getByRole('button', { name: /Ajouter une phrase après celle-ci/ }));
+    const box = await screen.findByLabelText(/Phrase oubliée à ajouter ici/);
+    await userEvent.type(box, 'ab');
+    expect(screen.getByRole('alert')).toHaveTextContent(/au moins 3 caractères/);
+    expect(screen.getByRole('button', { name: 'Ajouter la phrase' })).toBeDisabled();
+    await userEvent.clear(box);
+    await userEvent.type(box, 'Voir $\\\\hr' + 'ef{{http://a}{{b}$');
+    expect(screen.getByRole('button', { name: 'Ajouter la phrase' })).toBeDisabled();
+    expect(sent).toHaveLength(0);
+  });
+
+  it('sauvegarde dans l onglet et rechargement; effacée après l envoi', async () => {
+    stub({ ...tr([[FILL45, 'Deux.']]), blocks: blocks(['p1-s1', 'p1-s2']) });
+    const view = await open();
+    await addAfter(1, 'Gardée en route.');
+    expect(JSON.parse(sessionStorage.getItem('qcm.confirm.added.J1')!)).toEqual([{ key: 'n1', afterId: 'p1-s1', text: 'Gardée en route.', newBlock: false }]);
+    view.unmount();
+    await open();
+    expect(await screen.findByText(/3 phrases, 0 corrigée, 1 ajoutée/)).toBeInTheDocument();
+    expect(sentenceBtn(2)).toHaveTextContent('Gardée en route.');
+    await userEvent.click(screen.getByRole('button', { name: /C'est bon, vérifie/ }));
+    expect(sessionStorage.getItem('qcm.confirm.added.J1')).toBeNull();
+  });
+
+  it('une coupe peut commencer à une phrase ajoutée', async () => {
+    stub({ ...tr([[FILL45, 'Deux.', FILL45]]), blocks: blocks(['p1-s1', 'p1-s2', 'p1-s3']) });
+    await open();
+    await addAfter(2, 'Nouveau sujet oublié.');
+    await openSentence(3);
+    await userEvent.click(await screen.findByRole('button', { name: /Couper avant cette phrase/ }));
+    await userEvent.selectOptions(screen.getAllByRole('combobox', { name: /Matière/ })[1], 'maths');
+    await userEvent.click(screen.getByRole('button', { name: /fais 2 fiches/ }));
+    expect((lastSent().sections as { fromSentenceId: string }[]).map((x) => x.fromSentenceId)).toEqual(['p1-s1', 'n1']);
+  });
+});

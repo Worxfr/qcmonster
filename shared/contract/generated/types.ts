@@ -1068,7 +1068,7 @@ export interface components {
             topic?: string | null;
         };
         ConfirmSection: {
-            /** @description Premiere phrase de la section (identifiant de `Transcription`, ex. p2-s3). La section va jusqu'a la phrase qui precede la section suivante. */
+            /** @description Premiere phrase de la section (identifiant de `Transcription`, ex. p2-s3; v1.10: ou la cle `n<k>` d'une phrase de `ConfirmRequest.added`). La section va jusqu'a la phrase qui precede la section suivante. */
             fromSentenceId: string;
             subject: components["schemas"]["Subject"];
             topic?: components["schemas"]["Topic"];
@@ -1128,6 +1128,8 @@ export interface components {
             continuesId?: string;
             /** @description Facultatif (v1.5), reponse seulement (`Transcription`), ignore dans `ConfirmRequest.corrections` et absent de `Cours`. true: la lecture de cette phrase est douteuse (ecriture illisible, mot incertain); l'ecran de relecture la signale. C'est une confiance de LECTURE donnee par le modele: ce n'est PAS un resultat de verification des faits (qui n'existe qu'apres la confirmation, voir `Cours.marks`). Absent = pas de doute signale. */
             doubt?: boolean;
+            /** @description Facultatif (v1.10), `Cours` seulement: true si l'eleve a ajoute cette phrase a la relecture (affichage « Ajoutee par toi »). Jamais dans `Transcription`, ignore dans `ConfirmRequest.corrections`. */
+            added?: boolean;
             /** @description `p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin. */
             id: string;
             /** @description Texte de la phrase. Depuis la v1.5 il peut contenir du LaTeX: une formule dans une phrase est entouree de `$...$` (hors formule, `\$` pour un dollar litteral et `\\` pour un antislash litteral); dans un bloc `formule`, le texte est le LaTeX sans delimiteurs. Le serveur controle le LaTeX (longueur, accolades, commandes interdites comme href, url, input, def) et laisse en texte simple ce qui ne passe pas; le site l'affiche en MathML via KaTeX (trust: false). */
@@ -1251,6 +1253,18 @@ export interface components {
             figures?: components["schemas"]["ConfirmFigure"][];
             /** @description Facultatif (v1.5): phrases retirees du cours par l'eleve (bruit, remarque personnelle). Elles ne sont pas gardees dans le cours, ni extraites, ni verifiees. Une phrase retiree ne peut pas etre le `fromSentenceId` d'une section; une phrase inconnue: 400. Le seuil de 40 mots s'applique apres retrait. */
             removed?: string[];
+            /** @description Facultatif (v1.10, M1 #89): phrases oubliees ajoutees par l'eleve, apres une phrase donnee ou tout au debut. 20 au plus et 6000 caracteres au total (limite dite ici, controlee par le serveur). Chaque phrase ajoutee est extraite et verifiee dans les sources COMME UNE PHRASE LUE, sans traitement de faveur: si aucune source ne la confirme elle reste non verifiable et ne donne aucune question. Le texte est une entree de l'eleve: il est controle (LaTeX) et jamais interprete comme une consigne. Refus 400 `requete_invalide` (rien n'est modifie): ancre inconnue, cle en double, ancre vers un ajout plus tard dans le tableau, phrase vide, LaTeX invalide, 20 ajouts ou 6000 caracteres depasses, seuil de 40 mots. Le serveur attribue les identifiants `p<page>-s<n>` (plus grand numero de la page + 1, retraits compris); aucun identifiant existant ne change. Eleve seulement. */
+            added?: components["schemas"]["AddedSentence"][];
+        };
+        AddedSentence: {
+            /** @description Cle temporaire choisie par le client (n1, n2...), unique dans la requete; sert d'ancre a un autre ajout et de `fromSentenceId` d'une section. */
+            key: string;
+            /** @description Phrase APRES laquelle vient l'ajout (identifiant de `Transcription`, jamais le contexte grise d'un ajout de pages) ou cle d'un ajout PLUS HAUT dans le tableau; `null`: tout au debut du texte. */
+            afterId: string | null;
+            /** @description Texte de la phrase, LaTeX permis (`$...$`), meme controle que `corrections`. */
+            text: string;
+            /** @description true: nouveau paragraphe apres le bloc de l'ancre. Sinon la phrase rejoint le paragraphe ou la liste de l'ancre; apres un titre ou une formule, ou au debut du texte, c'est toujours un nouveau paragraphe. */
+            newBlock?: boolean;
         };
         DocSummary: {
             docId: string;

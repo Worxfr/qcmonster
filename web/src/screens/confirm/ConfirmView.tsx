@@ -9,12 +9,13 @@ import { Rich } from '../../components/Math';
 import { correctionProblem } from '../../correction';
 import type { Block, ConfirmFigure, Job, Sentence, Subject } from '../../types';
 import { AutoGrow } from './AutoGrow';
+import { Added, MAX_ADDED, addProblem, nextKey, placeAdded, removeAdded, toRequest } from './added';
 import { buildModel } from './blocks';
 import { DocView } from './DocView';
 import { FigureCard } from './FigureCard';
 import { PhotoViewer } from './PhotoViewer';
 import { MIN_WORDS, TITLE_MAX, TOPIC_MAX, addCut, confirmBody, effectiveSections, initSections, maxSections, plan, removeCut, sanitize, sectionIndex, type Sec } from './sections';
-import { clearEdits, loadEdits, loadFigs, loadIds, loadSections, saveEdits, saveFigs, saveIds, saveSections, type FigChoice } from './storage';
+import { clearEdits, loadAdded, loadEdits, loadFigs, loadIds, loadSections, saveAdded, saveEdits, saveFigs, saveIds, saveSections, type FigChoice } from './storage';
 import './confirm.css';
 
 /** Memorise: l'interrogation du statut ne re-rend pas la relecture pendant la frappe. */
@@ -48,10 +49,15 @@ const isSplit = (s: Sentence) => (s.pages?.length ?? 0) > 1;
 
 function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: { id: string; tr: Tr; onDone: (j: Job, fiches?: number) => void; reloadPhotos: () => void; reloading: boolean; reloadError: string | null }) {
   const pages = tr.pages;
-  const model = useMemo(() => buildModel(pages, tr.blocks, tr.figures), [pages, tr.blocks, tr.figures]);
+  // Phrases de la lecture (celles que le serveur connait) et phrases ajoutees par l'eleve (M1 #89), placees comme le fera le serveur.
+  const read = useMemo(() => pages.flatMap((p) => p.sentences), [pages]);
+  const original = useMemo(() => new Map(read.map((s) => [s.id, s.text])), [read]);
+  const known = useMemo(() => new Set(read.map((s) => s.id)), [read]);
+  const [added, setAdded] = useState<Added[]>(() => loadAdded(id, known));
+  const [adding, setAdding] = useState<{ afterId: string | null } | null>(null);
+  const placed = useMemo(() => placeAdded(pages, tr.blocks, added), [pages, tr.blocks, added]);
+  const model = useMemo(() => buildModel(placed.pages, placed.blocks, tr.figures), [placed, tr.figures]);
   const all = model.all;
-  const original = useMemo(() => new Map(all.map((s) => [s.id, s.text])), [all]);
-  const known = useMemo(() => new Set(all.map((s) => s.id)), [all]);
   const [edits, setEdits] = useState<Record<string, string>>(() => loadEdits(id, original));
   const [removed, setRemoved] = useState<Set<string>>(() => loadIds(id, 'removed', known));
   const [okDoubt, setOkDoubt] = useState<Set<string>>(() => loadIds(id, 'ok', known));
@@ -113,7 +119,18 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     saveIds(id, 'removed', removed);
     saveIds(id, 'ok', okDoubt);
     saveFigs(id, figs);
-  }, [id, edits, secs, removed, okDoubt, figs]);
+    saveAdded(id, added);
+  }, [id, edits, secs, removed, okDoubt, figs, added]);
+
+  // Les coupes suivent les phrases ajoutees: la premiere fiche commence a la premiere phrase, une coupe sur une phrase ajoutee puis retiree disparait.
+  useEffect(() => {
+    setSecs((l) => {
+      const ids = new Set(all.map((x) => x.id));
+      let next = l.filter((x, i) => i === 0 || ids.has(x.from));
+      if (next[0] && all[0] && next[0].from !== all[0].id) next = [{ ...next[0], from: all[0].id }, ...next.slice(1).filter((x) => x.from !== all[0].id)];
+      return next.length === l.length && next.every((x, i) => x === l[i]) ? l : next;
+    });
+  }, [all]);
 
   // Apres une action dont le bouton disparait, on rend le focus a un endroit logique (le premier id present).
   useEffect(() => {
@@ -141,6 +158,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
 
   const patch = (from: string, p: Partial<Sec>) => setSecs((l) => l.map((s) => (s.from === from ? { ...s, ...p } : s)));
   function setText(s: Sentence, text: string) {
+    if (s.added) return setAdded((l) => l.map((a) => (a.key === s.id ? { ...a, text } : a)));
     setEdits((e) => {
       const next = { ...e };
       if (text === s.text) delete next[s.id];
@@ -154,7 +172,19 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     else n.delete(sid);
     return n;
   };
-  const remove = (s: Sentence) => { setRemoved((r) => toggle(r, s.id, true)); setActive(null); setFocusId(`cf-s-${s.id}`); };
+  const remove = (s: Sentence) => {
+    setActive(null);
+    if (s.added) { setAdded((l) => removeAdded(l, s.id)); return; }
+    setRemoved((r) => toggle(r, s.id, true));
+    setFocusId(`cf-s-${s.id}`);
+  };
+  /** Valide une phrase ajoutee apres `afterId` (null: tout au debut). */
+  function addSentence(afterId: string | null, text: string, newBlock: boolean) {
+    const key = nextKey(added);
+    setAdded((l) => [...l, { key, afterId, text: text.trim(), newBlock: afterId === null ? true : newBlock }]);
+    setAdding(null);
+    setFocusId(`cf-s-${key}`);
+  }
   const restore = (s: Sentence) => { setRemoved((r) => toggle(r, s.id, false)); setActive(null); setFocusId(`cf-s-${s.id}`); };
   const showPage = (page: number) => {
     const i = pages.findIndex((p) => p.page === page);
@@ -204,6 +234,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         ...confirmBody(eff),
         ...(figures.length ? { figures } : {}),
         ...(removed.size ? { removed: all.filter((s) => removed.has(s.id)).map((s) => s.id) } : {}),
+        ...(added.length ? { added: toRequest(added) } : {}),
       });
       clearEdits(id);
       onDone(job, pl.kept);
@@ -234,7 +265,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
 
   const gone = removed.size;
   const keptFigs = [...model.figures.keys()].filter((k) => figs[k]?.keep).length;
-  const summary = `${all.length} ${plural(all.length, 'phrase', 'phrases')}, ${changed} ${plural(changed, 'corrigée', 'corrigées')}${gone ? `, ${gone} ${plural(gone, 'retirée', 'retirées')}` : ''}${secs.length > 1 ? `, ${pl.kept} ${plural(pl.kept, 'fiche', 'fiches')}` : ''}`;
+  const summary = `${all.length} ${plural(all.length, 'phrase', 'phrases')}, ${changed} ${plural(changed, 'corrigée', 'corrigées')}${gone ? `, ${gone} ${plural(gone, 'retirée', 'retirées')}` : ''}${added.length ? `, ${added.length} ${plural(added.length, 'ajoutée', 'ajoutées')}` : ''}${secs.length > 1 ? `, ${pl.kept} ${plural(pl.kept, 'fiche', 'fiches')}` : ''}`;
   const idx = Math.min(pageIdx, pages.length - 1);
   const page = pages[idx];
   const photo = tr.photoUrls[idx];
@@ -313,6 +344,8 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           removed={isGone}
           changed={mod}
           canCut={canCut(s) && !atLimit}
+          addNote={added.length >= MAX_ADDED ? `Tu as déjà ajouté ${MAX_ADDED} phrases.` : null}
+          onAdd={() => { setActive(null); setAdding({ afterId: s.id }); }}
           onCommit={(t, refocus) => { if (t !== textOf(s)) setText(s, t); setActive(null); if (refocus) setFocusId(`cf-s-${s.id}`); }}
           onCancel={() => { setActive(null); setFocusId(`cf-s-${s.id}`); }}
           onRemove={() => remove(s)}
@@ -322,17 +355,19 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         />
       );
     }
-    const cls = `cf-sent sec-${si % 6}${isGone ? ' is-gone' : mod ? ' is-mod' : doubt ? ' is-doubt' : ''}${secs[si]?.ignore ? ' ign' : ''}`;
-    const state = isGone ? 'Retirée' : mod ? 'Corrigée' : doubt ? 'Lecture douteuse' : null;
+    const cls = `cf-sent sec-${si % 6}${isGone ? ' is-gone' : mod ? ' is-mod' : doubt ? ' is-doubt' : s.added ? ' is-added' : ''}${secs[si]?.ignore ? ' ign' : ''}`;
+    const state = isGone ? 'Retirée' : mod ? 'Corrigée' : doubt ? 'Lecture douteuse' : s.added ? 'Ajoutée par toi' : null;
     return (
       <span className="cf-sw">
         <button type="button" id={`cf-s-${s.id}`} className={cls} onClick={() => setActive(s.id)}>
-          {state && <span className="cf-ico" aria-hidden="true">{isGone ? '✕' : mod ? '✎' : '?'}</span>}
+          {state && <span className="cf-ico" aria-hidden="true">{isGone ? '✕' : mod ? '✎' : s.added ? '+' : '?'}</span>}
           <Rich text={textOf(s)} formula={formula} />
           <span className="sr-only">{`. Phrase ${n}${state ? `, ${state.toLowerCase()}` : ''}${secs[si]?.ignore ? ', partie ignorée' : ''}.`}</span>
         </button>{' '}
         {span && <span className="cf-span">{span}</span>}{' '}
+        {s.added && <span className="cf-tagadd">Ajoutée par toi</span>}{' '}
         {doubt && <button type="button" className="cf-ok" onClick={() => setOkDoubt((o) => toggle(o, s.id, true))}>C'est bon<span className="sr-only"> pour la phrase {n}</span></button>}{' '}
+        {adding?.afterId === s.id && <AddEditor list={added} newBlockChoice onSave={(t, nb) => addSentence(s.id, t, nb)} onCancel={() => { setAdding(null); setFocusId(`cf-s-${s.id}`); }} />}
       </span>
     );
   };
@@ -349,10 +384,12 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
             <li className="lg-doubt"><span aria-hidden="true">?</span> Lecture douteuse</li>
             <li className="lg-mod"><span aria-hidden="true">✎</span> Corrigé</li>
             <li className="lg-gone"><span aria-hidden="true">✕</span> Retiré</li>
+            <li className="lg-add"><span aria-hidden="true">+</span> Ajouté par toi</li>
           </ul>
           <details className="cf-helpbox">
             <summary>Comment ça marche ?</summary>
             <p className="cf-help">J'ai lu ta page, mais je peux me tromper. Touche une phrase pour la corriger à sa place, ou pour la retirer. Les passages en jaune sont ceux dont je ne suis pas sûr. Si une phrase est juste, ne touche à rien.</p>
+            <p className="cf-help">J'ai oublié une phrase ? Touche la phrase qui la précède, puis « Ajouter une phrase après celle-ci ». Ta phrase est contrôlée comme les autres.</p>
             <p className="cf-help">Ton cours parle de plusieurs sujets ? Touche « Couper ici » entre deux passages : tu auras une fiche par sujet, et ton cours complet reste gardé.</p>
           </details>
           {proposed.current && secs.length > 1 && <p className="notice">J'ai proposé {secs.length} fiches, change-les si besoin.</p>}
@@ -387,6 +424,11 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
                 {tr.context.map((s) => <p key={s.id} className="cf-context-s">{s.text}</p>)}
                 {pages[0]?.sentences[0]?.continuesId && <p className="cf-context-link"><span aria-hidden="true">↳</span> La première phrase ci-dessous continue cette fin.</p>}
               </section>
+            )}
+            {all.length > 0 && (
+              adding && adding.afterId === null
+                ? <AddEditor list={added} newBlockChoice={false} onSave={(t) => addSentence(null, t, true)} onCancel={() => setAdding(null)} />
+                : <button type="button" id="cf-add-start" className="cf-addstart" disabled={added.length >= MAX_ADDED} onClick={() => { setActive(null); setAdding({ afterId: null }); }}><span aria-hidden="true">+</span> Ajouter une phrase au début du texte</button>
             )}
             {all.length === 0 ? (
               <div className="cf-empty">
@@ -437,12 +479,12 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
 }
 
 interface EditorProps {
-  s: Sentence; n: number; text: string; formula: boolean; removed: boolean; changed: boolean; canCut: boolean;
-  onCommit: (text: string, refocus: boolean) => void; onCancel: () => void; onRemove: () => void; onRestore: () => void; onReset: () => void; onCut: () => void;
+  s: Sentence; n: number; text: string; formula: boolean; removed: boolean; changed: boolean; canCut: boolean; addNote: string | null;
+  onAdd: () => void; onCommit: (text: string, refocus: boolean) => void; onCancel: () => void; onRemove: () => void; onRestore: () => void; onReset: () => void; onCut: () => void;
 }
 
 /** Correction a la place de la phrase: champ de texte (fiable sur telephone), brouillon valide ou annule; rien n'est envoye au serveur ici. */
-function SentenceEditor({ s, n, text, formula, removed, changed, canCut, onCommit, onCancel, onRemove, onRestore, onReset, onCut }: EditorProps) {
+function SentenceEditor({ s, n, text, formula, removed, changed, canCut, addNote, onAdd, onCommit, onCancel, onRemove, onRestore, onReset, onCut }: EditorProps) {
   const [draft, setDraft] = useState(text);
   const wrap = useRef<HTMLSpanElement>(null);
   const clean = draft.replace(/\s*\n\s*/g, ' ');
@@ -485,8 +527,38 @@ function SentenceEditor({ s, n, text, formula, removed, changed, canCut, onCommi
         <button type="button" className="btn btn-ghost btn-small" onClick={onCancel}>Annuler</button>
         {changed && <button type="button" className="cf-undo" onClick={onReset}>Remettre la version lue<span className="sr-only"> pour la phrase {n}</span></button>}
         {canCut && <button type="button" className="cf-undo" onClick={onCut}><span aria-hidden="true">✂ </span>Couper avant cette phrase<span className="sr-only"> ({n})</span></button>}
-        <button type="button" className="cf-undo cf-danger" onClick={onRemove}>Retirer cette phrase<span className="sr-only"> ({n})</span></button>
+        <button type="button" className="cf-undo" disabled={!!addNote} onClick={() => { if (!problem) onCommit(clean, false); onAdd(); }}><span aria-hidden="true">+ </span>Ajouter une phrase après celle-ci<span className="sr-only"> ({n})</span></button>
+        <button type="button" className="cf-undo cf-danger" onClick={onRemove}>{s.added ? 'Supprimer cette phrase ajoutée' : 'Retirer cette phrase'}<span className="sr-only"> ({n})</span></button>
       </span>
+      {addNote && <span className="cf-fielderr">{addNote}</span>}
+    </span>
+  );
+}
+
+/** Champ pour une phrase oubliee: brouillon local, rien n'est envoye au serveur ici (M1 #89). */
+function AddEditor({ list, newBlockChoice, onSave, onCancel }: { list: Added[]; newBlockChoice: boolean; onSave: (text: string, newBlock: boolean) => void; onCancel: () => void }) {
+  const [draft, setDraft] = useState('');
+  const [newBlock, setNewBlock] = useState(false);
+  const clean = draft.replace(/\s*\n\s*/g, ' ');
+  const problem = correctionProblem(clean, false) ?? addProblem(list, clean);
+  const shown = clean.trim() === '' ? null : problem; // pas de reproche avant la premiere frappe
+  const hasMath = /\$/.test(clean);
+  const wrap = useRef<HTMLSpanElement>(null);
+  useEffect(() => { document.getElementById('cf-add-in')?.focus(); }, []);
+  const save = () => { if (!problem) onSave(clean, newBlock); };
+  return (
+    <span className="cf-edit cf-addedit" ref={wrap} role="group" aria-label="Ajouter une phrase">
+      <label className="cf-editlabel" htmlFor="cf-add-in">Phrase oubliée à ajouter ici</label>
+      <AutoGrow id="cf-add-in" className="cf-text" value={draft} maxLength={2000} placeholder="Écris la phrase telle qu'elle est dans ton cours" aria-invalid={shown ? true : undefined} aria-describedby="cf-add-err cf-add-prev" onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onCancel(); } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); save(); } }} />
+      {hasMath && !problem && <span className="cf-preview" id="cf-add-prev"><span className="cf-preview-l">Aperçu</span> <Rich text={clean} formula={false} /></span>}
+      <span id="cf-add-err" className="cf-fielderr" role={shown ? 'alert' : undefined}>{shown ?? ''}</span>
+      {newBlockChoice && <label className="check cf-newblock"><input type="checkbox" checked={newBlock} onChange={(e) => setNewBlock(e.target.checked)} /> En faire un nouveau paragraphe</label>}
+      <span className="cf-edit-actions">
+        <button type="button" className="btn btn-small" disabled={!!problem} onClick={save}>Ajouter la phrase</button>
+        <button type="button" className="btn btn-ghost btn-small" onClick={onCancel}>Annuler</button>
+      </span>
+      <span className="cf-addnote">Je la compare à des sources, comme les autres phrases. Si je n'y trouve rien qui la confirme, elle ne servira pas aux questions.</span>
     </span>
   );
 }

@@ -226,3 +226,17 @@
 .cf-context-title { margin: 0 0 .4rem; font-weight: 800; font-size: .95rem; }
 .cf-context-s { margin: .2rem 0; opacity: .9; font-style: italic; }
 .cf-context-link { margin: .4rem 0 0; font-weight: 700; color: var(--brand); }
+
+/* M1 #89: phrases ajoutees par l'eleve (vert vif, clair) */
+.cf-sent.is-added { background: #dcfce7; box-shadow: 0 0 0 2px #bbf7d0; color: #14532d; }
+.cf-sent.is-added .cf-ico { background: #15803d; color: #fff; }
+.cf-tagadd { display: inline-block; font-size: .78rem; font-weight: 800; border-radius: 999px; padding: .1rem .6rem; background: #15803d; color: #fff; vertical-align: middle; }
+.lg-add { background: #dcfce7; color: #14532d; } .lg-add span { background: #15803d; }
+.cf-addstart { font: inherit; font-weight: 800; min-height: 44px; width: 100%; margin: 0 0 .6rem; border: 2px dashed #15803d; border-radius: 14px; background: #f0fdf4; color: #14532d; cursor: pointer; }
+.cf-addstart:hover:not(:disabled) { background: #dcfce7; }
+.cf-addstart:disabled { opacity: .5; cursor: default; }
+.cf-addedit { border-color: #15803d; background: #f0fdf4; }
+.cf-addedit .cf-text { border-color: #15803d; }
+.cf-newblock { font-weight: 600; }
+.cf-addnote { font-size: .88rem; color: var(--muted); }
+.cf-edit-actions .cf-undo:disabled { opacity: .5; cursor: default; text-decoration: none; }
