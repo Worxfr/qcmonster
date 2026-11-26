@@ -2,3 +2,7 @@ QCMonster
 Copyright 2026 Worxfr
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components in the Lambda layer built by scripts/build-sharp-layer.mjs (infra/layers/sharp):
+- sharp (Apache-2.0), https://github.com/lovell/sharp
+- libvips (LGPL-3.0-or-later), shipped as an unmodified shared library (@img/sharp-libvips-linux-arm64), dynamically linked, https://github.com/libvips/libvips

@@ -41,7 +41,7 @@ export function machineTimeoutS(confirmS: number = CONFIRM_TIMEOUT_S): number {
   const T = TASK_TIMEOUT_S;
   const needed = machineTimeoutNeededS({
     uploadS: UPLOAD_TIMEOUT_S,
-    transcribeS: T.scanCheck + T.transcribe + T.cropFigures * 3 + T.sectionsPlan + T.consume + T.finalize,
+    transcribeS: T.scanCheck + T.transcribe + T.cropFigures * 3 + 15 + T.sectionsPlan + T.consume + T.finalize,
     confirmS,
     sections: MAX_SECTIONS,
     perSectionS: T.extract + T.verify + T.sectionCost + T.generate,

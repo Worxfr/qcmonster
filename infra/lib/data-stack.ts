@@ -88,6 +88,8 @@ export class DataStack extends Stack {
     // Figures gardees par l'eleve (R1, docs/R1-design.md 3.3): privees, lues par URL pre-signee. AUCUN cycle de vie par age: une figure vit
     // avec son cours et part a sa suppression (code). Pas de CORS (le navigateur ne depose rien). Prod: conservee si la stack est supprimee.
     this.figuresBucket = new s3.Bucket(this, 'Figures', { ...common, removalPolicy: prod ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY });
+    // shortcut: pas d'autoDeleteObjects (sa ressource personnalisee ajoute une fonction et un role hors des controles M2 et des tags). Dev: les figures
+    // n'expirent jamais, donc le proprietaire vide le bucket (nom dans SSM /qcm/dev/data/figuresBucket) avant de supprimer la pile; l'agent ne le fait pas.
 
     // Coffre du jeu cache: jamais supprime avec la stack, lecture par le seul role d'evaluation.
     this.vaultBucket = new s3.Bucket(this, 'Vault', { ...common, removalPolicy: RemovalPolicy.RETAIN });
