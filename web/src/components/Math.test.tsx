@@ -19,7 +19,7 @@ describe('options de KaTeX (la barrière est trust: false, pas le filtre)', () =
     spy.mockRestore();
     for (const t of ['\\href{javascript:alert(1)}{x}', '\\url{https://exemple.invalide}', '\\htmlData{a=b}{x}', '\\includegraphics{x.png}']) {
       const out = katex.renderToString(t, opts);
-      expect(out, t).not.toMatch(/<a[\s>]|href=|src=|data-|style=|<img|<script/);
+      expect(out, t).not.toMatch(/<a[\s>]|href=|src=|data-|style=|<img|<script/i);
       expect(out, t).toContain('<mtext>'); // la commande non permise est affichée telle quelle
     }
   });
