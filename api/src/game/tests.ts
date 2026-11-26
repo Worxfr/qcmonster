@@ -5,7 +5,7 @@ import { keys } from '../../../shared/ddb/keys.js';
 import { GapItemSchema, QcmItemSchema, parseQuestionId } from '../../../shared/items.js';
 import {
   MAX_ITEMS, MAX_TITLE, TEST_GAP_MS, addDay, decodeCursor, encodeCursor, isTestSk, isoSeconds, lineDone, newTestId, parisDayStartUtc, recount, schoolYearBounds,
-  schoolYearOf, testIdOfSk, testIdStartedAt, toSummary, upsertLine, validDay, type TestItem, type TestLine, type TestSummary,
+  schoolYearOf, testIdOfSk, testIdStartedAt, toParentDetail, toSummary, upsertLine, validDay, type TestItem, type TestLine, type TestSummary,
 } from '../../../shared/tests-history.js';
 import type { Deps } from '../lib/deps.js';
 import { badRequest, notFound, type StudentCtx } from '../lib/http.js';
@@ -144,7 +144,7 @@ export interface TestPageView {
 
 const SK_TIME = (sk: string): string => sk.slice('TEST#'.length, sk.indexOf('#', 5));
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
-const expired = (it: Item, nowMs: number): boolean => typeof it.ttl === 'number' && it.ttl * 1000 <= nowMs; // TTL DynamoDB: la suppression est differee, la lecture l'ignore
+export const expired = (it: Item, nowMs: number): boolean => typeof it.ttl === 'number' && it.ttl * 1000 <= nowMs; // TTL DynamoDB: la suppression est differee, la lecture l'ignore
 
 /**
  * GET /me/tests. Du plus recent au plus ancien, `limit` (1 a 50, defaut 20), curseur = cle de tri seulement (la partition vient du jeton).
@@ -154,6 +154,11 @@ const expired = (it: Item, nowMs: number): boolean => typeof it.ttl === 'number'
  */
 export async function listTests(deps: Deps, ctx: StudentCtx, q: TestQuery): Promise<TestPageView> {
   await activeStudent(deps, ctx);
+  return listTestsOf(deps, ctx.studentId, q);
+}
+
+/** Meme liste pour un eleve dont l'appelant a deja ete verifie (eleve du jeton, ou eleve de la famille du parent: family-progress.ts). */
+export async function listTestsOf(deps: Deps, studentId: string, q: TestQuery): Promise<TestPageView> {
   const limit = q.limit === undefined ? 20 : /^\d{1,2}$/.test(q.limit) ? Number(q.limit) : NaN;
   if (!(limit >= 1 && limit <= 50)) throw badRequest();
   let after: string | undefined;
@@ -183,7 +188,7 @@ export async function listTests(deps: Deps, ctx: StudentCtx, q: TestQuery): Prom
     if (t < hi) hi = t;
   }
   const now = deps.now().getTime();
-  const all = (await deps.store.query(`STUDENT#${ctx.studentId}`, 'TEST#'))
+  const all = (await deps.store.query(`STUDENT#${studentId}`, 'TEST#'))
     .filter((i) => isTestSk(i.SK) && !expired(i, now))
     .sort((a, b) => b.SK.localeCompare(a.SK));
   const rows = all.filter((i) => {
@@ -194,12 +199,21 @@ export async function listTests(deps: Deps, ctx: StudentCtx, q: TestQuery): Prom
   const out: TestPageView = { items: page.map((i) => toSummary(i, testIdOfSk(i.SK))) };
   if (rows.length > limit) out.nextCursor = encodeCursor(page[page.length - 1].SK);
   if (q.cursor === undefined) {
-    const profile = (await deps.store.get(keys.profile(ctx.studentId))) as (Item & { anneesScolaires?: unknown }) | undefined;
+    const profile = (await deps.store.get(keys.profile(studentId))) as (Item & { anneesScolaires?: unknown }) | undefined;
     // Jamais une annee sans passage (fiche supprimee depuis): on ne garde que les annees de PROFILE qui ont encore un passage lisible.
     const present = new Set(all.map((i) => String(i.anneeScolaire ?? '')));
     out.schoolYears = Array.isArray(profile?.anneesScolaires) ? profile.anneesScolaires.filter((y): y is string => typeof y === 'string' && present.has(y)).sort().reverse() : [];
   }
   return out;
+}
+
+/** Passage d'un eleve verifie par l'appelant, vu sans aucun texte (parent). Inconnu, expire ou mal forme: 404. */
+export async function getTestStatus(deps: Deps, studentId: string, testId: string): Promise<ReturnType<typeof toParentDetail>> {
+  const startedAt = testIdStartedAt(testId);
+  if (!startedAt) throw notFound();
+  const it = await deps.store.get(keys.test(studentId, startedAt, testId));
+  if (!it || expired(it, deps.now().getTime())) throw notFound();
+  return toParentDetail(it, testId);
 }
 
 export interface QuestionResultView {

@@ -7,6 +7,7 @@ import { coursMeta } from '../cours/meta.js';
 import { studentView } from '../game/access.js';
 import type { Item } from '../lib/store.js';
 import { badRequest, conflict, forbidden, type Auth, type ParentCtx } from '../lib/http.js';
+import type { Deps } from '../lib/deps.js';
 import type { FamilyDeps } from './ports.js';
 import { purgeStudent } from './students.js';
 
@@ -42,7 +43,14 @@ export async function createFamily(deps: FamilyDeps, a: Auth, body: { consent: b
  * Les cours conserves sortent sans leur texte (structure, sections, liens vers les fiches; l'eleve lit le texte par GET /cours).
  * Non exporte (dit dans la politique): le texte brut lu sur les photos (TEXT#, supprime au bout de 7 jours) et les extraits web partages.
  */
-export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
+export interface ExportOptions {
+  /** Faux: `docs[].questions` ne garde que `questionId` et `kind` (archive du parent: jamais de texte de question ni de bonne reponse). Defaut: vrai. */
+  questionText?: boolean;
+  /** Recoit les elements `TEST#` bruts de chaque eleve, deja lus pour l'export (evite une 2e lecture de la partition). */
+  onTests?: (studentId: string, items: Item[]) => void;
+}
+
+export async function exportFamily(deps: Deps, ctx: ParentCtx, opts: ExportOptions = {}) {
   const fam = `FAMILY#${ctx.familyId}`;
   const meta = await deps.store.get(keys.family(ctx.familyId));
   const consent = (it: Item | undefined) =>
@@ -53,6 +61,7 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
     const part = await deps.store.query(`STUDENT#${sid}`);
     const profile: Record<string, unknown> = { ...part.find((i) => i.SK === 'PROFILE') };
     for (const k of ['PK', 'SK', 'v', 'currentTest']) delete profile[k]; // currentTest: pointeur interne (H1), sans valeur pour le parent
+    opts.onTests?.(sid, part.filter((i) => i.SK.startsWith('TEST#')));
     const c = consent(s);
     // Dossiers et cours de l'eleve (contrat 1.3). Les cours sortent SANS leur texte (`COURS#<id>#T<nn>` n'est jamais copie): le parent ne lit pas le texte.
     const partDocs = part.filter((i) => i.SK.startsWith('DOC#'));
@@ -96,7 +105,9 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
     const questions = part
       .filter((x) => x.SK.startsWith('QCM#') || x.SK.startsWith('GAP#'))
       .map((q) =>
-        q.SK.startsWith('QCM#')
+        opts.questionText === false
+          ? { questionId: String(q.questionId), kind: q.SK.startsWith('QCM#') ? 'qcm' : 'gap' }
+          : q.SK.startsWith('QCM#')
           ? { questionId: String(q.questionId), kind: 'qcm', prompt: String(q.enonce ?? ''), choices: (q.choix as string[] | undefined) ?? [], answer: String((q.choix as string[] | undefined)?.[Number(q.cle)] ?? '') }
           : { questionId: String(q.questionId), kind: 'gap', prompt: String(q.phrase ?? ''), answer: String(q.attendu ?? '') },
       )
@@ -133,5 +144,6 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
 export async function deleteFamily(deps: FamilyDeps, ctx: ParentCtx): Promise<void> {
   for (const s of await deps.store.query(`FAMILY#${ctx.familyId}`, 'STUDENT#')) await purgeStudent(deps, ctx.familyId, s);
   await deleteFamilyTree(deps.tree, ctx.familyId);
+  await deps.archives.deleteFamily(ctx.familyId); // archives d'export encore presentes (exports/<familyId>/)
   await deps.identity.deleteUser(ctx.username); // en dernier: si une etape echoue, le parent peut relancer
 }

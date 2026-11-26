@@ -84,8 +84,8 @@ describe('aleatoire', () => {
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
-  it('15 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(15);
+  it('17 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
+    expect(files).toHaveLength(17);
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT
@@ -100,6 +100,10 @@ describe('garde: chaque handler verifie l\'identite du jeton', () => {
       if (f === 'tests-read.ts') {
         expect(src, f).not.toMatch(/rawQueryString|\be\.body\b|event\.body\b|headers|familyId|studentId|\bsid\b/);
         expect(src, f).toMatch(/requireStudent\(authOf\(e\)\)/);
+      } else if (f === 'family-progress.ts') {
+        // H1-B: le parent vient du jeton; `sid` du chemin est verifie en base (lien FAMILY#<fid>/STUDENT#<sid>), les filtres de liste viennent de la requete.
+        expect(src, f).not.toMatch(/rawQueryString|\be\.body\b|event\.body\b|headers|familyId/);
+        expect(src, f).toMatch(/requireParent\(authOf\(e\)\)/);
       } else expect(src, f).not.toMatch(/queryStringParameters|rawQueryString|\be\.body\b|event\.body\b|headers/);
     }
   });

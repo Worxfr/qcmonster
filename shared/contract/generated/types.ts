@@ -611,10 +611,10 @@ export interface paths {
         put?: never;
         /**
          * Archive telechargeable de l'export, avec tout l'historique des tests (contract-v1.4, H1; handler family-export-archive)
-         * @description Reserve au parent. Construit une archive **zip** et renvoie un **lien de telechargement court** (10 minutes). Contenu: `export.json` (meme contenu que `GET /family/export`), et pour chaque eleve `tests/<studentId>.jsonl` (un passage par ligne, schema `TestParentDetail`, toutes les annees scolaires).
-         *     Comme l'export JSON: **aucun texte de cours** et aucun texte de question. Les reponses donnees par l'eleve (`choice`) ne sont **pas** dans l'archive (l'eleve seul les lit dans l'application).
+         * @description Reserve au parent. Construit une archive **zip** et renvoie un **lien de telechargement court** (10 minutes). Contenu: `export.json` (meme forme que `GET /family/export`, mais `docs[].questions` ne garde que `questionId` et `kind`), et pour chaque eleve `tests/<studentId>.jsonl` (un passage par ligne, schema `TestParentDetail`, toutes les annees scolaires).
+         *     Comme l'export JSON: **aucun texte de cours**, et ni texte de question, ni choix, ni bonne reponse. Les reponses donnees par l'eleve (`choice`) ne sont **pas** dans l'archive (l'eleve seul les lit dans l'application).
          *     Le lien ne porte aucune donnee: c'est une URL signee vers un fichier prive, valable 10 minutes. Le fichier est supprime par une regle d'expiration du stockage au plus tard 2 jours apres (et avec la famille).
-         *     Borne: 50 000 passages au plus par archive (environ 9 ans pour 5 eleves a 3 passages par jour); au-dela, les annees scolaires les plus anciennes sont omises et `truncated` vaut vrai.
+         *     Limite: 3 archives par heure et par famille (429 `quota_epuise`). Borne: 50 000 passages au plus par archive (environ 9 ans pour 5 eleves a 3 passages par jour); au-dela, les annees scolaires les plus anciennes sont omises et `truncated` vaut vrai.
          */
         post: operations["createExportArchive"];
         delete?: never;
@@ -3316,6 +3316,21 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+            /** @description Plus de 3 archives dans l'heure pour la famille (`quota_epuise`), ou limite de debit de la route (corps API Gateway, voir `TooManyRequests`) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "quota_epuise",
+                     *       "message": "Trop d'archives demandées, réessaie dans une heure"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     createFamily: {

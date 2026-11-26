@@ -81,25 +81,24 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'DELETE /folders/{folderId}/scans/{docId}', handler: 'folders-api', owner: 'pipeline', throttle: { rate: 2, burst: 5 } },
   { route: 'GET /cours/{coursId}', handler: 'cours-api', owner: 'pipeline', throttle: { rate: 5, burst: 10 } },
   { route: 'DELETE /cours/{coursId}', handler: 'cours-delete', owner: 'pipeline', throttle: { rate: 1, burst: 3 } },
-  // contract-v1.4 (H1): historique des tests. `tests-read` (H1-A) est reel (fonction dans game-stack); `family-progress` (H1-P) et
-  // `family-export-archive` (H1-X) restent des squelettes 501 `non_implemente` jusqu'a leur lot (design H1 section 8).
+  // contract-v1.4 (H1): historique des tests. `tests-read` (H1-A), `family-progress` et `family-export-archive` (H1-B) sont de vraies fonctions de game-stack.
   { route: 'GET /me/tests', handler: 'tests-read', owner: 'game' },
   { route: 'GET /me/tests/{testId}', handler: 'tests-read', owner: 'game' },
-  { route: 'GET /students/{sid}/progress', handler: 'family-progress' },
-  { route: 'GET /students/{sid}/tests', handler: 'family-progress' },
-  { route: 'GET /students/{sid}/tests/{testId}', handler: 'family-progress' },
-  // Limite basse: API Gateway ne sait pas limiter « 3 par heure et par famille » (design H1 section 5, regle 7). A faire dans le handler (H1-X).
-  { route: 'POST /family/export/archive', handler: 'family-export-archive', throttle: { rate: 1, burst: 2 } },
+  { route: 'GET /students/{sid}/progress', handler: 'family-progress', owner: 'game' },
+  { route: 'GET /students/{sid}/tests', handler: 'family-progress', owner: 'game' },
+  { route: 'GET /students/{sid}/tests/{testId}', handler: 'family-progress', owner: 'game' },
+  // Limite basse par route; le plafond « 3 par heure et par famille » (design H1 section 5, regle 7) est applique par le handler (429 quota_epuise).
+  { route: 'POST /family/export/archive', handler: 'family-export-archive', owner: 'game', throttle: { rate: 1, burst: 2 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
-export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'H1-P' | 'H1-X'> = {
+export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A'> = {
   'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3',
   'students-delete': 'L3', 'family-read': 'L3', 'reports-validate': 'L3', 'family-admin': 'L3', 'activation-post': 'L3', 'docs-mark-read': 'L3', 'family-create': 'L3', 'admin-invitations': 'L3',
   'scans-list': 'FEAT-A', 'scans-delete': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A', 'cours-delete': 'FEAT-A',
-  'tests-read': 'L3', 'family-progress': 'H1-P', 'family-export-archive': 'H1-X',
+  'tests-read': 'L3', 'family-progress': 'L3', 'family-export-archive': 'L3',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */
