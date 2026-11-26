@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.7.0
+  version: 1.8.0
   description: |
-    Contrat d'API QCMonster (contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -657,9 +657,19 @@ paths:
             schema: { $ref: '#/components/schemas/ActivationRequest' }
             example: { token: exemple-de-jeton-a-usage-unique-0123456789abcdef, password: Un-mot-de-passe-long-1 }
       responses:
-        '204': { description: Compte active, l'eleve peut se connecter }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '200':
+          description: "Compte active, l'eleve peut se connecter avec `loginId` (contract-v1.8.0; c'etait 204 sans corps)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivationResponse' }
+              example: { loginId: lila-7k2f, displayName: Lila }
+        '400':
+          description: "Mot de passe refuse (`requete_invalide`) ou surnom refuse (`pseudo_refuse`). Le jeton reste utilisable dans les deux cas."
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: pseudo_refuse, message: "Ce surnom n'est pas possible, essaie-en un autre" } } }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "Surnom deja pris dans la famille (`pseudo_pris`), detecte avant de consommer le jeton"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: pseudo_pris, message: "Ce surnom est deja pris dans ta famille, essaie-en un autre" } } }
   /me:
     get:
       operationId: getMe
@@ -674,7 +684,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
-              example: { userId: 7b0f6c1e-0000-4000-8000-00000000a001, role: eleve, familyId: 01JEXAMPLE0FAM0000000000AA, studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f }
+              example: { userId: 7b0f6c1e-0000-4000-8000-00000000a001, role: eleve, familyId: 01JEXAMPLE0FAM0000000000AA, studentId: 01JEXAMPLE0STU0000000000AA, pseudo: lila-7k2f, loginId: lila-7k2f, displayName: Lila }
         '404':
           description: Parent sans famille (famille pas encore creee par POST /family)
           content:
@@ -774,7 +784,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StudentProgressView' }
               example:
-                student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: actif, pageQuota: 50 }
+                student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: lila-7k2f, loginId: lila-7k2f, displayName: Lila, schoolLevel: seconde, under15: false, status: actif, pageQuota: 50 }
                 progress: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 2, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01', badges: [premier_scan] }
                 docs:
                   - { docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, pages: 2, createdAt: '2026-11-28T16:00:00Z', tests: 3, bestScorePct: 90, lastScorePct: 80, lastTestAt: '2026-12-01T17:06:40Z' }
@@ -871,10 +881,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StudentCreateResponse' }
               example:
-                student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: actif, pageQuota: 20 }
+                student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: lila-7k2f, loginId: lila-7k2f, displayName: Lila, schoolLevel: seconde, under15: false, status: actif, pageQuota: 20 }
                 activationLink: { url: 'https://app.example.invalid/activer#token=example', expiresAt: '2026-12-02T10:00:00Z' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/NamePris' }
+  /students/{sid}/login-id:
+    post:
+      operationId: regenerateLoginId
+      tags: [family]
+      summary: Le parent genere un nouvel identifiant de connexion pour l'eleve, mot de passe inchange (handler students-login-id-post, ID1)
+      description: "Sans corps. L'ancien identifiant cesse de fonctionner, les jetons de rafraichissement de l'eleve sont revoques (son jeton d'acces reste valable jusqu'a 1 h). Rejouable: une requete interrompue se repare en la renvoyant. Plafond 1 requete/s, rafale 3."
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      responses:
+        '200':
+          description: Nouvel identifiant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginIdResponse' }
+              example: { loginId: lila-m4kx7 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /students/{sid}/activation-link:
     post:
       operationId: createActivationLink
@@ -908,9 +935,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Student' }
-              example: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: suspendu, pageQuota: 20 }
+              example: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: lila-7k2f, loginId: lila-7k2f, displayName: Lila, schoolLevel: seconde, under15: false, status: suspendu, pageQuota: 20 }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/NamePris' }
     delete:
       operationId: deleteStudent
       tags: [family]
@@ -933,7 +962,7 @@ paths:
               schema: { $ref: '#/components/schemas/Dashboard' }
               example:
                 students:
-                  - student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: actif, pageQuota: 20 }
+                  - student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: lila-7k2f, loginId: lila-7k2f, displayName: Lila, schoolLevel: seconde, under15: false, status: actif, pageQuota: 20 }
                     progress: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01' }
                 familyPagesRemaining: 38
                 familyPagesLimit: 50
@@ -951,7 +980,7 @@ paths:
               schema: { $ref: '#/components/schemas/Leaderboard' }
               example:
                 week: 2026-W49
-                entries: [{ studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, xp: 310, activeDays: 4 }]
+                entries: [{ studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila, xp: 310, activeDays: 4 }]
   /reports/{id}/validate:
     post:
       operationId: validateReport
@@ -1137,6 +1166,9 @@ components:
     TooManyRequests:
       description: "Limite de debit de la route depassee (la limite est globale a la route, voir infra). Le client reessaie apres quelques secondes, en espacant son interrogation. Corps produit par API Gateway, pas par le contrat Error."
       content: { application/json: { schema: { type: object, properties: { message: { type: string } } }, example: { message: Too Many Requests } } }
+    NamePris:
+      description: "Surnom deja pris dans la famille (`pseudo_pris`) ou etat incompatible (`etat_invalide`)"
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: pseudo_pris, message: "Ce surnom est deja pris dans ta famille, essaie-en un autre" } } }
     Conflict:
       description: Etat incompatible
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Le job n'est pas a confirmer } } }
@@ -1148,7 +1180,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question], description: "`aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris], description: "`pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -1685,6 +1717,19 @@ components:
       properties:
         token: { type: string, minLength: 20, maxLength: 200 }
         password: { type: string, minLength: 12, maxLength: 128 }
+        displayName: { type: string, minLength: 2, maxLength: 20, pattern: "^[A-Za-zÀ-ÖØ-öø-ÿŒœ][A-Za-zÀ-ÖØ-öø-ÿŒœ0-9 '’-]{1,19}$", description: "Surnom choisi par l'eleve (1.8.0). Absent = on garde le surnom de depart donne par le parent. Lettres latines seulement; la liste de mots et les chiffres en trop sont controles par le serveur avant de consommer le jeton." }
+    ActivationResponse:
+      type: object
+      required: [loginId, displayName]
+      properties:
+        loginId: { type: string, description: "Identifiant de connexion de l'eleve (ex. lila-7k2f), a montrer a l'ecran seulement" }
+        displayName: { type: string }
+        displayNameChanged: { type: boolean, description: "Vrai si le surnom demande etait devenu indisponible entre-temps et qu'on a garde le surnom de depart" }
+    LoginIdResponse:
+      type: object
+      required: [loginId]
+      properties:
+        loginId: { type: string }
     AnswerResult:
       type: object
       required: [correct, xpGained, badges, progress]
@@ -1703,14 +1748,18 @@ components:
         role: { type: string, enum: [parent, eleve] }
         familyId: { type: string }
         studentId: { type: string, description: Present pour le role eleve }
-        pseudo: { type: string }
+        pseudo: { type: string, description: "Eleve seulement. Valeur de `loginId` (compatibilite 1.8.0, a retirer apres le deploiement commun)" }
+        loginId: { type: string, description: "Eleve seulement (1.8.0): identifiant de connexion. Jamais present pour un parent." }
+        displayName: { type: string, description: "Eleve seulement (1.8.0): surnom affiche" }
         policyOutdated: { type: boolean, description: "Parent seulement (contract-v1.4.1). Vrai si la famille a donne son consentement sur une autre version de la politique que celle en vigueur: le front demande alors de la relire et de l'accepter (POST /family/policy). Absent pour un eleve." }
     Student:
       type: object
-      required: [studentId, pseudo, schoolLevel, under15, status, pageQuota]
+      required: [studentId, pseudo, loginId, displayName, schoolLevel, under15, status, pageQuota]
       properties:
         studentId: { type: string }
-        pseudo: { type: string, description: Pseudo avec suffixe aleatoire (Lila-7k2f) }
+        pseudo: { type: string, description: "Valeur de `loginId` (compatibilite 1.8.0: un ancien site y lit l'identifiant avec lequel l'eleve se connecte). Obsolete." }
+        loginId: { type: string, description: "Identifiant de connexion fabrique par le serveur (lila-7k2f). Anciens comptes: l'ancien pseudo." }
+        displayName: { type: string, description: "Surnom affiche. Anciens comptes: l'ancien pseudo sans le suffixe." }
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
         under15: { type: boolean }
         status: { type: string, enum: [actif, suspendu] }
@@ -1719,7 +1768,7 @@ components:
       type: object
       required: [pseudo, schoolLevel, under15, parentalAuthority, policyVersion]
       properties:
-        pseudo: { type: string, pattern: "^[A-Za-z][A-Za-z0-9 -]{1,19}$", description: Sans nom de famille }
+        pseudo: { type: string, pattern: "^[A-Za-z][A-Za-z0-9 -]{1,19}$", description: "Surnom de depart (sans nom de famille): base de l'identifiant de connexion et surnom affiche par defaut. Le serveur applique en plus les regles de surnom (400 `pseudo_refuse`)" }
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
         under15: { type: boolean }
         parentalAuthority: { type: boolean, const: true, description: Case cochee par le parent (autorite parentale et lecture de la politique) }
@@ -1756,8 +1805,9 @@ components:
     StudentUpdateRequest:
       type: object
       minProperties: 1
-      description: Le pseudo et under15 ne se modifient pas (supprimer puis recreer l'eleve).
+      description: under15 ne se modifie pas (supprimer puis recreer l'eleve). `displayName` renomme l'eleve (memes regles que a l'activation).
       properties:
+        displayName: { type: string, minLength: 2, maxLength: 20, pattern: "^[A-Za-zÀ-ÖØ-öø-ÿŒœ][A-Za-zÀ-ÖØ-öø-ÿŒœ0-9 '’-]{1,19}$" }
         status: { type: string, enum: [actif, suspendu] }
         pageQuota: { type: integer, minimum: 0, maximum: 500, description: "Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur" }
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }

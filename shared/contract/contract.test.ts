@@ -20,7 +20,7 @@ const spec = parse(readFileSync(new URL('./openapi.yaml', import.meta.url), 'utf
 const EXPECTED = [
   'POST /scans', 'GET /jobs/{jobId}', 'GET /jobs/{jobId}/transcription', 'POST /jobs/{jobId}/confirm', 'POST /jobs/{jobId}/cancel',
   'GET /docs', 'GET /docs/{docId}', 'DELETE /docs/{docId}', 'POST /docs/{docId}/report', 'GET /docs/{docId}/session', 'POST /answers', 'POST /practice/session',
-  'GET /me', 'GET /me/progress', 'POST /students', 'POST /students/{sid}/activation-link', 'PATCH /students/{sid}', 'DELETE /students/{sid}',
+  'GET /me', 'GET /me/progress', 'POST /students', 'POST /students/{sid}/activation-link', 'POST /students/{sid}/login-id', 'PATCH /students/{sid}', 'DELETE /students/{sid}',
   'GET /family/dashboard', 'GET /family/leaderboard', 'POST /reports/{id}/validate', 'GET /family/export', 'DELETE /family',
   // contract-v1.1 (L1c)
   'POST /activation', 'POST /docs/{docId}/read', 'POST /family',
@@ -93,7 +93,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.7.0');
+    expect(spec.info.version).toBe('1.8.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
@@ -343,5 +343,22 @@ describe('contrat v1.6 (F10): ajout de pages a un cours', () => {
     expect(Object.keys(post['409'].content['application/json'].examples)).toEqual(['plein', 'ouvert']);
     expect(zodSchemas.ErrorSchema.safeParse(post['409'].content['application/json'].examples.plein.value).success).toBe(true);
     expect(Object.keys(spec.paths['/cours/{coursId}'].delete.responses)).toContain('409');
+  });
+  it('contrat 1.8.0 (ID1): surnom et identifiant separes, activation en 200', () => {
+    const act = spec.paths['/activation'].post.responses;
+    expect(Object.keys(act)).toEqual(['200', '400', '404', '409']);
+    expect(zodSchemas.ActivationResponseSchema.safeParse(act['200'].content['application/json'].example).success).toBe(true);
+    const dn = spec.components.schemas.ActivationRequest.properties.displayName;
+    expect([dn.minLength, dn.maxLength]).toEqual([2, 20]);
+    expect(dn.pattern).toBeTruthy();
+    expect(spec.components.schemas.ActivationRequest.required).toEqual(['token', 'password']);
+    expect(zodSchemas.ActivationRequestSchema.safeParse({ token: 'x'.repeat(30), password: 'Un-mot-de-passe-long-1', displayName: 'Léa' }).success).toBe(true);
+    for (const bad of ['а', 'Лила', 'a'.repeat(21), 'L\u200Bila', '1Lila', 'a@b.fr']) expect(zodSchemas.ActivationRequestSchema.safeParse({ token: 'x'.repeat(30), password: 'Un-mot-de-passe-long-1', displayName: bad }).success).toBe(false);
+    expect(spec.components.schemas.Student.required).toEqual(expect.arrayContaining(['loginId', 'displayName']));
+    expect(spec.components.schemas.Me.required).toEqual(['userId', 'role', 'familyId']);
+    expect(zodSchemas.MeSchema.safeParse({ userId: 'u', role: 'parent', familyId: 'f' }).success).toBe(true);
+    expect(zodSchemas.LoginIdResponseSchema.safeParse(spec.paths['/students/{sid}/login-id'].post.responses['200'].content['application/json'].example).success).toBe(true);
+    expect(spec.components.schemas.Error.properties.code.enum).toEqual(expect.arrayContaining(['pseudo_refuse', 'pseudo_pris']));
+    expect(Object.keys(spec.paths['/students/{sid}'].patch.responses)).toContain('409');
   });
 });

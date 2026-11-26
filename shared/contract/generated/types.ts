@@ -517,6 +517,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/students/{sid}/login-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Le parent genere un nouvel identifiant de connexion pour l'eleve, mot de passe inchange (handler students-login-id-post, ID1)
+         * @description Sans corps. L'ancien identifiant cesse de fonctionner, les jetons de rafraichissement de l'eleve sont revoques (son jeton d'acces reste valable jusqu'a 1 h). Rejouable: une requete interrompue se repare en la renvoyant. Plafond 1 requete/s, rafale 3.
+         */
+        post: operations["regenerateLoginId"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/students/{sid}/activation-link": {
         parameters: {
             query?: never;
@@ -751,10 +771,10 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris";
             message: string;
             /**
              * Format: date
@@ -1255,6 +1275,18 @@ export interface components {
         ActivationRequest: {
             token: string;
             password: string;
+            /** @description Surnom choisi par l'eleve (1.8.0). Absent = on garde le surnom de depart donne par le parent. Lettres latines seulement; la liste de mots et les chiffres en trop sont controles par le serveur avant de consommer le jeton. */
+            displayName?: string;
+        };
+        ActivationResponse: {
+            /** @description Identifiant de connexion de l'eleve (ex. lila-7k2f), a montrer a l'ecran seulement */
+            loginId: string;
+            displayName: string;
+            /** @description Vrai si le surnom demande etait devenu indisponible entre-temps et qu'on a garde le surnom de depart */
+            displayNameChanged?: boolean;
+        };
+        LoginIdResponse: {
+            loginId: string;
         };
         AnswerResult: {
             correct: boolean;
@@ -1273,14 +1305,23 @@ export interface components {
             familyId: string;
             /** @description Present pour le role eleve */
             studentId?: string;
+            /** @description Eleve seulement. Valeur de `loginId` (compatibilite 1.8.0, a retirer apres le deploiement commun) */
             pseudo?: string;
+            /** @description Eleve seulement (1.8.0): identifiant de connexion. Jamais present pour un parent. */
+            loginId?: string;
+            /** @description Eleve seulement (1.8.0): surnom affiche */
+            displayName?: string;
             /** @description Parent seulement (contract-v1.4.1). Vrai si la famille a donne son consentement sur une autre version de la politique que celle en vigueur: le front demande alors de la relire et de l'accepter (POST /family/policy). Absent pour un eleve. */
             policyOutdated?: boolean;
         };
         Student: {
             studentId: string;
-            /** @description Pseudo avec suffixe aleatoire (Lila-7k2f) */
+            /** @description Valeur de `loginId` (compatibilite 1.8.0: un ancien site y lit l'identifiant avec lequel l'eleve se connecte). Obsolete. */
             pseudo: string;
+            /** @description Identifiant de connexion fabrique par le serveur (lila-7k2f). Anciens comptes: l'ancien pseudo. */
+            loginId: string;
+            /** @description Surnom affiche. Anciens comptes: l'ancien pseudo sans le suffixe. */
+            displayName: string;
             /** @enum {string} */
             schoolLevel: "seconde" | "premiere" | "terminale";
             under15: boolean;
@@ -1290,7 +1331,7 @@ export interface components {
             pageQuota: number;
         };
         StudentCreateRequest: {
-            /** @description Sans nom de famille */
+            /** @description Surnom de depart (sans nom de famille): base de l'identifiant de connexion et surnom affiche par defaut. Le serveur applique en plus les regles de surnom (400 `pseudo_refuse`) */
             pseudo: string;
             /** @enum {string} */
             schoolLevel: "seconde" | "premiere" | "terminale";
@@ -1327,8 +1368,9 @@ export interface components {
             student: components["schemas"]["Student"];
             activationLink: components["schemas"]["ActivationLink"];
         };
-        /** @description Le pseudo et under15 ne se modifient pas (supprimer puis recreer l'eleve). */
+        /** @description under15 ne se modifie pas (supprimer puis recreer l'eleve). `displayName` renomme l'eleve (memes regles que a l'activation). */
         StudentUpdateRequest: {
+            displayName?: string;
             /** @enum {string} */
             status?: "actif" | "suspendu";
             /** @description Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur */
@@ -1629,6 +1671,21 @@ export interface components {
                 "application/json": {
                     message?: string;
                 };
+            };
+        };
+        /** @description Surnom deja pris dans la famille (`pseudo_pris`) ou etat incompatible (`etat_invalide`) */
+        NamePris: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "pseudo_pris",
+                 *       "message": "Ce surnom est deja pris dans ta famille, essaie-en un autre"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
             };
         };
         /** @description Etat incompatible */
@@ -3024,15 +3081,52 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Compte active */
-            204: {
+            /** @description Compte active, l'eleve peut se connecter avec `loginId` (contract-v1.8.0; c'etait 204 sans corps) */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    /**
+                     * @example {
+                     *       "loginId": "lila-7k2f",
+                     *       "displayName": "Lila"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ActivationResponse"];
+                };
             };
-            400: components["responses"]["BadRequest"];
+            /** @description Mot de passe refuse (`requete_invalide`) ou surnom refuse (`pseudo_refuse`). Le jeton reste utilisable dans les deux cas. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "pseudo_refuse",
+                     *       "message": "Ce surnom n'est pas possible, essaie-en un autre"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             404: components["responses"]["NotFound"];
+            /** @description Surnom deja pris dans la famille (`pseudo_pris`), detecte avant de consommer le jeton */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "pseudo_pris",
+                     *       "message": "Ce surnom est deja pris dans ta famille, essaie-en un autre"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getMe: {
@@ -3056,7 +3150,9 @@ export interface operations {
                      *       "role": "eleve",
                      *       "familyId": "01JEXAMPLE0FAM0000000000AA",
                      *       "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *       "pseudo": "Lila-7k2f"
+                     *       "pseudo": "lila-7k2f",
+                     *       "loginId": "lila-7k2f",
+                     *       "displayName": "Lila"
                      *     }
                      */
                     "application/json": components["schemas"]["Me"];
@@ -3287,7 +3383,9 @@ export interface operations {
                      * @example {
                      *       "student": {
                      *         "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *         "pseudo": "Lila-7k2f",
+                     *         "pseudo": "lila-7k2f",
+                     *         "loginId": "lila-7k2f",
+                     *         "displayName": "Lila",
                      *         "schoolLevel": "seconde",
                      *         "under15": false,
                      *         "status": "actif",
@@ -3528,7 +3626,9 @@ export interface operations {
                      * @example {
                      *       "student": {
                      *         "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *         "pseudo": "Lila-7k2f",
+                     *         "pseudo": "lila-7k2f",
+                     *         "loginId": "lila-7k2f",
+                     *         "displayName": "Lila",
                      *         "schoolLevel": "seconde",
                      *         "under15": false,
                      *         "status": "actif",
@@ -3545,6 +3645,36 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["NamePris"];
+        };
+    };
+    regenerateLoginId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nouvel identifiant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "loginId": "lila-m4kx7"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LoginIdResponse"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     createActivationLink: {
@@ -3628,7 +3758,9 @@ export interface operations {
                     /**
                      * @example {
                      *       "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *       "pseudo": "Lila-7k2f",
+                     *       "pseudo": "lila-7k2f",
+                     *       "loginId": "lila-7k2f",
+                     *       "displayName": "Lila",
                      *       "schoolLevel": "seconde",
                      *       "under15": false,
                      *       "status": "suspendu",
@@ -3638,8 +3770,10 @@ export interface operations {
                     "application/json": components["schemas"]["Student"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["NamePris"];
         };
     };
     getFamilyDashboard: {
@@ -3663,7 +3797,9 @@ export interface operations {
                      *         {
                      *           "student": {
                      *             "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *             "pseudo": "Lila-7k2f",
+                     *             "pseudo": "lila-7k2f",
+                     *             "loginId": "lila-7k2f",
+                     *             "displayName": "Lila",
                      *             "schoolLevel": "seconde",
                      *             "under15": false,
                      *             "status": "actif",
@@ -3712,7 +3848,7 @@ export interface operations {
                      *       "entries": [
                      *         {
                      *           "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *           "pseudo": "Lila-7k2f",
+                     *           "pseudo": "Lila",
                      *           "xp": 310,
                      *           "activeDays": 4
                      *         }
