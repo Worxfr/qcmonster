@@ -1,7 +1,7 @@
 // Fonction `me-export-build` (R1): construit l'archive de l'eleve en flux. Appelee seulement par `me-export` (appel asynchrone), jamais par API Gateway.
 import { log } from '../../../shared/log/index.js';
 import { buildStudentExport } from './student-export.js';
-import { studentExportDeps } from '../handlers/runtime.js';
+import { studentExportDeps } from './export-runtime.js';
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 

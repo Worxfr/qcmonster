@@ -154,6 +154,9 @@ export const awaitUploadHandler = step((c, i: WfInput & { token: string }) => aw
 export const scanCheckHandler = step((c, i: WfInput) => scanCheck(c, i));
 export const transcribeHandler = step((c, i: WfInput) => transcribe(c, i));
 export const cropFiguresHandler = step((c, i: WfInput) => cropFigures(c, i));
+// R1: archive de l'eleve (fonctions `me-export-archive` et `student-export-build`, meme paquet).
+export { handler as meExportArchiveHandler } from '../handlers/me-export.js';
+export { handler as studentExportBuildHandler } from '../family/student-export-build.js';
 export const awaitConfirmHandler = step((c, i: WfInput & { token: string }) => awaitConfirm(c, i));
 export const expireHandler = step((c, i: WfInput & { phase: 'upload' | 'confirm' }) => expire(c, i));
 export const sectionsPlanHandler = step(sectionsPlan);

@@ -12,10 +12,6 @@ import { memoryArchives, s3Archives, type ArchiveStore } from '../lib/archive-st
 import { realRandom, type Deps } from '../lib/deps.js';
 import { cognitoIdentity } from '../lib/identity.js';
 import { s3Photos } from '../lib/photos.js';
-import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import type { StudentExportDeps } from '../family/student-export.js';
-import { s3FigureReader } from '../lib/figure-reader.js';
-import { partSink, s3Uploader } from '../lib/multipart.js';
 import { dynamoStore } from '../lib/store.js';
 
 const need = (name: string): string => {
@@ -39,20 +35,6 @@ const archivesOf = (): ArchiveStore => (process.env.SCANS_BUCKET ? s3Archives(pr
 /** Archive d'export (H1-B): lecture de la famille, ecriture S3 sous exports/ seulement. */
 export function archiveDeps(): ArchiveDeps {
   return { ...gameDeps(), archives: s3Archives(need('SCANS_BUCKET')) };
-}
-
-/** Archive de l'eleve (R1): lecture de la table et du bucket des figures, ecriture S3 en parties sous exports/ seulement, lancement asynchrone de la construction. */
-export function studentExportDeps(): StudentExportDeps {
-  const bucket = need('SCANS_BUCKET'); // bucket d'export existant (prefixe exports/)
-  return {
-    ...gameDeps(),
-    archives: s3Archives(bucket),
-    figures: s3FigureReader(need('FIGURES_BUCKET')),
-    openSink: (key) => partSink(s3Uploader(bucket, key)),
-    async launch(payload) {
-      await new LambdaClient({}).send(new InvokeCommand({ FunctionName: need('EXPORT_BUILD_FUNCTION'), InvocationType: 'Event', Payload: Buffer.from(JSON.stringify(payload)) }));
-    },
-  };
 }
 
 export function familyDeps(): FamilyDeps {

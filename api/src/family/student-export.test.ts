@@ -58,6 +58,10 @@ function env(maxFigureBytes?: number) {
       return s;
     },
     launch: async (p) => void launched.push(p),
+    update: async (key, attrs) => {
+      const cur = await t.store.get(key);
+      if (cur) await t.store.commit([{ item: { ...cur, ...attrs }, when: 'any' }]);
+    },
     ...(maxFigureBytes ? { maxFigureBytes } : {}),
   };
   return { t, deps, objects, gets, written, parts, sinks, launched, wasAborted: () => aborted };

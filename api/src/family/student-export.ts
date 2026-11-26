@@ -29,6 +29,8 @@ export interface StudentExportDeps extends Deps {
   openSink(key: string): Sink;
   /** Lance la construction en appel asynchrone (`Event`): la reponse HTTP n'attend pas. */
   launch(payload: { sid: string; exportId: string }): Promise<void>;
+  /** Met a jour des attributs de l'element d'etat (la construction n'a pas le droit d'ecrire un element entier). */
+  update(key: { PK: string; SK: string }, attrs: Record<string, unknown>): Promise<void>;
   /** Pour les tests; defaut MAX_FIGURE_BYTES. */
   maxFigureBytes?: number;
 }
@@ -158,10 +160,10 @@ export async function buildStudentExport(deps: StudentExportDeps, i: { sid: stri
     }
     await sink.write(zw.end());
     const sizeBytes = await sink.finish();
-    await deps.store.commit([{ item: { ...job, state: 'pret', sizeBytes, tests: tests.length, courses: cours.length, figures, truncated, omittedCourses }, when: 'any' }]);
+    await deps.update(jobKey, { state: 'pret', sizeBytes, tests: tests.length, courses: cours.length, figures, truncated, omittedCourses });
   } catch (e) {
     await sink.abort().catch(() => undefined);
-    await deps.store.commit([{ item: { ...job, state: 'echec' }, when: 'any' }]);
+    await deps.update(jobKey, { state: 'echec' }).catch(() => undefined);
     throw e;
   }
 }
