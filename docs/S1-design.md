@@ -1,6 +1,6 @@
 # S1 : partage de QCM avec des tiers (#34)
 
-Statut : **conception**, aucun code écrit, **contrat d'API non modifié**, **`POLICY_VERSION` non relevé** (les ajouts de contrat sont proposés en section 10, à intégrer par le lot S1-K).
+Statut : **validé par le propriétaire** (les 17 points S1-P1 à S1-P17 de la section 16 sont tranchés avec leur valeur par défaut). Conception, aucun code écrit, **contrat d'API non modifié**, **`POLICY_VERSION` non relevé** (les ajouts de contrat sont proposés en section 10, à intégrer par le lot S1-K).
 Base : `main` au commit `8ebf5f8` (contrat 1.11.0, `POLICY_VERSION` 2026-11-28). Dépend de Q1 (banque de questions, fusionnée), H1 (historique, fusionné), ID1 (pseudo et identifiant, fusionné), M1 (modification d'un cours, fusionné) et E1 (exercices, fusionné).
 Les coûts et les durées sont **estimés, pas mesurés** (aucun appel n'a été fait pour ce document). Les prix unitaires AWS sont des ordres de grandeur à vérifier avant tout déploiement.
 
