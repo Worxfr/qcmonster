@@ -144,11 +144,11 @@ describe('parcours complet', () => {
     await expect(extract(k.ctx, u.i)).rejects.toThrow('sortie du modele');
   });
 
-  it('F8: une sortie de modele inutilisable donne un message precis a l eleve', async () => {
+  it('F11: une sortie de modele inutilisable donne un message neutre, sans demander de redecouper', async () => {
     const k = await makeCtx(goodScript());
     const u = await toConfirm(k);
     await failJob(k.ctx, { ...u.i, error: { Error: 'ModelOutputError' } });
-    expect((await job(k, u.jobId)).message).toContain('trop dense');
+    expect((await job(k, u.jobId)).message).not.toMatch(/deux parties|trop dense/);
   });
 
   it('un second scan du meme cours est un doublon', async () => {

@@ -37,7 +37,7 @@ export const MSG = {
   expiredConfirm: `Pas de confirmation après ${CONFIRM_TIMEOUT_S / 3600} heures, la photo est supprimée`,
   budget: 'Le service est en pause pour le moment, réessaie plus tard',
   failed: 'Le traitement a échoué, rescanne ton cours',
-  unreadable: 'Le cours est trop dense pour être lu en une fois : rescanne-le en deux parties (moins de pages à la fois)',
+  unreadable: 'Ce cours n’a pas pu être lu cette fois. Tes pages ne sont pas décomptées, tu peux réessayer',
 } as const;
 
 // ---------------------------------------------------------------- 1. attente d'envoi
@@ -133,7 +133,7 @@ async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: 
   const raw = await callModel(ctx, i, 'transcription', 'haiku', {
     system: SYSTEM_JSON,
     prompt: readPrompt(numbers.map((p) => ({ page: p, context: p === w.context }))),
-    maxTokens: numbers.length > 1 ? 8000 : 4096,
+    maxTokens: 8000, // plafond seulement: seuls les jetons produits sont payes
     images,
   });
   const out = parseModelJson(raw, ReadOut);

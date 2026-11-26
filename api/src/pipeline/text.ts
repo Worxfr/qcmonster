@@ -84,6 +84,38 @@ export function salvageTruncatedList(raw: string, key: string): unknown[] | unde
   return items.length > 0 ? items : undefined;
 }
 
+// ---------------------------------------------------------------- tranches d'une section dense (F11)
+/** Tranche d'extraction: au plus 30 phrases et 6 000 caracteres (une phrase plus longue a sa propre tranche). */
+export const SLICE_SENTENCES = 30;
+export const SLICE_CHARS = 6000;
+export interface SliceRange {
+  start: number;
+  end: number;
+}
+
+/** Decoupe `lengths.length` phrases consecutives en tranches [start, end[ (jamais vides, couvrant tout, sans trou ni recouvrement). */
+export function sliceRanges(lengths: number[], maxSentences = SLICE_SENTENCES, maxChars = SLICE_CHARS): SliceRange[] {
+  const out: SliceRange[] = [];
+  let start = 0;
+  let chars = 0;
+  lengths.forEach((len, n) => {
+    if (n > start && (n - start >= maxSentences || chars + len > maxChars)) {
+      out.push({ start, end: n });
+      start = n;
+      chars = 0;
+    }
+    chars += len;
+  });
+  if (lengths.length > 0) out.push({ start, end: lengths.length });
+  return out;
+}
+
+/** Garde `max` elements repartis regulierement sur toute la liste (ordre conserve): une section dense reste couverte de bout en bout. */
+export function thinEvenly<T>(list: T[], max: number): T[] {
+  if (list.length <= max) return list;
+  return Array.from({ length: max }, (_, k) => list[Math.floor((k * list.length) / max)]);
+}
+
 // ---------------------------------------------------------------- lecture d'un scan comme un seul document (FEAT-A, lot B1)
 export interface ReadPage {
   page: number;
