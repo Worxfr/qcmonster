@@ -56,6 +56,7 @@ export type Block = S['Block'];
 export type Figure = S['Figure'];
 export type FigureBox = S['FigureBox'];
 export type ConfirmFigure = S['ConfirmFigure'];
+export type AddedSentence = S['AddedSentence'];
 export type SentenceMark = S['SentenceMark'];
 export type FicheParagraph = S['FicheParagraph'];
 export type RecallItem = S['RecallItem'];

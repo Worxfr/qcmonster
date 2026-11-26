@@ -178,3 +178,15 @@ Aucune table, aucun index, aucun bucket nouveau. Nouveaux types d'elements:
 | Verrous `COPIEOUV` (copie a envoyer) et `COPIEACTIVE` (correction en cours) | `STUDENT#<sid>` / `COPIEOUV`, `COPIEACTIVE` | `copies-create`, `copies-submit`, liberes par `copie-correct` et `copie-fail` sous condition `copieId` |
 
 Images: `copies/<eleve>/<copie>/p<n>` dans le bucket des scans (regle S3 de 1 jour), supprimees par cles exactes des la fin de la correction. Historique: une entree `TEST#` de mode `exercice` par correction creditee, lignes `kind: exo` (`<docId>:exo:<nn>#<etape>`, finale `#f`), sans texte.
+
+## M1 #89: phrase oubliee ajoutee a la relecture (contrat 1.10.0, `docs/M1-design.md` section 2)
+
+Aucun nouvel element, aucune table, aucun droit IAM. Un attribut facultatif:
+
+| Element | Attribut | Role |
+|---|---|---|
+| `COURS#<id>#T<nn>` (et la copie de travail `JOB#/TEXT#<page>`) | `sentences[].added` (booleen) | Ecrit par `jobs-confirm` pour une phrase ajoutee par l'eleve (affichage « Ajoutee par toi »). Jamais envoye a Bedrock, jamais dans `Transcription`. |
+
+- Identifiant: `p<page>-s<n>`, `n` = plus grand numero de la page dans le texte du job (phrases retirees comprises) + 1. Aucun identifiant existant n'est renumerote ni repris.
+- Blocs (`COURS#<id>#B`): la phrase rejoint le paragraphe ou la liste de son ancre, ou forme un nouveau paragraphe (`api/src/pipeline/changes.ts`, `applyAdded`, fonction pure reutilisee par #90).
+- Extraction, verification et questions: le chemin d'une phrase lue, sans traitement de faveur.

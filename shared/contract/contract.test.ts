@@ -96,7 +96,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.9.0');
+    expect(spec.info.version).toBe('1.10.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
@@ -363,5 +363,23 @@ describe('contrat v1.6 (F10): ajout de pages a un cours', () => {
     expect(zodSchemas.LoginIdResponseSchema.safeParse(spec.paths['/students/{sid}/login-id'].post.responses['200'].content['application/json'].example).success).toBe(true);
     expect(spec.components.schemas.Error.properties.code.enum).toEqual(expect.arrayContaining(['pseudo_refuse', 'pseudo_pris']));
     expect(Object.keys(spec.paths['/students/{sid}'].patch.responses)).toContain('409');
+  });
+  it('contrat 1.10.0 (M1 #89): phrase ajoutee a la relecture, additif', () => {
+    const A = zodSchemas.AddedSentenceSchema;
+    expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true); // un client 1.9 reste valide
+    expect(A.safeParse({ key: 'n1', afterId: null, text: 'Une phrase oubliee.' }).success).toBe(true); // null: tout au debut
+    expect(A.safeParse({ key: 'n2', afterId: 'n1', text: 'Une autre.', newBlock: true }).success).toBe(true);
+    expect(A.safeParse({ key: 'n2', afterId: 'p1-s2', text: 'ab' }).success).toBe(false); // 3 caracteres au moins
+    expect(A.safeParse({ key: 'x1', afterId: 'p1-s2', text: 'abc' }).success).toBe(false);
+    expect(A.safeParse({ key: 'n1', afterId: 'oups', text: 'abc' }).success).toBe(false);
+    expect(A.safeParse({ key: 'n1', afterId: 'p1-s1', text: 'a'.repeat(2001) }).success).toBe(false);
+    const one = { key: 'n1', afterId: null, text: 'Une phrase.' };
+    expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [], added: Array.from({ length: 20 }, (_, k) => ({ ...one, key: `n${k + 1}` })) }).success).toBe(true);
+    expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [], added: Array.from({ length: 21 }, (_, k) => ({ ...one, key: `n${k + 1}` })) }).success).toBe(false);
+    expect(zodSchemas.ConfirmSectionSchema.safeParse({ fromSentenceId: 'n3', subject: 'svt' }).success).toBe(true);
+    expect(spec.components.schemas.ConfirmRequest.properties.added.description).toMatch(/COMME UNE PHRASE LUE/);
+    expect(spec.components.schemas.Sentence.properties.added.type).toBe('boolean');
+    // jamais dans la transcription: aucun champ `added` n'est requis, et le parent n'a aucune route nouvelle
+    expect(spec.components.schemas.Sentence.required).toEqual(['id', 'text']);
   });
 });

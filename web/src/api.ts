@@ -4,7 +4,7 @@ import type {
   AnswerResult, PracticeRequest, PracticeSession, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, ActivationResponse, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
-  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, ExportState,
+  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, AddedSentence, ExportState,
   Exercice, ExerciceResume, ExerciceCreated, ExerciceHint, ExerciceSolution, CopieCreateResponse, CopieSubmitResponse, Copie,
 } from './types';
 
@@ -59,7 +59,7 @@ export const api = {
   updateDoc: (id: string, b: { subject?: Subject; topic?: string | null }) => call<DocSummary>('PATCH', `/docs/${e(id)}`, b),
   job: (id: string) => call<Job>('GET', `/jobs/${e(id)}`),
   transcription: (id: string) => call<Transcription>('GET', `/jobs/${e(id)}/transcription`),
-  confirm: (id: string, corrections: Sentence[], extra: { sections?: ConfirmSection[]; subject?: Subject; topic?: string; folderId?: string; figures?: ConfirmFigure[]; removed?: string[] } = {}) =>
+  confirm: (id: string, corrections: Sentence[], extra: { sections?: ConfirmSection[]; subject?: Subject; topic?: string; folderId?: string; figures?: ConfirmFigure[]; removed?: string[]; added?: AddedSentence[] } = {}) =>
     call<Job>('POST', `/jobs/${e(id)}/confirm`, { corrections, ...extra }),
   cancel: (id: string) => call<Job>('POST', `/jobs/${e(id)}/cancel`),
   deleteScan: (id: string) => call<void>('DELETE', `/scans/${e(id)}`),

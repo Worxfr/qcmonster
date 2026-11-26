@@ -146,7 +146,7 @@ export const CoursTextItemSchema = z.object({
   PK: z.string(),
   SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}#T[0-9]{2}$/),
   page: z.number().int().min(1).max(30),
-  sentences: z.array(z.object({ id: z.string().regex(/^p[0-9]+-s[0-9]+$/), text: z.string().max(2000), pages: z.array(z.number().int().min(1).max(30)).min(1).max(4).optional() })),
+  sentences: z.array(z.object({ id: z.string().regex(/^p[0-9]+-s[0-9]+$/), text: z.string().max(2000), pages: z.array(z.number().int().min(1).max(30)).min(1).max(4).optional(), added: z.boolean().optional() })),
 });
 
 /** Bloc du cours (contrat 1.5). */
