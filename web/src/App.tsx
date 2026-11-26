@@ -27,6 +27,7 @@ import { Scan } from './screens/Scan';
 import { Docs } from './screens/Docs';
 import { Folders } from './screens/Folders';
 import { Cours } from './screens/Cours';
+import { Modifier } from './screens/Modifier';
 import { Quiz } from './screens/Quiz';
 import { Exercices } from './screens/Exercices';
 import { Exercice } from './screens/Exercice';
@@ -121,6 +122,7 @@ function Shell() {
   else if (seg === 'tests') body = <Tests />;
   else if (seg === 'docs') body = <Docs />;
   else if (seg === 'folders') body = <Folders />;
+  else if (seg === 'cours' && id && id2 === 'modifier') body = <Modifier key={id} id={id} />; // modifier un cours confirme (M1 #90)
   else if (seg === 'cours' && id) body = <Cours id={id} />;
   else body = <Home />;
 

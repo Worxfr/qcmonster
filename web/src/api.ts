@@ -4,7 +4,7 @@ import type {
   AnswerResult, PracticeRequest, PracticeSession, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, ActivationResponse, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
-  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, AddedSentence, ExportState,
+  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, AddedSentence, ExportState, ReviseRequest, Revision,
   Exercice, ExerciceResume, ExerciceCreated, ExerciceHint, ExerciceSolution, CopieCreateResponse, CopieSubmitResponse, Copie,
 } from './types';
 
@@ -56,6 +56,10 @@ export const api = {
   removeFromFolder: (id: string, docId: string) => call<void>('DELETE', `/folders/${e(id)}/scans/${e(docId)}`),
   cours: (id: string) => call<Cours>('GET', `/cours/${e(id)}`),
   deleteCours: (id: string, fiches: 'garder' | 'supprimer') => call<void>('DELETE', `/cours/${e(id)}?fiches=${fiches}`),
+  /** M1 #90: modifier un cours confirme. 200 = deja fait (aucune fiche touchee), 202 = en cours. */
+  createRevision: (coursId: string, b: ReviseRequest) => call<Revision>('POST', `/cours/${e(coursId)}/revisions`, b),
+  revision: (coursId: string, revisionId: string) => call<Revision>('GET', `/cours/${e(coursId)}/revisions/${e(revisionId)}`),
+  cancelRevision: (coursId: string, revisionId: string) => call<void>('POST', `/cours/${e(coursId)}/revisions/${e(revisionId)}/cancel`),
   updateDoc: (id: string, b: { subject?: Subject; topic?: string | null }) => call<DocSummary>('PATCH', `/docs/${e(id)}`, b),
   job: (id: string) => call<Job>('GET', `/jobs/${e(id)}`),
   transcription: (id: string) => call<Transcription>('GET', `/jobs/${e(id)}/transcription`),

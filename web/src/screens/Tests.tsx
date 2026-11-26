@@ -75,6 +75,7 @@ function QuestionCard({ q }: { q: Question }) {
         {q.kind === 'exo' && <span className="muted">{q.xpGained} XP</span>}
       </p>
       {q.kind !== 'exo' && <p className="prompt">{q.prompt ?? "Cette question n'existe plus dans la fiche."}</p>}
+      {q.retired && <p className="q-retired"><span aria-hidden="true">🗑️</span> Question retirée après une correction du cours</p>}
       {q.choices && q.choices.length > 0 ? (
         <ul className="q-choices" aria-label="Les choix">
           {q.choices.map((c) => {

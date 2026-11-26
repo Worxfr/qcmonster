@@ -66,6 +66,14 @@ export function Cours({ id }: { id: string }) {
             <span className="muted">Tu as oublié une page ? Elle sera ajoutée à la fin de ce cours ({MAX_COURS_PAGES - cours.pages} {plural(MAX_COURS_PAGES - cours.pages, 'page possible', 'pages possibles')}).</span>
           </div>
         )}
+        {cours.revision ? (
+          <p className="cours-edit cours-edit-open" role="status"><span aria-hidden="true">⏳</span> Une modification de ton cours est en cours. <a className="link" href={`#/cours/${encodeURIComponent(cours.coursId)}/modifier`}>Voir où ça en est</a></p>
+        ) : (
+          <div className="cours-edit">
+            <a className="btn btn-big" href={`#/cours/${encodeURIComponent(cours.coursId)}/modifier`}><span aria-hidden="true">✏️</span> Modifier ce cours</a>
+            <span className="muted">Une faute, une phrase en trop ou oubliée ? Corrige-la ici. Tes points gagnés restent.</span>
+          </div>
+        )}
         <ol className="cours-secs" aria-label="Parties du cours">
           {cours.sections.map((s, i) => (
             <li key={s.fromSentenceId} className={`cours-sec sec-${i % 6}`}>

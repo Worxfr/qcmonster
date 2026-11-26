@@ -240,3 +240,13 @@
 .cf-newblock { font-weight: 600; }
 .cf-addnote { font-size: .88rem; color: var(--muted); }
 .cf-edit-actions .cf-undo:disabled { opacity: .5; cursor: default; text-decoration: none; }
+
+/* M1 #90: modifier un cours confirme (clair, vif) */
+.cours-edit { display: grid; gap: .3rem; margin: .8rem 0 .2rem; padding: .7rem .9rem .8rem; border-radius: 18px; background: linear-gradient(135deg, #dbeafe, #ede9fe); border: 2px dashed var(--brand); }
+.cours-edit .btn-big { margin: 0 0 .2rem; }
+.cours-edit-open { display: block; background: var(--warn-bg); border: 2px solid #f59e0b; color: var(--warn); font-weight: 700; }
+.mod-intro { padding: .6rem .9rem; border-radius: 16px; background: linear-gradient(135deg, #fef3c7, #fce7f3); border: 2px solid #f9a8d4; margin-bottom: .6rem; }
+.mod-intro p { margin: .2rem 0; }
+.mod-send { margin-top: 1rem; padding: .6rem .2rem; display: grid; gap: .3rem; }
+.mod-progress { font-size: 1.15rem; font-weight: 700; display: flex; gap: .6rem; align-items: center; }
+.q-retired { margin: .2rem 0 .5rem; padding: .3rem .7rem; border-radius: 12px; background: #fef3c7; border: 2px solid #f59e0b; color: #78350f; font-weight: 700; display: inline-block; }

@@ -478,13 +478,13 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   );
 }
 
-interface EditorProps {
+export interface EditorProps {
   s: Sentence; n: number; text: string; formula: boolean; removed: boolean; changed: boolean; canCut: boolean; addNote: string | null;
   onAdd: () => void; onCommit: (text: string, refocus: boolean) => void; onCancel: () => void; onRemove: () => void; onRestore: () => void; onReset: () => void; onCut: () => void;
 }
 
 /** Correction a la place de la phrase: champ de texte (fiable sur telephone), brouillon valide ou annule; rien n'est envoye au serveur ici. */
-function SentenceEditor({ s, n, text, formula, removed, changed, canCut, addNote, onAdd, onCommit, onCancel, onRemove, onRestore, onReset, onCut }: EditorProps) {
+export function SentenceEditor({ s, n, text, formula, removed, changed, canCut, addNote, onAdd, onCommit, onCancel, onRemove, onRestore, onReset, onCut }: EditorProps) {
   const [draft, setDraft] = useState(text);
   const wrap = useRef<HTMLSpanElement>(null);
   const clean = draft.replace(/\s*\n\s*/g, ' ');
@@ -536,7 +536,7 @@ function SentenceEditor({ s, n, text, formula, removed, changed, canCut, addNote
 }
 
 /** Champ pour une phrase oubliee: brouillon local, rien n'est envoye au serveur ici (M1 #89). */
-function AddEditor({ list, newBlockChoice, onSave, onCancel }: { list: Added[]; newBlockChoice: boolean; onSave: (text: string, newBlock: boolean) => void; onCancel: () => void }) {
+export function AddEditor({ list, newBlockChoice, onSave, onCancel }: { list: Added[]; newBlockChoice: boolean; onSave: (text: string, newBlock: boolean) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState('');
   const [newBlock, setNewBlock] = useState(false);
   const clean = draft.replace(/\s*\n\s*/g, ' ');
