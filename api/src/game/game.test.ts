@@ -502,7 +502,7 @@ describe('lectures: profil, tableau de bord, classement', () => {
   it('/me: parent, eleve, parent sans famille, sans role', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    expect(await getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent', familyId: FID })).toEqual({ userId: 'p', role: 'parent', familyId: FID });
+    expect(await getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent', familyId: FID })).toEqual({ userId: 'p', role: 'parent', familyId: FID, policyOutdated: true }) // famille de test sans version de politique enregistree;
     expect(await getMe(t.deps, { sub: ctx.sub, username: SID, role: 'eleve', familyId: FID })).toEqual({ userId: ctx.sub, role: 'eleve', familyId: FID, studentId: SID, pseudo: 'Pseudo-1abc' });
     await rejects(getMe(t.deps, { sub: 'p', username: 'par1', role: 'parent' }), 404);
     await rejects(getMe(t.deps, { sub: 'p', username: 'x' }), 404); // admin seul ou parent invite sans famille: profil absent

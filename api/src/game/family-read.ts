@@ -2,6 +2,7 @@
 // la cle de partition vient de `famille_id` du jeton, jamais d'un parametre.
 import { keys } from '../../../shared/ddb/keys.js';
 import { quotaDefaults } from '../../../shared/names.js';
+import { POLICY_VERSION } from '../../../shared/policy.js';
 import type { Deps } from '../lib/deps.js';
 import { forbidden, notFound, type Auth, type ParentCtx, type StudentCtx } from '../lib/http.js';
 import { activeStudent, studentView, type StudentView } from './access.js';
@@ -15,6 +16,8 @@ export interface MeView {
   familyId: string;
   studentId?: string;
   pseudo?: string;
+  /** Parent seulement, present (vrai) quand le consentement de la famille porte sur une autre version de la politique que celle en vigueur. */
+  policyOutdated?: true;
 }
 
 /** GET /me. Un parent sans famille (jeton emis avant POST /family) recoit 404: le front appelle alors POST /family puis rafraichit le jeton. */
@@ -22,7 +25,12 @@ export async function getMe(deps: Deps, a: Auth): Promise<MeView> {
   // Sans role ni famille (admin seul, parent invite avant POST /family): profil absent, le front propose de creer la famille.
   if (!a.role) throw a.conflicting || a.familyId ? forbidden() : notFound();
   if (!a.familyId) throw notFound();
-  if (a.role === 'parent') return { userId: a.sub, role: 'parent', familyId: a.familyId };
+  if (a.role === 'parent') {
+    const meta = await deps.store.get(keys.family(a.familyId));
+    // Une famille creee avant l'enregistrement de la version (aucune `versionPolitique`) doit aussi relire le texte.
+    const outdated = meta !== undefined && meta.versionPolitique !== POLICY_VERSION;
+    return { userId: a.sub, role: 'parent', familyId: a.familyId, ...(outdated ? { policyOutdated: true as const } : {}) };
+  }
   const ctx: StudentCtx = { sub: a.sub, studentId: a.username, familyId: a.familyId };
   const s = await activeStudent(deps, ctx);
   return { userId: a.sub, role: 'eleve', familyId: a.familyId, studentId: ctx.studentId, pseudo: String(s.pseudo) };

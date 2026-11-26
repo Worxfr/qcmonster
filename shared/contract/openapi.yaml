@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.4.0
+  version: 1.4.1
   description: |
-    Contrat d'API QCMonster (contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -937,6 +937,24 @@ paths:
         '429':
           description: "Plus de 3 archives dans l'heure pour la famille (`quota_epuise`), ou limite de debit de la route (corps API Gateway, voir `TooManyRequests`)"
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: "Trop d'archives demandées, réessaie dans une heure" } } }
+  /family/policy:
+    post:
+      operationId: acceptPolicy
+      tags: [family]
+      summary: "Le parent accepte la version en vigueur de la politique de confidentialite (contract-v1.4.1, handler family-create)"
+      description: |
+        Reserve au parent qui a deja une famille. Meme corps que `POST /family`: `consent` vrai et `policyVersion` egale a la version en vigueur, sinon 400 `requete_invalide` « Consentement requis ». Enregistre la date et la version dans la famille. Repondre deux fois est sans effet (204). Un eleve recoit 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyCreateRequest' }
+            example: { consent: true, policyVersion: '2026-11-26' }
+      responses:
+        '204': { description: Accepte (policyOutdated repasse a faux) }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /family:
     post:
       operationId: createFamily
@@ -1414,6 +1432,7 @@ components:
         familyId: { type: string }
         studentId: { type: string, description: Present pour le role eleve }
         pseudo: { type: string }
+        policyOutdated: { type: boolean, description: "Parent seulement (contract-v1.4.1). Vrai si la famille a donne son consentement sur une autre version de la politique que celle en vigueur: le front demande alors de la relire et de l'accepter (POST /family/policy). Absent pour un eleve." }
     Student:
       type: object
       required: [studentId, pseudo, schoolLevel, under15, status, pageQuota]

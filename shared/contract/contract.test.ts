@@ -32,7 +32,7 @@ const EXPECTED = [
   'DELETE /scans/{scanId}', 'GET /cours/{coursId}', 'DELETE /cours/{coursId}',
   // contract-v1.4 (H1)
   'GET /me/tests', 'GET /me/tests/{testId}', 'GET /students/{sid}/progress', 'GET /students/{sid}/tests',
-  'GET /students/{sid}/tests/{testId}', 'POST /family/export/archive',
+  'GET /students/{sid}/tests/{testId}', 'POST /family/export/archive', 'POST /family/policy',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -83,7 +83,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.4.0');
+    expect(spec.info.version).toBe('1.4.1');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);

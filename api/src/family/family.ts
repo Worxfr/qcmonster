@@ -6,7 +6,7 @@ import { POLICY_VERSION } from '../../../shared/policy.js';
 import { coursMeta } from '../cours/meta.js';
 import { studentView } from '../game/access.js';
 import type { Item } from '../lib/store.js';
-import { badRequest, conflict, forbidden, type Auth, type ParentCtx } from '../lib/http.js';
+import { badRequest, conflict, forbidden, notFound, type Auth, type ParentCtx } from '../lib/http.js';
 import type { Deps } from '../lib/deps.js';
 import type { FamilyDeps } from './ports.js';
 import { purgeStudent } from './students.js';
@@ -34,6 +34,22 @@ export async function createFamily(deps: FamilyDeps, a: Auth, body: { consent: b
   // Reprise possible: si Cognito a echoue apres l'ecriture de META, un nouvel appel arrive ici avec la meme famille.
   if (!(await deps.identity.attachFamily(a.username, fid))) throw conflict('Famille déjà créée');
   return { userId: a.sub, role: 'parent' as const, familyId: fid };
+}
+
+/**
+ * POST /family/policy: le parent accepte la version en vigueur de la politique (re-acceptation apres un changement de texte).
+ * Ne touche que la date et la version du consentement de la famille du jeton; sans effet si elles sont deja a jour.
+ */
+export async function acceptPolicy(deps: FamilyDeps, ctx: ParentCtx, body: { consent: boolean; policyVersion: string }): Promise<void> {
+  if (body.consent !== true || body.policyVersion !== POLICY_VERSION) throw badRequest('Consentement requis');
+  for (let i = 0; i < 3; i++) {
+    const meta = await deps.store.get(keys.family(ctx.familyId));
+    if (!meta) throw notFound();
+    if (meta.versionPolitique === POLICY_VERSION) return;
+    const next = { ...meta, consentementLe: deps.now().toISOString(), versionPolitique: POLICY_VERSION };
+    if (await deps.store.commit([{ item: next, when: typeof meta.v === 'number' ? meta.v : 'any' }])) return;
+  }
+  throw conflict('Réessaie dans un instant');
 }
 
 /**

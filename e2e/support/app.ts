@@ -23,6 +23,14 @@ export const fake = {
   async seed(data: { folders?: string[]; docs?: { title: string; subject?: string; topic?: string; folder?: string }[] }) {
     if (isMock) await post('/__test/seed', data);
   },
+  /** Historique de tests déjà prêt (24 passages en 2026-2027, 6 en 2025-2026), sans passer par le jeu (mode mock seulement). */
+  async history(opts: { recent?: number; old?: number } = {}) {
+    if (isMock) await post('/__test/history', opts);
+  },
+  /** La famille a consenti sur une ancienne version de la politique: GET /me renvoie policyOutdated. */
+  async policyOutdated(outdated = true) {
+    if (isMock) await post('/__test/policy', { outdated });
+  },
   async fail(mode: 's3' | null) {
     if (isMock) await post('/__test/fail', { mode });
   },

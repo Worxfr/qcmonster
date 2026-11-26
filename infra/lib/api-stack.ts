@@ -68,6 +68,8 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'POST /activation', handler: 'activation-post', owner: 'game', public: true, throttle: { rate: 1, burst: 3 } },
   { route: 'POST /docs/{docId}/read', handler: 'docs-mark-read', owner: 'game', throttle: { rate: 5, burst: 10 } },
   { route: 'POST /family', handler: 'family-create', owner: 'game', throttle: { rate: 1, burst: 2 } },
+  // contract-v1.4.1 (H1-W): re-acceptation de la politique (meme fonction que POST /family, role `account`)
+  { route: 'POST /family/policy', handler: 'family-create', owner: 'game', throttle: { rate: 1, burst: 2 } },
   // contract-v1.2 (A1): reserve au groupe Cognito `admin`, verifie par le handler
   { route: 'POST /admin/invitations', handler: 'admin-invitations', owner: 'game', throttle: { rate: 1, burst: 3 } },
   // contract-v1.3 (FEAT-A): lot I: `owner: 'pipeline'` (fonctions dans pipeline-stack)
