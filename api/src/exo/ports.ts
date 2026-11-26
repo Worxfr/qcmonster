@@ -20,13 +20,8 @@ export interface CopieStarter {
   /** Une execution par copie, nommee par `copieId` (un double clic ne lance pas deux executions). Entree sans contenu. */
   start(name: string, input: CopieInput): Promise<void>;
 }
-export interface CopieInput {
-  copieId: string;
-  sid: string;
-  fid: string;
-  exoRef: string;
-  pages: number;
-}
+export type { CopieInput } from '../../../shared/exo-access.js';
+import type { CopieInput } from '../../../shared/exo-access.js';
 export interface GenInput {
   sid: string;
   fid: string;

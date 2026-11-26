@@ -19,7 +19,11 @@ export const GEN_STALE_MS = 3 * 60_000;
 export const LOCK_STALE_MS = 5 * 60_000;
 export const MAX_PAGES = 3;
 export const MAX_PAGE_BYTES = 3_750_000;
-export const UPLOAD_EXPIRES_S = 600;
+/**
+ * Validite d'un envoi pre-signe: 5 minutes (revue #100 M5, 10 minutes avant). Limite connue: un envoi encore valide apres la correction peut deposer
+ * a nouveau SA photo sur la meme cle exacte; elle n'est relue par personne et expire par la regle S3 de 1 jour du bucket.
+ */
+export const UPLOAD_EXPIRES_S = 300;
 export const MIN_VERIFIED_CLAIMS = 2;
 export const DEFAULT_TOL_REL = 0.01;
 export const GENERIC_HINT = 'Relis cette étape avec ton cours.';

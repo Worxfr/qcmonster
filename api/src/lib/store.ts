@@ -21,6 +21,8 @@ export interface Store {
   /** Ecrit tous les elements ou aucun. false si une condition echoue. */
   commit(writes: Write[]): Promise<boolean>;
   remove(key: Key): Promise<void>;
+  /** Supprime l'element seulement s'il porte encore la version `v` lue (`'absent-v'`: element sans version). false si la condition echoue ou si l'element n'existe plus. */
+  removeAt(key: Key, v: number | 'absent-v'): Promise<boolean>;
 }
 
 const condition = (when: When): { ConditionExpression?: string; ExpressionAttributeValues?: Record<string, unknown> } =>
@@ -85,6 +87,17 @@ export function dynamoStore(client: DynamoDBDocumentClient, table: string): Stor
     async remove(key) {
       await client.send(new DeleteCommand({ TableName: table, Key: key }));
     },
+    async removeAt(key, v) {
+      try {
+        await client.send(
+          new DeleteCommand({ TableName: table, Key: key, ...(v === 'absent-v' ? { ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(v)' } : { ConditionExpression: 'v = :ev', ExpressionAttributeValues: { ':ev': v } }) }),
+        );
+        return true;
+      } catch (e) {
+        if (isConflict(e)) return false;
+        throw e;
+      }
+    },
   };
 }
 
@@ -129,6 +142,13 @@ export function memoryStore(): Store & { items: Map<string, Item>; failNextCommi
     async remove(key) {
       await Promise.resolve();
       items.delete(id(key));
+    },
+    async removeAt(key, v) {
+      await Promise.resolve();
+      const cur = items.get(id(key));
+      if (!cur || (v === 'absent-v' ? cur.v !== undefined : cur.v !== v)) return false;
+      items.delete(id(key));
+      return true;
     },
   };
 }

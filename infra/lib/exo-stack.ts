@@ -9,6 +9,7 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import type { Construct } from 'constructs';
 import { e1Statements } from './e1-access.js';
+import { COPIE_INPUT_KEYS } from '../../shared/exo-access.js';
 import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { SHARP_LAYER_PARAM } from './pipeline-stack.js';
 import { copieRoleName, copieStateMachineName, EXO_FUNCTIONS, exoRoleName, fn, METRIC_NAMESPACE, ssmParam, stackName, tableName, type Env, type ModelKey } from '../../shared/names.js';
@@ -103,9 +104,10 @@ export class ExoStack extends Stack {
     const correct = mk(EXO_FUNCTIONS.correct, copieRole, { memoryMb: 1024, env: sonnetEnv, layers: [sharpLayer], external: ['sharp'] });
     const fail = mk(EXO_FUNCTIONS.fail, copieRole, { memoryMb: 256, env: sonnetEnv });
 
-    // --- Machine d'etats Standard `copie` (design 5.3). Entree {copieId, sid, exoRef, pages}: identifiants et nombre de pages, JAMAIS de contenu.
+    // --- Machine d'etats Standard `copie` (design 5.3). Entree {copieId, sid, fid, exoRef, pages}: identifiants et nombre de pages, JAMAIS de contenu.
     // Les charges ne reprennent que ces quatre champs; l'erreur n'est pas gardee dans l'etat (resultPath DISCARD): l'historique Step Functions n'a aucun texte d'eleve.
-    const input = { copieId: sfn.JsonPath.stringAt('$.copieId'), sid: sfn.JsonPath.stringAt('$.sid'), exoRef: sfn.JsonPath.stringAt('$.exoRef'), pages: sfn.JsonPath.numberAt('$.pages') };
+    // Cles derivees de COPIE_INPUT_KEYS (shared/exo-access.ts): une cle de CopieInput ne peut plus etre oubliee (revue #100 B1, `fid`).
+    const input = Object.fromEntries(Object.entries(COPIE_INPUT_KEYS).map(([k, t]) => [k, t === 'number' ? sfn.JsonPath.numberAt(`$.${k}`) : sfn.JsonPath.stringAt(`$.${k}`)]));
     const task = (idName: string, f: lambda.IFunction) =>
       new tasks.LambdaInvoke(this, idName, {
         lambdaFunction: f,

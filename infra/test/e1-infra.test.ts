@@ -1,5 +1,6 @@
 // E1-B: S3 de 1 jour sur copies/, aucune lecture/liste de copies/ hors roles prevus, machine `copie` sans contenu, exo-post -> exo-gen seulement,
 // roles de suppression de fiche, pile Exo, routes. Tout est lu dans le gabarit SYNTHETISE.
+import { COPIE_INPUT_KEYS } from '../../shared/exo-access.js';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { App, Stack } from 'aws-cdk-lib';
@@ -135,7 +136,7 @@ describe.each(ENVS)('E1: copies/ (%s)', (env) => {
     expect(vars('copies-submit')).toEqual(['COPIE_STATE_MACHINE_ARN', 'QCM_ENV', 'SCANS_BUCKET', 'TABLE_NAME']);
   });
 
-  it('machine `copie`: Standard, entree {copieId,sid,exoRef,pages} sans contenu, aucune sortie gardee, une reprise, Catch vers copie-fail, journal sans donnees', () => {
+  it('machine `copie`: Standard, entree {copieId,sid,fid,exoRef,pages} sans contenu, aucune sortie gardee, une reprise, Catch vers copie-fail, journal sans donnees', () => {
     const exo = t('exo');
     const sm = Object.values(exo.Resources).find((r) => r.Type === 'AWS::StepFunctions::StateMachine')!;
     expect(sm.Properties).toMatchObject({ StateMachineName: `qcm-${env}-copie`, StateMachineType: 'STANDARD' });
@@ -145,7 +146,10 @@ describe.each(ENVS)('E1: copies/ (%s)', (env) => {
     expect(Object.keys(def.States).sort()).toEqual(['Corrigee', 'Echec', 'corriger', 'echec']);
     for (const n of ['corriger', 'echec']) {
       const st = def.States[n];
-      expect(st.Parameters, n).toEqual({ 'copieId.$': '$.copieId', 'sid.$': '$.sid', 'exoRef.$': '$.exoRef', 'pages.$': '$.pages' });
+      expect(st.Parameters, n).toEqual({ 'copieId.$': '$.copieId', 'sid.$': '$.sid', 'fid.$': '$.fid', 'exoRef.$': '$.exoRef', 'pages.$': '$.pages' });
+      // Revue #100 B1: les Parameters synthetises couvrent EXACTEMENT les cles de CopieInput (une cle oubliee arrive `undefined` a la tache).
+      expect(Object.keys(st.Parameters as object).map((k) => k.replace(/\.\$$/, '')).sort(), n).toEqual(Object.keys(COPIE_INPUT_KEYS).sort());
+      for (const [k, v] of Object.entries(st.Parameters as Record<string, string>)) expect(v, n).toBe(`$.${k.replace(/\.\$$/, '')}`);
       expect(st.ResultPath, `${n}: la sortie de la fonction ne doit pas etre gardee`).toBeNull();
       expect(st.TimeoutSeconds).toBe(150);
     }

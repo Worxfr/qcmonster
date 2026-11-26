@@ -19,6 +19,31 @@ export interface HandlerAccess {
 
 const A = (a: Partial<HandlerAccess>): HandlerAccess => ({ get: [], query: [], write: [], delete: [], ...a });
 
+/**
+ * Entree de la machine `copie` (identifiants et nombre de pages, JAMAIS de contenu). SOURCE UNIQUE: `copies-submit` l'envoie, `exo-stack.ts` en
+ * construit les `Parameters` des taches (une cle oubliee y arrivait `undefined`: revue #100 B1, `fid` perdu, quota famille jamais rembourse).
+ */
+export interface CopieInput {
+  copieId: string;
+  sid: string;
+  fid: string;
+  exoRef: string;
+  pages: number;
+}
+export const COPIE_INPUT_KEYS = { copieId: 'string', sid: 'string', fid: 'string', exoRef: 'string', pages: 'number' } as const satisfies Record<keyof CopieInput, 'string' | 'number'>;
+const ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** Entree recue par `copie-correct` et `copie-fail`: toute cle absente ou mal formee leve une erreur (jamais la chaine `undefined` comme partition). */
+export function parseCopieInput(raw: unknown): CopieInput {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  for (const [k, t] of Object.entries(COPIE_INPUT_KEYS)) {
+    const v = o[k];
+    if (t === 'number' ? !(Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 3) : !(typeof v === 'string' && ID.test(v))) throw new TypeError(`entree de la machine copie: ${k} invalide`);
+  }
+  return throughMachine(o);
+}
+/** Ce que la machine transmet a ses taches: exactement les cles de COPIE_INPUT_KEYS (simulation de `Parameters`, pour les tests d'API). */
+export const throughMachine = (input: Record<string, unknown>): CopieInput => Object.fromEntries(Object.keys(COPIE_INPUT_KEYS).map((k) => [k, input[k]])) as unknown as CopieInput;
+
 /** Roles E1. `exoRole` et `copieRole` appellent Bedrock; `copieStart` n'y touche pas; `play` et `copieDelete` sont des roles de la pile Game. */
 export type E1Role = 'exoRole' | 'copieRole' | 'copieStart' | 'play' | 'copieDelete';
 

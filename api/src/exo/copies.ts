@@ -96,7 +96,7 @@ export async function submitCopie(deps: Deps, ctx: StudentCtx, copieId: string, 
     if (costGateFor(deps.env, { monthEur: num(cm?.micros) / 1e6, totalEur: num(ct?.micros) / 1e6 }) !== 'ok') throw new HttpError(429, 'budget_epuise', 'Le service est en pause pour le moment', resetDate(day));
     const ttl = ttlIn(deps, 40 * 86_400);
     const writes: Write[] = [
-      { item: { ...c, etat: 'en_correction', submittedAt: now, sansXp: p.solutionVue === true }, when: c.v ?? 'any' },
+      { item: { ...c, etat: 'en_correction', submittedAt: now }, when: c.v ?? 'any' },
       { item: { ...keys.copieActive(ctx.studentId), copieId, depuis: now }, when: lock ? (lock.v ?? 'any') : 'absent' },
       { item: { ...keys.copieQ(`STUDENT#${ctx.studentId}`, month), pages: num(q.s?.pages) + pages, ttl }, when: q.s ? (q.s.v ?? 'any') : 'absent' },
       { item: { ...keys.copieQ(`FAMILY#${ctx.familyId}`, month), pages: num(q.f?.pages) + pages, ttl }, when: q.f ? (q.f.v ?? 'any') : 'absent' },
@@ -175,8 +175,8 @@ export async function getCopie(deps: Deps, ctx: StudentCtx, copieId: string): Pr
       const fiche = await deps.store.get(keys.doc(ctx.studentId, docId));
       const rows = await deps.store.query(`STUDENT#${ctx.studentId}`, `EXOP#${docId}:`);
       const paidDoc = rows.reduce((n, r) => n + num(r.xpPaye), 0);
-      // `solutionVue` est lu ICI: voir la solution entre l'envoi et la lecture du retour donne 0 XP.
-      const raw = c.sansXp === true ? 0 : exoXp({ scoreMilli: num(c.milli), indicesVus: num(p.indicesVus), xpPaye: num(p.xpPaye), solutionVue: p.solutionVue === true });
+      // `solutionVue` est lu ICI (et jamais remis a faux): voir la solution avant l'envoi ou entre l'envoi et la lecture du retour donne 0 XP.
+      const raw = exoXp({ scoreMilli: num(c.milli), indicesVus: num(p.indicesVus), xpPaye: num(p.xpPaye), solutionVue: p.solutionVue === true });
       const amount = capToDoc(raw, paidDoc);
       const cr = credit(s, amount, String(fiche?.matiere ?? 'autre'));
       const badges = awardBadges(s) as string[];
@@ -225,7 +225,8 @@ export async function deleteCopie(deps: Deps, ctx: StudentCtx, copieId: string, 
   if (!c) throw notFound();
   if (c.etat === 'en_correction') throw new HttpError(409, 'en_correction', 'La correction est en cours');
   if (c.etat === 'a_envoyer') await files.deleteKeys(pageKeys(ctx.studentId, copieId, num(c.pages)));
-  await deps.store.remove({ PK: c.PK, SK: c.SK });
+  // Revue #100 M4: suppression CONDITIONNELLE a la version lue. Un `submit` passe entre la lecture et la suppression (copie devenue `en_correction`) gagne: 409.
+  if (!(await deps.store.removeAt({ PK: c.PK, SK: c.SK }, typeof c.v === 'number' ? c.v : 'absent-v'))) throw new HttpError(409, 'en_correction', 'La correction est en cours');
   const ouv = await deps.store.get(keys.copieOuv(ctx.studentId));
   if (ouv?.copieId === copieId) await deps.store.remove({ PK: ouv.PK, SK: ouv.SK });
 }
