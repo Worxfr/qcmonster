@@ -2,7 +2,7 @@
 
 Cette page explique, simplement, ce que QCMonster fait de tes données. Elle est écrite pour les élèves et pour leurs parents.
 
-**Version : 2026-11-25**
+**Version : 2026-11-26**
 
 *Version de travail, à faire relire par une personne compétente avant toute ouverture au-delà de la famille.*
 

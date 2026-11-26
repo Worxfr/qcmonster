@@ -36,6 +36,8 @@ export const keys = {
   profile: (sid: string): Key => ({ PK: `STUDENT#${sid}`, SK: 'PROFILE' }),
   day: (sid: string, date: string): Key => ({ PK: `STUDENT#${sid}`, SK: `DAY#${date}` }),
   attempt: (sid: string, questionId: string, date: string): Key => ({ PK: `STUDENT#${sid}`, SK: `ATT#${questionId}#${date}` }),
+  /** Passage de test (H1): `startedAt` = aaaa-mm-jjThh:mm:ssZ (UTC), `testId` = ULID. Ecrit par answers-post seul; sans ttl (conserve jusqu'a suppression). */
+  test: (sid: string, startedAt: string, testId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `TEST#${startedAt}#${testId}` }),
   week: (fid: string, week: string, sid: string): Key => ({ PK: `FAMILY#${fid}`, SK: `WEEK#${week}#${sid}` }),
   cost: (env: Env, month: string): Key => ({ PK: `COST#${env}`, SK: `MONTH#${month}` }),
   /** Cumul depuis le debut de la phase dev (plafond d'essais de 100 EUR, jamais remis a zero). */

@@ -28,6 +28,8 @@ interface HandlerDef {
 export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'me-get', role: 'read' },
   { name: 'family-read', role: 'read' },
+  // contract-v1.4 (H1-A): historique des tests de l'eleve. Lecture seule (GetItem, Query), aucun droit d'ecriture ni de suppression.
+  { name: 'tests-read', role: 'read' },
   { name: 'session-get', role: 'play' },
   { name: 'answers-post', role: 'play' },
   { name: 'docs-mark-read', role: 'play' },

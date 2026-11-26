@@ -5,6 +5,7 @@ import type { Deps } from '../lib/deps.js';
 import { conflict, notFound, type StudentCtx } from '../lib/http.js';
 import { activeStudent } from './access.js';
 import { mutate, newSeries } from './state.js';
+import { openPassage } from './tests.js';
 
 export interface QuestionView {
   questionId: string;
@@ -33,6 +34,7 @@ export async function getSession(deps: Deps, ctx: StudentCtx, docId: string): Pr
   await mutate(deps, ctx.familyId, ctx.studentId, (st) => {
     st.profile.tick = st.now;
     st.profile.series = newSeries(st.now);
+    openPassage(st, docId, questions); // pointeur du passage de test (H1); l'entree TEST# naitra a la premiere reponse
     return { result: null };
   }, () => conflict('Réessaie'), ['profile']);
   return { docId, questions };

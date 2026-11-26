@@ -8,6 +8,7 @@ import { activeStudent } from './access.js';
 import { grantStreakBonus } from './bonus.js';
 import { BURST_MAX_CORRECT, BURST_WINDOW_MS, MIN_ANSWER_MS, MIN_SERIES_MS, SERIES_LENGTH, XP, normalizeGap } from './rules.js';
 import { awardBadges, credit, mutate, newSeries, progressOf, type Progress } from './state.js';
+import { docQuestions, recordTest } from './tests.js';
 import { parisDate } from './time.js';
 
 export interface AnswerResult {
@@ -49,6 +50,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
   const risky = !(verdict && (verdict.statut === 'verifiee' || verdict.statut === 'non_factuelle'));
   const subject = String(fiche.matiere ?? 'autre');
 
+  const order = await docQuestions(deps, q.docId); // rang de la question et taille du passage (H1)
   const { st, result } = await mutate(
     deps,
     ctx.familyId,
@@ -108,8 +110,9 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
       }
       const c = credit(s, amount, subject);
       const newBadges = awardBadges(s);
+      const testWrite = await recordTest(deps, s, { docId: q.docId, questionId: body.questionId, kind: q.kind, fiche, correct, choice: body.choice, gained: c.gained, previousTick, order });
       return {
-        extra: [{ item: { ...attKey, attempts: att.attempts, done: att.done, rewarded: att.rewarded }, when: attIt ? (attIt.v ?? 'any') : 'absent' }],
+        extra: [testWrite, { item: { ...attKey, attempts: att.attempts, done: att.done, rewarded: att.rewarded }, when: attIt ? (attIt.v ?? 'any') : 'absent' }],
         result: { gained: c.gained, newBadges, streakBonus: c.streakBonus, reveal: att.done },
       };
     },
