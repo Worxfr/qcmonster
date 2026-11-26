@@ -3,7 +3,7 @@ import { ApiError, api } from '../api';
 import { FolderSelect } from '../components/FolderSelect';
 import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg } from '../hooks';
-import { fmtDay, plural, subjectClass, subjectLabel } from '../labels';
+import { fmtDay, plural, stageLabel, subjectClass, subjectLabel } from '../labels';
 import { go, useRoute } from '../router';
 import type { Folder, ScanList, ScanQuery, ScanSummary } from '../types';
 
@@ -128,6 +128,8 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
         )}
       </Card>
 
+      {readOnly && <ChildRunning studentId={studentId!} />}
+
       <ErrorBox message={error} />
       {loading && !list && <Loading />}
       {list && (
@@ -205,6 +207,45 @@ function Empty({ filtered, folder, readOnly, clear }: { filtered: boolean; folde
       <p className="empty">📚 {readOnly ? 'Aucun cours pour le moment.' : 'Scanne ton premier cours !'}</p>
       {!readOnly && <button type="button" className="btn btn-big" onClick={() => go('/scan')}>📷 Scanner un cours</button>}
     </Card>
+  );
+}
+
+/** Vue parent: l'etape et le nombre de pages des scans pas encore termines de l'eleve (jamais le texte). Lecture seule, actualisee toutes les 5 s tant qu'il y en a. */
+function ChildRunning({ studentId }: { studentId: string }) {
+  const [items, setItems] = useState<ScanSummary[]>([]);
+  useEffect(() => {
+    let stopped = false;
+    let t: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      let again = false;
+      try {
+        const [run, failed] = await Promise.all([api.listScans({ studentId, status: 'en_cours', limit: 20 }), api.listScans({ studentId, status: 'echec', limit: 20 })]);
+        if (stopped) return;
+        setItems([...run.items, ...failed.items]);
+        again = run.items.length > 0;
+      } catch {
+        again = false;
+      }
+      if (!stopped && again) t = setTimeout(tick, 5000);
+    };
+    void tick();
+    return () => { stopped = true; clearTimeout(t); };
+  }, [studentId]);
+  if (!items.length) return null;
+  return (
+    <section className="card running" aria-label="Scans en cours de l'élève">
+      <h2>⏳ Scans en cours</h2>
+      <ul className="list">
+        {items.map((s) => (
+          <li key={s.scanId} className="run-row">
+            <span className="grow">
+              <strong>{s.title ?? s.topic ?? (s.subject ? subjectLabel(s.subject) : `Scan du ${fmtDay(s.createdAt)}`)}</strong><br />
+              <span className="muted">{stageLabel(s.status.stage)} · {s.status.pagesDone} sur {s.status.pagesTotal} {plural(s.status.pagesTotal, 'page', 'pages')}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

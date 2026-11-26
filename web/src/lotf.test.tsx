@@ -455,10 +455,28 @@ describe('liste Mes cours', () => {
     await waitFor(() => expect(screen.queryByText('Le texte est trop court')).toBeNull());
   });
 
+  it('parent: voit l\'étape et les pages des scans en cours de l\'élève, sans bouton ni texte', async () => {
+    routes['GET /family/dashboard'] = () => json({ familyPagesLimit: 30, familyPagesRemaining: 20, students: [{ student: { studentId: 's1', pseudo: 'Léo', status: 'actif', pageQuota: 10, schoolLevel: '5eme' }, progress: { xp: 0, level: 1, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 5, pagesLimit: 10, resetDate: '2026-12-01' } }] });
+    routes['GET /me'] = () => json({ userId: 'u1', role: 'parent', familyId: 'f1' });
+    routes['GET /scans*'] = (c) => json(c.url.includes('status=en_cours')
+      ? list([{ ...scan(5), scanId: 'S5', docId: undefined, title: undefined, status: status('lecture', { pagesDone: 1, pagesTotal: 3 }), pages: 3 }])
+      : list([]));
+    await open('#/eleve/s1', 'parent');
+    const box = await screen.findByRole('region', { name: /Scans en cours de l'élève/ });
+    expect(within(box).getByText(/1 sur 3 pages/)).toBeInTheDocument();
+    expect(within(box).queryByRole('button')).toBeNull();
+  });
+
+  it('accueil: les derniers cours ne demandent que les scans terminés', async () => {
+    routes['GET /scans*'] = () => json(list([scan(1)]));
+    await open('#/');
+    await waitFor(() => expect(calls.some((c) => c.url.includes('limit=5') && c.url.includes('status=termine'))).toBe(true));
+  });
+
   it('parent: lecture seule, aucune sélection ni lien vers le texte', async () => {
     routes['GET /family/dashboard'] = () => json({ familyPagesLimit: 30, familyPagesRemaining: 20, students: [{ student: { studentId: 's1', pseudo: 'Léo', status: 'actif', pageQuota: 10, schoolLevel: '5eme' }, progress: { xp: 0, level: 1, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 5, pagesLimit: 10, resetDate: '2026-12-01' } }] });
     routes['GET /me'] = () => json({ userId: 'u1', role: 'parent', familyId: 'f1' });
-    routes['GET /scans*'] = () => json(list([scan(1)]));
+    routes['GET /scans*'] = (c) => json(list(c.url.includes('status=termine') ? [scan(1)] : []));
     await open('#/eleve/s1', 'parent');
     expect(await screen.findByText('Fiche 1')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Choisir' })).toBeNull();

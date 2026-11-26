@@ -6,6 +6,7 @@ import { jobKey } from '../pipeline/ctx.js';
 import { guarded } from '../pipeline/http.js';
 import { scansPrefix } from '../pipeline/job.js';
 import { awaitConfirm, awaitUpload, scanCheck, scanStart, transcribe } from '../pipeline/steps.js';
+import { MESSAGES } from '../pipeline/api.js';
 import { event, JPEG } from '../pipeline/testkit.js';
 import { scansDelete } from './delete.js';
 import { body, ev, putJob, world, type World } from './kit.js';
@@ -112,5 +113,74 @@ describe('DELETE /scans/{scanId}', () => {
     const t = await world();
     expect((await del(t, 's1', 'nope')).statusCode).toBe(404);
     expect((await del(t, 's1', '../x')).statusCode).toBe(400);
+  });
+
+  it('echec ou expire avant remboursement: pages rendues une fois et photo effacee', async () => {
+    for (const state of ['echec', 'expire'] as const) {
+      const t = await world();
+      const s = await toReview(t);
+      const held = await quota(t);
+      await t.db.update(jobKey('s1', s.id), { set: { state, message: 'Boum' } }); // arret avant le rendu des pages
+      expect((await del(t, 's1', s.id)).statusCode).toBe(204);
+      expect(await quota(t), state).toMatchObject({ reserve: 0, restant: held.restant + 1 });
+      expect(t.s3.objects.has(s.key), state).toBe(false);
+      expect(await t.db.query(`JOB#${s.id}`, 'TEXT#'), state).toHaveLength(0);
+      expect((await del(t, 's1', s.id)).statusCode).toBe(404);
+      expect(await quota(t)).toMatchObject({ reserve: 0, restant: held.restant + 1 });
+    }
+  });
+
+  it('suppression interrompue (scan deja marque annule, photo, texte et pages restants): le rappel termine le nettoyage puis repond 404', async () => {
+    const t = await world();
+    const s = await toReview(t);
+    const held = await quota(t);
+    await t.db.update(jobKey('s1', s.id), { set: { state: 'rejete', message: MESSAGES.cancelled } });
+    expect((await del(t, 's1', s.id)).statusCode).toBe(404);
+    expect(await quota(t)).toMatchObject({ reserve: 0, restant: held.restant + 1 });
+    expect(t.s3.objects.has(s.key)).toBe(false);
+    expect(await t.db.query(`JOB#${s.id}`, 'TEXT#')).toHaveLength(0);
+    expect(t.sfn.failure).toContainEqual({ token: 'tok-conf', error: 'Cancelled' });
+  });
+
+  it('jeton sans groupe, ou parent + eleve: 403, le scan reste intact', async () => {
+    const t = await world();
+    const s = await toReview(t);
+    for (const groups of ['[]', '', '[parent eleve]', '[eleve, parent]']) {
+      const r = await guarded(scansDelete)(t.ctx, event({ groups, params: { scanId: s.id } }));
+      expect(r.statusCode, groups).toBe(403);
+    }
+    expect((await t.db.get(jobKey('s1', s.id)))?.state).toBe('a_confirmer');
+    expect(t.s3.objects.has(s.key)).toBe(true);
+  });
+
+  it('deux suppressions simultanees: 204 ou 404, pages rendues une seule fois', async () => {
+    const t = await world();
+    const s = await toReview(t);
+    const held = await quota(t);
+    const codes = (await Promise.all([del(t, 's1', s.id), del(t, 's1', s.id)])).map((r) => r.statusCode);
+    expect(codes.every((c) => c === 204 || c === 404)).toBe(true);
+    expect(codes).toContain(204);
+    expect(await quota(t)).toMatchObject({ reserve: 0, restant: held.restant + 1 });
+    expect(await t.db.query(`JOB#${s.id}`, 'TEXT#')).toHaveLength(0);
+  });
+
+  it('course transcribe / suppression: le texte ecrit apres la suppression ne survit pas', async () => {
+    const t = await world();
+    const created = JSON.parse((await guarded(scansCreate)(t.ctx, event({ body: { pages: 1, contentType: 'image/jpeg' } }))).body ?? '{}');
+    const i = { jobId: created.jobId as string, sid: 's1' };
+    const key = `${scansPrefix('s1', i.jobId)}0`;
+    t.s3.objects.set(key, JPEG);
+    await scanStart(t.ctx, { detail: { object: { key } } });
+    await awaitUpload(t.ctx, { ...i, token: 'tok-up' });
+    await scanCheck(t.ctx, i);
+    // L'eleve supprime pendant l'appel de classement, donc avant l'ecriture des `TEXT#`.
+    const real = t.ctx.port;
+    let deleted = 0;
+    t.ctx.port = { converse: async (req) => { const r = await real.converse(req); if (req.prompt.includes('<texte>')) deleted = (await del(t, 's1', i.jobId)).statusCode ?? 0; return r; } };
+    const out = await transcribe(t.ctx, i);
+    expect(deleted).toBe(204);
+    expect(out.ok).toBe(false);
+    expect(await t.db.query(`JOB#${i.jobId}`, 'TEXT#')).toHaveLength(0);
+    expect((await t.db.get(jobKey('s1', i.jobId)))?.state).toBe('rejete');
   });
 });
