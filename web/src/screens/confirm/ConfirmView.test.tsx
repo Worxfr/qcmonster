@@ -436,6 +436,21 @@ describe('figures à la relecture', () => {
   });
 });
 
+describe('503 à la confirmation sans image gardée', () => {
+  it('chemin d\'erreur générique: pas de message sur les images, bouton d\'envoi de nouveau actif', async () => {
+    stub({ ...tr([['Une phrase.', FILL]]), figures: [fig()], blocks: [...blocks(['p1-s1']), { id: 'b2', kind: 'figure', figureId: 'f1' }, { id: 'b3', kind: 'paragraphe', sentenceIds: ['p1-s2'] }] });
+    confirmStatus = 503;
+    await open();
+    await screen.findByRole('checkbox', { name: /Garder cette image/ }); // une figure est proposée, mais pas gardée
+    await userEvent.click(screen.getByRole('button', { name: /vérifie/i }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/pas réussi à garder tes images/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Continuer sans garder les images' })).toBeNull();
+    expect(screen.getByRole('button', { name: /vérifie/i })).toBeEnabled();
+    expect((sent[0] as { figures: unknown[] }).figures).toEqual([{ figureId: 'f1', keep: false }]);
+  });
+});
+
 describe('503 à la confirmation avec images gardées', () => {
   const withFig = () => ({ ...tr([['Une phrase.', FILL]]), figures: [fig()], blocks: [...blocks(['p1-s1']), { id: 'b2', kind: 'figure', figureId: 'f1' }, { id: 'b3', kind: 'paragraphe', sentenceIds: ['p1-s2'] }] });
   it('message dédié, Réessayer renvoie les mêmes choix, « sans les images » envoie keep false', async () => {

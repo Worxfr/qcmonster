@@ -1,6 +1,29 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import katex from 'katex';
+import { describe, expect, it, vi } from 'vitest';
 import { Rich, renderMathml } from './Math';
+
+describe('options de KaTeX (la barrière est trust: false, pas le filtre)', () => {
+  it('chaque rendu passe trust: false, throwOnError: true, output mathml, maxSize et maxExpand', () => {
+    const spy = vi.spyOn(katex, 'renderToString');
+    renderMathml('x^2', false);
+    renderMathml('\\frac{a}{b}', true);
+    expect(spy).toHaveBeenCalledTimes(2);
+    for (const [, opts] of spy.mock.calls) expect(opts).toMatchObject({ trust: false, throwOnError: true, output: 'mathml', maxSize: 10, maxExpand: 1000, strict: 'ignore' });
+    spy.mockRestore();
+  });
+  it('si le filtre était contourné, KaTeX seul (trust: false) n’écrit ni lien, ni image, ni attribut: la commande reste du texte', () => {
+    const spy = vi.spyOn(katex, 'renderToString');
+    renderMathml('x', false);
+    const opts = spy.mock.calls[0][1] as katex.KatexOptions;
+    spy.mockRestore();
+    for (const t of ['\\href{javascript:alert(1)}{x}', '\\url{https://exemple.invalide}', '\\htmlData{a=b}{x}', '\\includegraphics{x.png}']) {
+      const out = katex.renderToString(t, opts);
+      expect(out, t).not.toMatch(/<a[\s>]|href=|src=|data-|style=|<img|<script/);
+      expect(out, t).toContain('<mtext>'); // la commande non permise est affichée telle quelle
+    }
+  });
+});
 
 describe('KaTeX en MathML', () => {
   it('produit du MathML sans style en ligne ni lien', () => {
