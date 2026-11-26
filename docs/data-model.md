@@ -217,6 +217,7 @@ Aucune table, aucun index, aucun bucket nouveau. La route de creation est fermee
 - Un job de modification n'est jamais un scan: `listScans`, `failJob`, `endWithoutDoc`, `purgeScan`, `expire`, `jobs-cancel`, `jobs-confirm` et `scans-delete` l'ignorent.
 - `deleteStudentTree` supprime aussi les partitions `DOC#<revisionId>-<k>` listees dans `docIds` du job.
 - Les lecteurs de questions (`retiree`, `claimsRetired`) sont la partie 2 (M1-C).
+
 ## S1 #34: partage de QCM par lien (contrat 1.12.0, `docs/S1-design.md` sections 6 et 8)
 
 Aucune table, aucun index, aucun bucket nouveau. Nouvelle partition `SHARE#<hache>` (`hache` = SHA-256 du jeton en hexadecimal; le jeton n'est jamais stocke): le role de la route publique ne lit que cette partition. Le partage est ferme par defaut (`sharing` absent = faux; `SHARE_PUBLIC_ENABLED` a `false`).
