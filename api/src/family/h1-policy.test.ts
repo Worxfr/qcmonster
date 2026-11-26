@@ -68,6 +68,12 @@ describe('H1-W: re-acceptation de la politique', () => {
     await withConsent(t);
     expect(await getMe(t.deps, parent)).toMatchObject({ policyOutdated: true });
   });
+  it('R1-D: une famille qui a consenti sur la version du 2026-11-26 (celle d\'avant la hausse unique) doit ré-accepter', async () => {
+    const t = testDeps();
+    await seed(t);
+    await withConsent(t, '2026-11-26');
+    expect(await getMe(t.deps, parent)).toMatchObject({ policyOutdated: true });
+  });
   it('GET /me ne signale rien quand la version est a jour, ni pour un eleve', async () => {
     const t = testDeps();
     await seed(t);

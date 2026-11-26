@@ -2,7 +2,7 @@
 
 Cette page explique, simplement, ce que QCMonster fait de tes données. Elle est écrite pour les élèves et pour leurs parents.
 
-**Version : 2026-11-26**
+**Version : 2026-11-27**
 
 *Version de travail, à faire relire par une personne compétente avant toute ouverture au-delà de la famille.*
 
@@ -14,9 +14,9 @@ Tu prends en photo une page de cours. L'application lit la page, vérifie les fa
 
 - **Le compte du parent** : adresse e-mail et mot de passe. Quand il crée sa famille ou un compte élève, l'application garde la **date de son accord** et la **version de cette politique** qu'il a acceptée. Une double authentification (application d'authentification) est proposée.
 - **Le compte de l'élève** : un **identifiant de connexion** fabriqué par l'application (le surnom de départ donné par le parent, sans nom de famille, auquel l'application ajoute des lettres au hasard), un **pseudo affiché** que l'élève choisit à l'activation de son compte (le parent peut le changer ensuite) et un mot de passe. Le pseudo reste dans la famille : il n'est ni envoyé à un tiers ni gardé dans les journaux. L'application ne demande ni ne garde d'adresse e-mail pour l'élève. On garde seulement la réponse « moins de 15 ans : oui ou non ». Aucune date de naissance.
-- **Les photos de cours** : envoyées pour être analysés.
-- **Le texte du cours** lu sur la photo, corrigé par l'élève, et les **fiches** créées (QCM, textes à trous). Le **texte complet du cours est gardé dans l'espace de l'élève**, y compris les parties pour lesquelles l'élève a choisi de ne pas faire de fiche.
-- **Les schémas du cours** (nouveau, texte à valider) : quand ton cours contient un schéma, un graphique ou une carte, l'application peut en proposer un **découpage** (un morceau de ta photo) et une courte description. **Rien n'est gardé sans ton choix** : tu gardes ou tu retires chaque schéma au moment de relire ton texte. Un schéma gardé est un morceau de ta photo (parfois la page entière si le schéma n'a pas pu être découpé), sans les informations cachées de la photo (lieu, appareil). Il est lisible par toi seul, pas par ton parent.
+- **Les photos de cours** : envoyées pour être analysées. Chaque envoi (10 pages au plus) est traité et confirmé séparément, y compris quand c'est un ajout à un cours existant.
+- **Le texte du cours** lu sur la photo, corrigé par l'élève, et les **fiches** créées (QCM, textes à trous). Le **texte complet du cours est gardé dans l'espace de l'élève**, y compris les parties pour lesquelles l'élève a choisi de ne pas faire de fiche. Les **phrases que l'élève retire** à la relecture ne sont pas gardées. Les **formules** sont gardées comme du texte. L'élève peut **ajouter des pages à un cours déjà scanné** (30 pages au plus par cours) : le texte ajouté est gardé comme le reste du cours, avec la même durée. Pour lire la suite correctement, l'application renvoie à l'IA (chez AWS, comme pour tout le reste) les **deux dernières phrases** du cours déjà gardé.
+- **Les schémas du cours** : quand ton cours contient un schéma, un graphique ou une carte, l'application peut en proposer un **découpage** (un morceau de ta photo) et une courte description. **Rien n'est gardé sans ton choix** : tu gardes ou tu retires chaque schéma au moment de relire ton texte. Un schéma gardé est un morceau de ta photo (parfois la page entière si le schéma n'a pas pu être découpé), sans les informations cachées de la photo (lieu, appareil). Il est lisible par toi seul, pas par ton parent.
 - **Tes résultats** : les réponses données, les points d'expérience (XP), les passages d'entraînement. Chaque passage de test est gardé (date, fiche, score, résultat et ta réponse à chaque question) pour que tu puisses revoir tes erreurs, année scolaire après année scolaire.
 - **Des données techniques** : numéro du travail d'analyse, étape, durée, coût. Jamais le contenu de tes cours.
 - **Des extraits de sites web** trouvés pour vérifier les faits de ton cours (texte de la source et son adresse).
@@ -59,20 +59,19 @@ Chez Amazon Web Services (AWS), dans l'Union européenne. Tes données sont **st
 
 - Le parent voit les comptes de ses enfants et leur progression : les fiches étudiées, la date et le score de chaque test, **si chaque question est juste ou fausse**, les séries et les badges. Il ne voit **ni le texte des questions, ni les réponses que l'élève a données, ni le texte des cours**. Cette vue est en lecture seule et ne concerne que ses propres enfants. **Les réponses données ne sont lisibles que par l'élève.**
 - Le responsable de l'application ne lit pas les cours des élèves. Il peut agir sur les comptes pour les supprimer ou corriger un problème.
-- AWS, l'entreprise qui héberge l'application et fait tourner l'IA. On dit que c'est un « sous-traitant » : elle travaille pour nous, selon nos consignes, et n'a pas le droit d'utiliser tes données pour elle-même. Le détail est dans le dossier `docs/legal/` du projet.
+- AWS, l'entreprise qui héberge l'application et fait tourner l'IA. On dit que c'est un « sous-traitant » : elle travaille pour nous, selon nos consignes, et n'a pas le droit d'utiliser tes données pour elle-même. Le fournisseur du modèle d'IA n'a pas accès à tes données. Dans de rares cas de détection d'abus (par exemple un contenu interdit dans une image), AWS peut conserver et examiner l'image concernée. Le détail est dans le dossier `docs/legal/` du projet.
 - Personne d'autre. Aucune donnée n'est donnée ni vendue.
 
 ## Tes droits
 
 Toi, ou ton parent, tu peux demander :
 
-- à **voir** tes données : le parent peut télécharger dans l'application un fichier avec son e-mail, les comptes élèves (profil de jeu, jours de jeu, réponses), les fiches (affirmations, sources, questions et réponses) et les signalements. Ce fichier ne contient **pas le texte des cours** (ni le texte brut lu sur les photos) ni les extraits de sites web partagés : il indique seulement la structure de chaque cours et les fiches qui en viennent. **L'élève lit le texte complet de ses cours dans l'application** (écran « Cours complet »), c'est sa façon d'exercer son droit d'accès ;
+- à **voir** tes données : le parent peut télécharger dans l'application un fichier avec son e-mail, les comptes élèves (profil de jeu, jours de jeu, réponses), les fiches (affirmations, sources, questions et réponses) et les signalements. Ce fichier ne contient **pas le texte des cours** (ni le texte brut lu sur les photos) ni les extraits de sites web partagés : il indique seulement la structure de chaque cours et les fiches qui en viennent. **L'élève lit le texte complet de ses cours dans l'application** (écran « Cours complet »), ainsi que ses schémas gardés : c'est sa façon d'exercer son droit d'accès ;
 - à les **corriger** : le parent peut changer le niveau d'un élève, son pseudo affiché et son identifiant de connexion dans l'application. Pour changer la réponse « moins de 15 ans », il faut **supprimer le compte de l'élève et le recréer** (les fiches et les cours sont alors perdus) ;
 - à les **supprimer** (le parent peut supprimer le compte de l'élève ; l'effacement de la base est immédiat et comprend ses fiches, ses cours complets, ses résultats et ses signalements ; ses photos encore stockées sont effacées dans la même opération (au plus tard 2 jours si la suppression échoue, par la règle d'expiration du stockage) ; **l'élève peut aussi supprimer lui-même un cours**, en gardant ou en supprimant ses fiches, au choix, sans passer par le parent ; la copie de travail du texte, gardée 7 jours, est supprimée en même temps) ;
 - à **limiter** ou t'**opposer** à leur utilisation (pour le budget et la sécurité) ;
 - à **retirer ton accord** à tout moment ;
 - à les **récupérer** dans un format lisible : le parent peut télécharger une **archive** (fichier zip) avec l'export et l'historique des tests de chaque élève (résultat de chaque question, **sans le texte des questions ni les réponses données**, sans texte de cours). Le lien de téléchargement ne marche que 10 minutes et le fichier est supprimé au plus tard 2 jours après.
-- (nouveau, texte à valider, **à publier seulement avec le lot qui construit l'archive de l'élève** : tant que cette archive n'existe pas, cette ligne ne doit pas être mise en ligne) **toi-même**, tu pourras demander une archive de **tout ce que l'application garde sur toi** : tes cours (texte et schémas gardés), tes fiches, tes résultats et les réponses que tu as données. Le parent, lui, reçoit une archive **sans le texte de tes cours, sans tes schémas et sans tes réponses**. La question de savoir si le parent doit pouvoir les obtenir est **ouverte** et sera décidée avant l'ouverture au-delà de la famille.
 
 Si tu as moins de 15 ans, c'est ton parent qui exerce ces droits avec toi. Une réponse t'est donnée **dans un délai d'un mois**. Si tu n'es pas d'accord avec la réponse, tu peux écrire à l'autorité de protection des données (la CNIL en France).
 
