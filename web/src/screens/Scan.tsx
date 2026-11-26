@@ -40,7 +40,7 @@ async function uploadAll(uploads: { url: string; fields: Record<string, string> 
 export function Scan({ coursId }: { coursId?: string } = {}) {
   const target = useLoad(() => (coursId ? api.cours(coursId) : Promise.resolve(null)), [coursId]);
   if (coursId && target.loading && !target.data) return <Loading />;
-  if (coursId && !target.data) return <><ErrorBox message={target.error} /><button className="btn btn-ghost" onClick={() => go('/docs')}>Retour à mes cours</button></>;
+  if (coursId && !target.data) return <><ErrorBox message={target.error} /><button className="btn" onClick={target.reload}>Réessayer</button><button className="btn btn-ghost" onClick={() => go('/docs')}>Retour à mes cours</button></>;
   return <ScanForm coursId={coursId} cours={target.data ?? undefined} />;
 }
 
@@ -55,6 +55,7 @@ function ScanForm({ coursId, cours }: { coursId?: string; cours?: { pages: numbe
   const [error, setError] = useState<string | null>(null);
   const [folderId, setFolderId] = useState('');
   const [sent, setSent] = useState<number | null>(null);
+  const [retry, setRetry] = useState(false); // erreur reseau ou serveur: un nouvel essai peut reussir
   const { folders, add } = useFolders();
   const urls = useRef<string[]>([]);
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
@@ -93,6 +94,7 @@ function ScanForm({ coursId, cours }: { coursId?: string; cours?: { pages: numbe
 
   async function send() {
     setError(null);
+    setRetry(false);
     setSent(0);
     let jobId: string | undefined;
     try {
@@ -116,7 +118,10 @@ function ScanForm({ coursId, cours }: { coursId?: string; cours?: { pages: numbe
       else if (err instanceof ApiError && err.status === 404 && coursId) setError("Ce cours n'existe plus.");
       else if (err instanceof ApiError && (err.code === 'quota_epuise' || err.code === 'budget_epuise')) {
         setError(err.resetDate ? `${err.message}. Retour des pages le ${new Date(err.resetDate).toLocaleDateString('fr-FR')}.` : err.message);
-      } else setError(errMsg(err));
+      } else {
+        setError(errMsg(err));
+        setRetry(true);
+      }
       setSent(null);
     }
   }
@@ -178,6 +183,7 @@ function ScanForm({ coursId, cours }: { coursId?: string; cours?: { pages: numbe
         </>
       )}
       <ErrorBox message={error} />
+      {retry && !busy && pages.length > 0 && <button type="button" className="btn btn-ghost" onClick={send}>Réessayer</button>}
     </Card>
     <MyScans />
     </>

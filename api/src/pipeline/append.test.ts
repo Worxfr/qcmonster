@@ -402,14 +402,19 @@ describe('echec, annulation, expiration: le cours d origine est restaure, jamais
     const k = await makeCtx(script());
     const coursId = await makeCourse(k);
     const first = await appendReview(k, coursId);
-    const firstJob = await job(k, first.jobId);
+    await k.db.update(jobKey('s1', first.jobId), { set: { confirmStartedAt: 'x' } }); // la confirmation avait commence: la restauration complete est due
     await endWithoutDoc(k.ctx, 's1', first.jobId, ['a_confirmer'], 'rejete', 'x');
+    const firstJob = await job(k, first.jobId);
     const second = await appendReview(k, coursId);
     await confirm(k, second.jobId, { sections: SECTIONS, figures: [{ figureId: 'f1', keep: true }] });
     const mid = await snap(k, coursId);
     const head = JSON.stringify(await k.db.get(keys.cours('s1', coursId)));
+    expect(await k.db.get(keys.coursText('s1', coursId, 3))).toBeDefined(); // le texte du second ajout
+    const nBlocks = ((await k.db.get(keys.coursBlocks('s1', coursId)))!.blocks as unknown[]).length;
     await restoreAfterFailedAppend(k.ctx, 's1', firstJob); // rejeu tardif du premier job
     await restoreAfterFailedAppend(k.ctx, 's1', await job(k, first.jobId));
+    expect(await k.db.get(keys.coursText('s1', coursId, 3))).toBeDefined();
+    expect(((await k.db.get(keys.coursBlocks('s1', coursId)))!.blocks as unknown[]).length).toBe(nBlocks); // blocs du second ajout intacts
     expect(await snap(k, coursId)).toBe(mid);
     expect(JSON.stringify(await k.db.get(keys.cours('s1', coursId)))).toBe(head);
     expect(await lock(k, coursId)).toBe(second.jobId);
@@ -425,6 +430,80 @@ describe('echec, annulation, expiration: le cours d origine est restaure, jamais
     expect((await delScan(k.ctx, event({ params: { scanId: u.jobId } }))).statusCode).toBe(204);
     expect(await snap(k, coursId)).toBe(before);
     expect(await lock(k, coursId)).toBeUndefined();
+  });
+});
+
+describe('plafonds du cours, panne de demarrage, rejeu de suppression', () => {
+  const dummyFig = (n: number) => ({ figureId: `f${n}`, page: 1, kind: 'schema', alt: 'x' });
+  const dummyBlock = (n: number) => ({ id: `b${n}`, kind: 'paragraphe', sentenceIds: ['p1-s1'] });
+  const seed = async (k: K, coursId: string, o: { figures?: number; blocks?: number }) => {
+    const b = (await k.db.get(keys.coursBlocks('s1', coursId)))!;
+    await k.db.update(keys.coursBlocks('s1', coursId), { set: { figures: [...(b.figures as unknown[]), ...Array.from({ length: o.figures ?? 0 }, (_, n) => dummyFig(100 + n))], blocks: [...(b.blocks as unknown[]), ...Array.from({ length: o.blocks ?? 0 }, (_, n) => dummyBlock(100 + n))] } });
+  };
+  it('24 figures deja gardees: 400 clair avant toute ecriture; sans garder l image, la confirmation passe', async () => {
+    const k = await makeCtx(script());
+    const coursId = await makeCourse(k);
+    await seed(k, coursId, { figures: 23 }); // 1 + 23 = 24
+    const u = await appendReview(k, coursId);
+    const before = await snap(k, coursId);
+    const r = await confirm(k, u.jobId, { sections: SECTIONS, figures: [{ figureId: 'f1', keep: true }] });
+    expect(r.statusCode).toBe(400);
+    expect(body(r).message).toMatch(/maximum d'images/);
+    expect(await snap(k, coursId)).toBe(before); // ni en-tete, ni texte, ni figure copiee
+    expect((await job(k, u.jobId)).confirmStartedAt).toBeUndefined();
+    expect((await job(k, u.jobId)).state).toBe('a_confirmer');
+    expect((await confirm(k, u.jobId, { sections: SECTIONS })).statusCode).toBe(200);
+    expect(await machine(k, u.i)).toBe(true);
+  });
+  it('23 figures + 1 gardee = 24: accepte', async () => {
+    const k = await makeCtx(script());
+    const coursId = await makeCourse(k);
+    await seed(k, coursId, { figures: 22 });
+    const u = await appendReview(k, coursId);
+    expect((await confirm(k, u.jobId, { sections: SECTIONS, figures: [{ figureId: 'f1', keep: true }] })).statusCode).toBe(200);
+    expect(((await k.db.get(keys.coursBlocks('s1', coursId)))!.figures as unknown[]).length).toBe(24);
+  });
+  it('1200 blocs: refus avant ecriture quand les nouveaux blocs depassent; accepte pile a 1200', async () => {
+    const k = await makeCtx(script());
+    const coursId = await makeCourse(k);
+    const have = ((await k.db.get(keys.coursBlocks('s1', coursId)))!.blocks as unknown[]).length;
+    await seed(k, coursId, { blocks: 1199 - have });
+    const u = await appendReview(k, coursId);
+    const before = await snap(k, coursId);
+    const r = await confirm(k, u.jobId, { sections: SECTIONS, figures: [{ figureId: 'f1', keep: true }] }); // paragraphe + figure = 2 blocs
+    expect(r.statusCode).toBe(400);
+    expect(body(r).message).toMatch(/limite de mise en forme/);
+    expect(await snap(k, coursId)).toBe(before);
+    expect((await confirm(k, u.jobId, { sections: SECTIONS })).statusCode).toBe(200); // un seul bloc: 1200
+    expect(((await k.db.get(keys.coursBlocks('s1', coursId)))!.blocks as unknown[]).length).toBe(1200);
+  });
+  it('sfn.start en panne: le job est ferme, les pages rendues, le verrou libere', async () => {
+    const k = await makeCtx(script());
+    const coursId = await makeCourse(k);
+    const before = await snap(k, coursId);
+    k.ctx.sfn = { ...k.ctx.sfn, start: async () => { throw new Error('Step Functions indisponible'); } };
+    await expect(scansCreate(k.ctx, event({ body: { pages: 1, contentType: 'image/jpeg', coursId } }))).rejects.toThrow();
+    expect(await lock(k, coursId)).toBeUndefined();
+    expect(await quota(k)).toMatchObject({ utilise: 2, reserve: 0, restant: 198 });
+    expect(await snap(k, coursId)).toBe(before);
+    const jobs = [...k.db.items.values()].filter((x) => x.SK.startsWith('JOB#') && x.appendTo === coursId);
+    expect(jobs.map((j) => j.state)).toEqual(['echec']);
+  });
+  it('DELETE /scans d un ajout echoue et deja restaure: la restauration n est pas rappelee (droits etroits du role)', async () => {
+    const k = await makeCtx(script());
+    const coursId = await makeCourse(k);
+    const u = await appendReview(k, coursId);
+    await confirm(k, u.jobId, { sections: SECTIONS, figures: [{ figureId: 'f1', keep: true }] });
+    await failJob(k.ctx, { ...u.i, error: { Error: 'Error' } });
+    expect(typeof (await job(k, u.jobId)).restoredAt).toBe('string');
+    const orig = k.db.query.bind(k.db);
+    const reads: string[] = [];
+    k.db.query = async (pk, sk) => {
+      reads.push(pk);
+      return orig(pk, sk);
+    };
+    expect((await delScan(k.ctx, event({ params: { scanId: u.jobId } }))).statusCode).toBe(204);
+    expect(reads.filter((x) => x.startsWith('DOC#'))).toEqual([]); // aucune lecture de fiche: pas de restauration complete rejouee
   });
 });
 

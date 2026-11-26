@@ -3,7 +3,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import { ConfirmRequestSchema, ScanCreateRequestSchema } from '../../../shared/contract/generated/schemas.js';
 import { costGateFor } from '../../../shared/cost.js';
 import { keys, monthParis } from '../../../shared/ddb/keys.js';
-import { cleanLabel, cleanTopic, MAX_COURS_SECTIONS, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
+import { cleanLabel, cleanTopic, MAX_COURS_BLOCKS, MAX_COURS_FIGURES, MAX_COURS_SECTIONS, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
 import { deleteCoursTree } from '../../../shared/delete-tree.js';
 import { CoursBlocksItemSchema, CoursItemSchema, CoursTextItemSchema } from '../../../shared/items.js';
 import { isSafeText, sanitizeLatex } from '../../../shared/latex.js';
@@ -105,7 +105,16 @@ export async function scansCreate(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
       { key: keys.cours(sid, appendTo!), spec: { set: { appendJobId: jobId }, addSet: { jobIds: [target.head.jobId as string, jobId] }, cond: { exists: true, absent: ['appendJobId'], eq: { pages: target.base.pagesBefore, nbPhrases: target.base.nbPhrasesBefore } } } },
     ]);
     if (!created) fail('etat_invalide', MSG_APPEND.open);
-    if (!(await reservePages(ctx.quota, scope, pages))) {
+    // Une panne entre la transaction et le demarrage de la machine ne laisse jamais le verrou: le job est ferme et le cours libere.
+    let reserved: boolean;
+    try {
+      reserved = await reservePages(ctx.quota, scope, pages);
+    } catch (e) {
+      await transition(ctx, sid, jobId, ['en_attente_envoi'], 'echec', { message: 'Creation impossible', finishedAt: iso(ctx), quotaState: 'none' });
+      await releaseLock(ctx, sid, appendTo!, jobId);
+      throw e;
+    }
+    if (!reserved) {
       await transition(ctx, sid, jobId, ['en_attente_envoi'], 'echec', { message: 'Quota de pages épuisé', finishedAt: iso(ctx), quotaState: 'none' });
       await releaseLock(ctx, sid, appendTo!, jobId);
       return fail('quota_epuise', 'Quota de pages épuisé', { resetDate: resetDate(ctx.now()) });
@@ -288,6 +297,17 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     choice.set(f.figureId, { keep: f.keep, ...(alt ? { alt: sanitizeLatex(alt) } : {}) });
   }
 
+  // Ajout de pages: les plafonds de la couche de mise en forme du cours (24 figures, 1200 blocs) sont controles AVANT toute ecriture,
+  // sinon le schema leverait apres la copie des figures et l'ecriture de l'en-tete (500 repete, verrou tenu jusqu'a l'expiration).
+  if (base?.hasBlocks) {
+    const old = await ctx.db.get(keys.coursBlocks(sid, job.appendTo as string));
+    const oldFigures = ((old?.figures as FigureMeta[] | undefined) ?? []).filter((f) => Number(f.figureId.slice(1)) <= base.figureMax).length;
+    const oldBlocks = ((old?.blocks as Block[] | undefined) ?? []).filter((b) => Number(b.id.slice(1)) <= base.blockMax).length;
+    const keepN = jobFigures.filter((f) => choice.get(f.figureId)?.keep).length;
+    if (oldFigures + keepN > MAX_COURS_FIGURES) return fail('requete_invalide', `Tu as déjà gardé le maximum d'images pour ce cours (${MAX_COURS_FIGURES}). Décoche des images pour continuer.`);
+    const newBlocks = ((meta?.blocks as Block[] | undefined) ?? []).filter((b) => (b.kind === 'figure' ? choice.get(b.figureId ?? '')?.keep === true : (b.sentenceIds ?? []).some((id) => !removed.has(id)))).length;
+    if (oldBlocks + newBlocks > MAX_COURS_BLOCKS) return fail('requete_invalide', 'Ce cours a atteint la limite de mise en forme : scanne ces pages comme un nouveau cours.');
+  }
   // Ajout de pages: de ce point, la restauration complete (cours, textes, figures) est due si la confirmation n'aboutit pas.
   if (base && !(await ctx.db.update(jobKey(sid, jobId), { set: { confirmStartedAt: iso(ctx) }, cond: { exists: true, eq: { state: 'a_confirmer' } } }))) return fail('etat_invalide', "Le job n'est plus à confirmer");
   // (a) identifiants: un docId par section non ignoree; le cours porte l'identifiant du job (deterministe: une relance ne laisse pas d'orphelin).

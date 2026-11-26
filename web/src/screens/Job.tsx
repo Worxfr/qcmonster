@@ -137,6 +137,7 @@ export function JobView({ id }: { id: string }) {
         <ErrorBox message={error} />
         <Card>
           <p className="muted">Tes pages sont gardées pour toi pendant que tu relis. Si tu ne veux plus de ce scan :</p>
+          {job.coursId && job.coursId !== job.jobId && <p className="muted append-help">Tu peux annuler cet ajout tant que tu n'as pas touché « C'est bon ». Ensuite, il se termine tout seul : ton cours d'avant ne change pas, même si l'ajout échoue.</p>}
           {cancelBtn}
         </Card>
       </>

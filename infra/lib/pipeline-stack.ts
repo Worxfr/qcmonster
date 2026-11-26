@@ -230,7 +230,7 @@ export class PipelineStack extends Stack {
     foldersRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*'));
     // scans-delete (DELETE /scans/{scanId}): role etroit. Table seulement sur FAMILY#/STUDENT#/JOB# (callerOf, job, marqueur QUOTAOP# et compteurs de la transaction de quota, TEXT# supprime par BatchWriteItem),
     // photos (DeleteObject + ListBucket du prefixe scans/) et SendTaskFailure pour liberer la machine. Ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#.
-    scansDeleteRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:PutItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*', 'JOB#*'));
+    scansDeleteRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:PutItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*', 'JOB#*', 'DOC#*')); // F10: DOC#* pour la restauration d'un ajout dont la fin a ete interrompue (fiches du job)
     scansDeleteRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [objects] }));
     scansDeleteRole.addToPolicy(listScans);
     scansDeleteRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:SendTaskFailure'], resources: ['*'] })); // l'API n'accepte pas de ressource
@@ -244,6 +244,9 @@ export class PipelineStack extends Stack {
     const listFigures = new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [figuresArn], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } });
     const figureGet = new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [figureObjects] });
     const figureDelete = new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [figureObjects] });
+    // F10: scans-delete rejoue la restauration d'un ajout non restaure (figures de CE job: liste du prefixe puis suppression).
+    scansDeleteRole.addToPolicy(listFigures);
+    scansDeleteRole.addToPolicy(figureDelete);
     // jobs-confirm: lit le recadrage temporaire (scans/), ecrit la figure gardee, la supprime si la confirmation perd la course.
     confirmRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [objects] }));
     confirmRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [figureObjects] }));

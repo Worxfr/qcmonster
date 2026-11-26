@@ -43,7 +43,8 @@ export async function scansDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   await ctx.s3.deleteAll(scansPrefix(sid, jobId));
   const texts = (await ctx.db.query(`JOB#${jobId}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK })); // TEXT# et BLOCKS (R1)
   if (texts.length) await ctx.db.remove(texts);
-  if (job.appendTo) await restoreAfterFailedAppend(ctx, sid, job); // ajout de pages: le cours d'origine est restaure, le verrou libere en dernier
+  // Ajout de pages: la restauration est rejouee seulement si le pipeline ne l'a pas faite (`restoredAt` pose = rien a rejouer, pas d'appel superflu).
+  if (job.appendTo && typeof job.restoredAt !== 'string') await restoreAfterFailedAppend(ctx, sid, job);
   for (const token of [job.confirmToken, job.uploadToken]) if (typeof token === 'string') await ctx.sfn.taskFailure(token, 'Cancelled');
 
   // Premiere suppression: 204. Un scan deja supprime ou annule avant cet appel est introuvable (le nettoyage ci-dessus n'a alors rien rendu de plus).

@@ -15,6 +15,9 @@ export const MAX_SECTIONS = 6;
 /** Limites d'un COURS (F10): plusieurs scans (le cours d'origine et ses ajouts de pages). Un scan reste borne par MAX_PAGES_PER_SCAN et MAX_SECTIONS. */
 export const MAX_COURS_PAGES = 30;
 export const MAX_COURS_SECTIONS = 20;
+/** Plafonds de la couche de mise en forme d'un cours (`COURS#<id>#B`): `CoursBlocksItemSchema`. */
+export const MAX_COURS_FIGURES = 24;
+export const MAX_COURS_BLOCKS = 1200;
 export const LIST_DEFAULT_LIMIT = 50;
 export const LIST_MAX_LIMIT = 100;
 export const TOPIC_FACETS_MAX = 100;

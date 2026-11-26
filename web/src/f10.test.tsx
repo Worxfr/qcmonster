@@ -101,4 +101,26 @@ describe('ajout de pages (F10)', () => {
     expect(screen.getByText(/continue cette fin/)).toBeInTheDocument();
     expect(screen.getAllByText(/Tu ajoutes ces pages à la/).length).toBeGreaterThan(0);
   });
+
+  it('erreur de chargement du cours et erreur reseau d envoi: bouton Réessayer', async () => {
+    let n = 0;
+    routes['GET /cours/C1'] = () => (n++ === 0 ? json({ code: 'erreur', message: 'Panne' }, 500) : json(cours(4)));
+    await open('#/scan/ajout/C1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Réessayer' }));
+    expect(await screen.findByText(/Tes nouvelles pages seront ajoutées à la/)).toBeInTheDocument();
+    let m = 0;
+    routes['POST /scans'] = () => (m++ === 0 ? json({ code: 'erreur', message: 'Erreur 500' }, 500) : json({ jobId: 'J9', upload: { url: 'https://s3.example/0', fields: {} }, uploads: [{ page: 1, url: 'https://s3.example/0', fields: {} }], expiresAt: T0, pagesRemaining: 9 }, 201));
+    routes['POST https://s3.example/*'] = () => new Response(null, { status: 204 });
+    await userEvent.upload(await screen.findByLabelText('Prendre ou choisir des photos'), [new File(['x'], 'a.jpg', { type: 'image/jpeg' })]);
+    await userEvent.click(screen.getByRole('button', { name: /Ajouter 1 page au cours/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Réessayer' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/job/J9'));
+  });
+
+  it('relecture d un ajout: phrase d aide sur l annulation', async () => {
+    routes['GET /jobs/J9'] = () => json({ jobId: 'J9', state: 'a_confirmer', pages: 1, createdAt: T0, coursId: 'C1', status: { stage: 'a_confirmer', pagesDone: 1, pagesTotal: 1, startedAt: T0, expiresAt: '2099-01-01T00:00:00Z', expiresSoon: false } });
+    routes['GET /jobs/J9/transcription'] = () => json({ jobId: 'J9', docType: 'cours', photoUrls: ['https://s3.example/p'], photoUrlsExpireAt: '2026-12-01T10:05:00Z', context: [{ id: 'p4-s9', text: 'Fin.' }], pages: [{ page: 5, sentences: [{ id: 'p5-s1', text: 'mot '.repeat(45) }] }] });
+    await open('#/job/J9');
+    expect(await screen.findByText(/tant que tu n'as pas touché/)).toBeInTheDocument();
+  });
 });
