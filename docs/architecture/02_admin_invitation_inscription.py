@@ -11,7 +11,7 @@ with diagram("02_admin_invitation_inscription", "Parcours 2: code d'invitation (
     admin = User("Administrateur\n(groupe admin)")
     parent = Users("Futur parent")
     mail = Client("Boîte e-mail\ndu parent")
-    gh = Github("Repli: workflow « invite »\nou scripts/create-invite.ts")
+    gh = Github("Repli en local:\nscripts/create-invite.ts")
     with aws_account():
         with region():
             cog = Cognito("Cognito\n(pool, client -signup\nsans connexion)")

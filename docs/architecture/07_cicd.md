@@ -12,4 +12,4 @@
 8. « cdk deploy qcm-dev-web-content » publie le front.
 9. Il copie les fichiers dans le bucket S3 et invalide le cache CloudFront.
 
-La prod se lance à la main (« workflow_dispatch », cible prod) après dev. Le workflow « invite » (manuel) utilise un autre rôle, limité à l'écriture des codes d'invitation.
+La prod se lance à la main (« workflow_dispatch », cible prod) après dev. Il n'y a pas de workflow pour les codes d'invitation: ils se génèrent depuis la page Admin du site ou en local avec `scripts/create-invite.ts` (un code écrit dans un résumé de run serait lisible par tous sur un dépôt public).
