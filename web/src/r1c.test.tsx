@@ -19,7 +19,7 @@ beforeEach(() => {
     calls.push(key);
     if (url === '/me') return json({ userId: 'u1', role: 'eleve', familyId: 'f1', studentId: 's1', pseudo: 'Test' });
     if (url === '/me/progress') return json({ xp: 0, level: 0, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 5, pagesLimit: 10, resetDate: '2026-12-01' });
-    const r = routes[key] ?? Object.entries(routes).find(([k]) => key.startsWith(k.replace('*', '')) && k.endsWith('*'))?.[1];
+    const r = routes[key] ?? Object.entries(routes).find(([k]) => k.endsWith('*') && key.startsWith(k.slice(0, -1)))?.[1];
     return r ? r() : json({}, 404);
   });
 });
