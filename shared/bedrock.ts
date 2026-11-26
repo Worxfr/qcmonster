@@ -125,7 +125,7 @@ export async function invokeModel(o: InvokeOptions): Promise<InvokeResult> {
   assertRequestBounds(o.request);
   if (!Number.isFinite(o.jobSpentEur) || o.jobSpentEur < 0) throw new RangeError('jobSpentEur obligatoire (nombre >= 0)');
   const env = currentEnv();
-  // Garde 1: plafond du job. Garde 2: compteurs (cumul dev 50 EUR; mois 15/18 EUR). Compteur illisible: l'appel est refuse.
+  // Garde 1: plafond du job. Garde 2: compteurs (cumul dev 100 EUR; mois prod 15/18, dev 95/100 EUR). Compteur illisible: l'appel est refuse.
   if (o.jobSpentEur >= (o.jobCapEur ?? JOB_COST_CAP_EUR)) throw new JobBudgetExceededError();
   const before = await o.store.read();
   const gate = costGateFor(env, before);

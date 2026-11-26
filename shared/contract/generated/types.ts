@@ -1114,7 +1114,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description quota_epuise (pages du mois) ou budget_epuise (compteur de cout: seuils mensuels 15/18 EUR; en dev, plafond d'essais cumule DEV_TRIAL_CAP_EUR = 50 EUR) */
+        /** @description quota_epuise (pages du mois) ou budget_epuise (compteur de cout: seuils mensuels 15/18 EUR en prod, 95/100 EUR en dev; en dev, plafond d'essais cumule DEV_TRIAL_CAP_EUR = 100 EUR) */
         QuotaExceeded: {
             headers: {
                 [name: string]: unknown;

@@ -64,7 +64,7 @@ describe('runPage (pipeline reel, base en memoire)', () => {
   it('plafond de dev atteint: le modele n\'est pas appele', async () => {
     let called = 0;
     const counting: ModelPort = { converse: async (q) => { called++; return port().converse(q); } };
-    const r = await runPage({ models: { haiku: ARN, sonnet: SONNET }, port: counting, costStore: memoryCost({ totalEur: 50, monthEur: 0 }), search }, { pageId: 'synth-svt-01', image: JPEG });
+    const r = await runPage({ models: { haiku: ARN, sonnet: SONNET }, port: counting, costStore: memoryCost({ totalEur: 100, monthEur: 0 }), search }, { pageId: 'synth-svt-01', image: JPEG });
     expect(called).toBe(0);
     expect(r.errorClass).toBe('CostBlockedError');
   });

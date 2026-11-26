@@ -25,6 +25,11 @@ export const quotaDefaults = (env: Env) => {
 export const COST_ALERT_EUR = 10;
 export const COST_BLOCK_NEW_EUR = 15;
 export const COST_STOP_ALL_EUR = 18;
+/** Seuils mensuels par environnement. Prod: 10/15/18. Dev (F12, 2026-11-26): 80/95/100, alignes sur le plafond cumule DEV_TRIAL_CAP_EUR (100) pour ne pas bloquer avant lui; l'alerte e-mail part a 80. */
+export const costThresholdsFor = (env: Env) =>
+  env === 'dev'
+    ? { alertEur: 80, blockNewEur: 95, stopAllEur: 100 }
+    : { alertEur: COST_ALERT_EUR, blockNewEur: COST_BLOCK_NEW_EUR, stopAllEur: COST_STOP_ALL_EUR };
 export const METRIC_NAMESPACE = 'QCMonster';
 export const METRIC_COST_MONTH = 'CostMonthToDateEur';
 
@@ -35,8 +40,8 @@ export const stateMachineName = (env: Env) => `qcm-${env}-${WORKFLOW_HANDLERS.st
 /** Prefixe de cle S3 des photos deposees; la regle EventBridge (Object Created) de L2a filtre dessus. */
 export const SCAN_EVENT_PREFIX = 'scans/';
 
-/** Garde cout des essais en dev (decision du proprietaire, 2026-11-24; releve de 12 a 50 EUR le 2026-11-25): le CUMUL `COST#dev / TOTAL` (toute la phase dev, jamais remis a zero) bloque tout appel Bedrock au-dela. */
-export const DEV_TRIAL_CAP_EUR = 50;
+/** Garde cout des essais en dev (decision du proprietaire, 2026-11-24; releve de 12 a 50 EUR le 2026-11-25, puis a 100 EUR le 2026-11-26 (F12)): le CUMUL `COST#dev / TOTAL` (toute la phase dev, jamais remis a zero) bloque tout appel Bedrock au-dela. */
+export const DEV_TRIAL_CAP_EUR = 100;
 /** Mise au point: echantillon de 10 pages; au plus 2 passages complets par lot (cout estime en 4.6 / docs/cost-guard.md). */
 export const TRIAL_TUNING_PAGES = 10;
 export const TRIAL_MAX_FULL_RUNS_PER_LOT = 2;

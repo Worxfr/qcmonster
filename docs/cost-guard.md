@@ -1,18 +1,18 @@
 # Garde de cout des essais Bedrock (dev)
 
-Decision du proprietaire (2026-11-24, relevee le 2026-11-25): **50 EUR au plus d'essais Bedrock en `dev`** (12 EUR avant le 2026-11-25). Le plafond est la constante unique `DEV_TRIAL_CAP_EUR` de `shared/names.ts`; tests et docs la citent. Le plafond par traitement reste obligatoire; depuis le 2026-11-25 il est proportionnel au nombre de pages (voir ci-dessous). Le garde est dans le code, pas dans la bonne volonte.
+Decision du proprietaire (2026-11-24, relevee le 2026-11-25 puis le 2026-11-26, F12): **100 EUR au plus d'essais Bedrock en `dev`** (50 EUR jusqu'au 2026-11-26, 12 EUR avant le 2026-11-25). Le plafond est la constante unique `DEV_TRIAL_CAP_EUR` de `shared/names.ts`; tests et docs la citent. Le plafond par traitement reste obligatoire; depuis le 2026-11-25 il est proportionnel au nombre de pages (voir ci-dessous). Le garde est dans le code, pas dans la bonne volonte.
 
 ## Ce qui est applique par le code
 
 | Regle | Ou | Effet |
 |---|---|---|
-| Plafond d'essais dev `DEV_TRIAL_CAP_EUR = 50` | `shared/names.ts`, `shared/cost.ts` (`costGateFor`), `shared/bedrock.ts` | En `dev`, des que le **cumul depuis le debut de la phase dev** (`COST#dev / TOTAL`, jamais remis a zero, different du compteur mensuel) atteint 50 EUR, tout nouvel appel Bedrock est refuse avant d'etre emis (`CostBlockedError`). Le test verifie que le modele n'est pas appele, meme quand le mois repart de zero |
+| Plafond d'essais dev `DEV_TRIAL_CAP_EUR = 100` | `shared/names.ts`, `shared/cost.ts` (`costGateFor`), `shared/bedrock.ts` | En `dev`, des que le **cumul depuis le debut de la phase dev** (`COST#dev / TOTAL`, jamais remis a zero, different du compteur mensuel) atteint 100 EUR, tout nouvel appel Bedrock est refuse avant d'etre emis (`CostBlockedError`). Le test verifie que le modele n'est pas appele, meme quand le mois repart de zero |
 | Comptage fin | `shared/cost.ts` | Le compteur est en **micro-euros entiers** (attribut `micros`, ajout atomique du mois et du cumul dans une transaction). Un appel de 0,00055 EUR compte 550, pas 0. Test: 1000 appels de 0,0015 EUR = 1,50 EUR |
 | Environnement et mois non contournables | `shared/bedrock.ts` | L'environnement vient de `QCM_ENV` (pose par CDK dans la configuration de chaque Lambda qui appelle Bedrock; absent ou invalide = erreur) et le mois de l'horloge (`monthParis`), jamais d'un parametre d'appel |
 | Compteur illisible | `shared/cost.ts` | Valeur non numerique ou non finie: erreur, donc appel refuse. Compteur absent = 0 (debut de periode) |
 | Seuils `prod` (alerte 10, blocage des nouveaux envois 15, arret 18 EUR) | `shared/cost.ts` (`costGate`) | inchanges |
 | Plafond par traitement `JOB_COST_CAP_EUR = 0,25` | `shared/bedrock.ts` | `jobSpentEur` est **obligatoire** (somme des `costEur` des appels du job, tenue par l'appelant dans l'element Job): refus avant l'appel si 0,25 EUR est atteint (`JobBudgetExceededError`); les affirmations restantes sont `non_verifiable`. Une requete est bornee (`LIMITS`: 8 192 tokens de sortie, 10 images de 5 Mo, 400 000 caracteres) pour qu'un seul appel ne depasse pas ce plafond |
-| Plafond par traitement proportionnel aux pages (decision du 2026-11-25, FEAT-A, **a implementer par le lot B1**) | `shared/names.ts` (`jobCapEur(pages)`), `api/src/pipeline/ctx.ts`, `steps-doc.ts`, `api/src/verify/run.ts` | `jobCapEur(pages) = max(0,25 ; 0,15 x pages)` EUR: 0,25 pour 1 a 1 page et demie, 0,45 pour 3 pages, **1,50 pour 10 pages**. Motif: le cout mesure est d'environ 0,09 EUR par page (p95 0,12), donc un plafond fixe de 0,25 EUR rendrait `non_verifiable` la fin de tout scan de 3 pages ou plus. `JOB_COST_CAP_EUR = 0,25` reste le plancher. Meme garde que ci-dessus (refus **avant** l'appel, `jobSpentEur` obligatoire), seul le plafond change; le nombre de pages vient du job (`pages`), jamais du client apres creation. Le plafond d'essais dev de 50 EUR et les seuils mensuels sont inchanges et priment: un scan de 10 pages ne peut pas depasser 1,50 EUR, soit 3 % du plafond d'essais |
+| Plafond par traitement proportionnel aux pages (decision du 2026-11-25, FEAT-A, **a implementer par le lot B1**) | `shared/names.ts` (`jobCapEur(pages)`), `api/src/pipeline/ctx.ts`, `steps-doc.ts`, `api/src/verify/run.ts` | `jobCapEur(pages) = max(0,25 ; 0,15 x pages)` EUR: 0,25 pour 1 a 1 page et demie, 0,45 pour 3 pages, **1,50 pour 10 pages**. Motif: le cout mesure est d'environ 0,09 EUR par page (p95 0,12), donc un plafond fixe de 0,25 EUR rendrait `non_verifiable` la fin de tout scan de 3 pages ou plus. `JOB_COST_CAP_EUR = 0,25` reste le plancher. Meme garde que ci-dessus (refus **avant** l'appel, `jobSpentEur` obligatoire), seul le plafond change; le nombre de pages vient du job (`pages`), jamais du client apres creation. Le plafond d'essais dev de 100 EUR et les seuils mensuels sont inchanges et priment: un scan de 10 pages ne peut pas depasser 1,50 EUR, soit 1,5 % du plafond d'essais |
 | Compte immediat | `shared/bedrock.ts` | le cout est ajoute des la reponse, avec 3 essais (100, 400, 1600 ms). Si l'ecriture echoue 3 fois: journal d'erreur avec `costEur` (a rattraper a la main) et **pas d'exception** (un `Retry` Step Functions rappellerait le modele et doublerait la facture); `counted: false` est renvoye |
 | Un seul client | `scripts/guards.test.ts` | le SDK `client-bedrock-runtime` n'est importable que par `shared/bedrock.ts` |
 | Profil d'application obligatoire | `assertApplicationProfileArn` | un ARN de profil systeme ou d'une autre region est refuse |
@@ -24,7 +24,7 @@ Decision du proprietaire (2026-11-24, relevee le 2026-11-25): **50 EUR au plus d
 - **2 passages complets au plus par lot** (`TRIAL_MAX_FULL_RUNS_PER_LOT`): 38 pages x 0,12 EUR = 4,6 EUR le passage, soit 9,2 EUR pour deux. Les 12 pages cachees (environ 1,4 EUR par lancement, 3 lancements au plus) se comptent a part.
 - Aucun envoi de photo sur `dev` hors des runs prevus: un envoi lance la machine et appelle Bedrock.
 - Tout travail de prompt qui peut se faire sur le jeu dore avec le faux modele se fait ainsi. Les appels reels sont des commandes explicites (`eval.yml`, mode `real`), jamais un test ordinaire.
-- Si le compteur de dev atteint 50 EUR, les essais s'arretent: la suite se discute avec le proprietaire, on ne releve pas le plafond de soi-meme.
+- Si le compteur de dev atteint 100 EUR, les essais s'arretent: la suite se discute avec le proprietaire, on ne releve pas le plafond de soi-meme.
 
 ## Test M2: qui peut appeler Bedrock (`infra/test/m2-bedrock.test.ts`)
 
@@ -42,8 +42,8 @@ Des tests negatifs construisent de vrais templates fautifs (politique geree Bedr
 ## Limites connues
 
 - **La garde n'est pas atomique avec l'appel**: lecture du compteur, appel, puis ajout. Des appels en parallele (Map Step Functions, 38 pages) passent tous la garde avec le meme total: le depassement est borne par (concurrence x cout maximal d'un appel). Avec les bornes de `LIMITS` et les prix de `pricing.ts`, cela reste de l'ordre du centime a quelques dizaines de centimes. Une reservation d'estimation (`ADD` conditionnel avant l'appel, puis regularisation) serait plus stricte; non faite, a reprendre si la concurrence monte.
-- **Un appel qui echoue apres facturation partielle** (delai depasse cote client alors que Bedrock a traite) n'est pas compte: aucun `usage` n'est renvoye. Risque accepte, borne par le plafond de 50 EUR et par le controle J+2 de la facture reelle.
-- Le cumul de 50 EUR est commun a tous les lots qui travaillent en dev. Le relever demande une decision du proprietaire.
+- **Un appel qui echoue apres facturation partielle** (delai depasse cote client alors que Bedrock a traite) n'est pas compte: aucun `usage` n'est renvoye. Risque accepte, borne par le plafond de 100 EUR et par le controle J+2 de la facture reelle.
+- Le cumul de 100 EUR est commun a tous les lots qui travaillent en dev. Le relever demande une decision du proprietaire.
 - Le compteur ignore ce qui ne passe pas par `shared/bedrock.ts` (appel direct, console AWS): `scripts/guards.test.ts` couvre le depot, le test M2 ci-dessous couvre les roles du compte deployes par CDK. Ce qui reste hors de portee des tests est liste dans « Test M2 ».
 - `eval/` n'a **pas de garde de cout propre dans le code**: l'outil de mesure appelle l'API, donc passe par le meme `invokeModel` et le meme compteur `COST#dev / TOTAL` (plafond `DEV_TRIAL_CAP_EUR`). Il n'y a donc aucun 12 EUR a aligner dans `eval/`. Seul le commentaire d'en-tete de `.github/workflows/eval.yml` cite encore « 12 EUR » (hors du perimetre de L1d: a corriger par le proprietaire de `.github/**`). L'arret a 5 EUR par mois d'evaluation de design-v2 (9) n'est pas implemente.
 - Le changement de nom de l'attribut (`cents` -> `micros`) ne demande aucune migration: le compteur dev etait vide.
@@ -57,7 +57,7 @@ Constat (`FEAT-D-report.md` section 4): l'alarme `qcm-<env>-cout-mensuel-10` (st
 
 ### Risque accepte: plafond proportionnel
 
-Decision du 2026-11-25. Avant, un scan coutait au plus 0,25 EUR quel que soit son nombre de pages (environ 0,025 EUR par page a 10 pages, au prix de fiches « non verifiables »). Apres, il peut coûter jusqu'a 1,50 EUR a 10 pages: la consommation des essais dev peut donc etre plus rapide (jusqu'a 6 fois par scan de 10 pages). Ce qui protege: le plafond dur d'essais de 50 EUR (`DEV_TRIAL_CAP_EUR`, cumul `COST#dev / TOTAL`, arret avant l'appel) et la limite de 10 transcriptions par jour et par eleve; le depassement possible est borne par ce qui est en vol au moment du blocage (voir « La garde n'est pas atomique »). Un scan de 10 pages pesant au plus 3 % du plafond d'essais, le risque est accepte.
+Decision du 2026-11-25. Avant, un scan coutait au plus 0,25 EUR quel que soit son nombre de pages (environ 0,025 EUR par page a 10 pages, au prix de fiches « non verifiables »). Apres, il peut coûter jusqu'a 1,50 EUR a 10 pages: la consommation des essais dev peut donc etre plus rapide (jusqu'a 6 fois par scan de 10 pages). Ce qui protege: le plafond dur d'essais de 100 EUR (`DEV_TRIAL_CAP_EUR`, cumul `COST#dev / TOTAL`, arret avant l'appel) et la limite de 10 transcriptions par jour et par eleve; le depassement possible est borne par ce qui est en vol au moment du blocage (voir « La garde n'est pas atomique »). Un scan de 10 pages pesant au plus 1,5 % du plafond d'essais, le risque est accepte.
 
 ### Lecture du scan comme un seul document (FEAT-A)
 
@@ -65,4 +65,15 @@ La transcription passe de N appels d'une image a un appel de 4 images au plus (o
 
 ### Un scan, plusieurs fiches (sections)
 
-Le plafond `jobCapEur(pages)` vaut pour **tout le job**, somme des sections (le cout s'accumule dans `Job.coutMicros`). Pour qu'une premiere section n'epuise pas le plafond, le budget restant de chaque section (`budgetRestantCentimes` de `extract`, repris par `verify-run`) est la part du reste proportionnelle aux mots des sections encore a traiter. Chaque section ajoute une extraction, une verification et une generation: un surcout fixe estime a quelques pourcents (invites systeme repetees), non mesure; a mesurer avec la lecture en un seul document, sur un cours de 3 pages coupe en 2 sections. Le plafond d'essais de 50 EUR et les seuils mensuels sont inchanges.
+Le plafond `jobCapEur(pages)` vaut pour **tout le job**, somme des sections (le cout s'accumule dans `Job.coutMicros`). Pour qu'une premiere section n'epuise pas le plafond, le budget restant de chaque section (`budgetRestantCentimes` de `extract`, repris par `verify-run`) est la part du reste proportionnelle aux mots des sections encore a traiter. Chaque section ajoute une extraction, une verification et une generation: un surcout fixe estime a quelques pourcents (invites systeme repetees), non mesure; a mesurer avec la lecture en un seul document, sur un cours de 3 pages coupe en 2 sections. Le plafond d'essais de 100 EUR et les seuils mensuels sont inchanges.
+
+## Seuils mensuels par environnement (F12, 2026-11-26)
+
+| Seuil | Prod | Dev |
+| --- | --- | --- |
+| Alerte e-mail (alarme `qcm-<env>-cout-mensuel-<seuil>`) | 10 EUR | 80 EUR |
+| `budget_epuise` sur `POST /scans` (`block_new`) | 15 EUR | 95 EUR |
+| Arret des traitements (`stop_all`) | 18 EUR | 100 EUR |
+| Plafond cumule d'essais | sans objet | 100 EUR |
+
+Source unique: `costThresholdsFor(env)` dans `shared/names.ts`. En dev, les seuils mensuels sont alignes sur le plafond cumule pour ne jamais bloquer avant lui, et l'alerte part a 80 EUR. Limite: l'alarme lit le compteur du MOIS; si les 100 EUR s'etalent sur plusieurs mois, elle peut ne pas se declencher, le plafond cumule bloque quand meme. Les budgets AWS (20/25/40 EUR) ne sont crees que par la stack prod et sont inchanges. Le plafond par scan `max(0,25 ; 0,15 x pages)` est inchange.

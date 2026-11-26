@@ -830,7 +830,7 @@ components:
       description: Etat incompatible
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Le job n'est pas a confirmer } } }
     QuotaExceeded:
-      description: "quota_epuise (pages du mois) ou budget_epuise (compteur de cout: seuils mensuels 15/18 EUR; en dev, plafond d'essais cumule DEV_TRIAL_CAP_EUR = 50 EUR)"
+      description: "quota_epuise (pages du mois) ou budget_epuise (compteur de cout: seuils mensuels 15/18 EUR en prod, 95/100 EUR en dev; en dev, plafond d'essais cumule DEV_TRIAL_CAP_EUR = 100 EUR)"
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: quota_epuise, message: Quota de pages epuise, resetDate: '2027-01-01' } } }
   schemas:
     Error:
