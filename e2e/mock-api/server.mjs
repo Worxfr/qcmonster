@@ -276,7 +276,7 @@ const server = createServer(async (req, res) => {
       return send(res, 204);
     case 'POST /family/policy':
       if (!parent) return err(res, 403, 'interdit', 'Interdit');
-      if (b.consent !== true || b.policyVersion !== '2026-11-26') return err(res, 400, 'requete_invalide', 'Consentement requis');
+      if (b.consent !== true || b.policyVersion !== '2026-11-27') return err(res, 400, 'requete_invalide', 'Consentement requis');
       S.policyOutdated = false;
       return send(res, 204);
     case 'POST /family/export/archive':

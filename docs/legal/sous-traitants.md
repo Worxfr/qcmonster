@@ -24,9 +24,12 @@ La page explique aussi que chaque région a un « Model Deployment Account » pa
 
 **Conclusion** : selon la documentation d'AWS, le fournisseur du modèle n'a pas accès aux logs ni aux prompts et réponses des clients. Le fournisseur du modèle n'est donc pas cité comme sous-traitant dans la politique. AWS est le seul sous-traitant.
 
-## Limites de cette relecture
+## Détection d'abus de Bedrock
 
-- La même page renvoie à la détection d'abus de Bedrock (page `abuse-detection`). Cette page n'a **pas** été lue : à lire avant validation de l'AIPD.
+Source relue le 2026-11-26 : [Amazon Bedrock abuse detection](https://docs.aws.amazon.com/bedrock/latest/userguide/abuse-detection.html). Bedrock peut utiliser une détection automatique d'abus et, « dans des circonstances limitées », conserver ou examiner des entrées et sorties. La page cite deux cas : certains modèles précis (OpenAI hors gpt-oss ; Claude Fable 5, 5.1 et 5.2), dont le trafic est conservé jusqu'à 30 jours, et la détection de contenus pédopornographiques dans les **images** (blocage possible, conservation et examen de l'image concernée, signalement possible à une autorité). Les modèles utilisés par QCMonster (Claude Haiku 5.5 et Sonnet 5.5, profils d'inférence UE) ne sont pas dans la liste de la page, donc le cas général s'applique ; le cas des images reste possible pour toute photo de cours. Les données restent chez AWS et ne sont pas partagées avec le fournisseur du modèle. À revérifier à chaque changement de modèle.
+
+## Limites de cette relecture
+- La page de conservation des données (`data-retention`) citée par la page d'abus n'a pas été lue.
 - La facturation du modèle passe par AWS Marketplace d'après sa fiche. L'effet sur l'accès aux données **n'a pas** été vérifié.
 - Le DPA d'AWS et la FAQ « Data Privacy » n'ont pas été relus.
 - Ce document n'est pas un avis juridique.
