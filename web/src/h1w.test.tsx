@@ -162,7 +162,7 @@ describe('Ré-acceptation de la politique', () => {
     expect(await screen.findByRole('heading', { name: 'La politique de confidentialité a changé' })).toBeInTheDocument();
     expect(screen.getByText(/schémas de ses cours, un par un et seulement s'il le choisit/)).toBeInTheDocument();
     expect(screen.getByText(/identifiant de connexion et un surnom/)).toBeInTheDocument();
-    expect(screen.getByText(/historique des tests/)).toBeInTheDocument();
+    expect(screen.getByText(/Nous gardons l'historique des tests/)).toBeInTheDocument();
     expect(screen.queryByText('Pages de la famille')).toBeNull();
     const ok = screen.getByRole('button', { name: "J'accepte la nouvelle politique" });
     expect(ok).toBeDisabled();

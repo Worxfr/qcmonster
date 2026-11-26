@@ -2,10 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import { keys } from '../../../shared/ddb/keys.js';
 import { HttpError } from '../lib/http.js';
-import { SID, FID, qid, seed, testDeps, type TestEnv } from '../lib/testkit.js';
+import { SID, FID, parentCtx, qid, seed, testDeps, type TestEnv } from '../lib/testkit.js';
 import { postAnswer } from './answers.js';
 import { getSession, practiceSession } from './session.js';
 import { DOC_XP_CAP } from './rules.js';
+import { listStudentTests } from './family-progress.js';
 import { exportFamily } from '../family/family.js';
 import type { PlayProfile } from './tests.js';
 
@@ -322,6 +323,16 @@ describe('Q1: POST /practice/session', () => {
     const o = await practiceSession(t.deps, ctx, { docIds: ['doc1', 'docb', 'inconnue'], size: 5 });
     expect(o.skipped).toEqual([{ docId: 'docb', reason: 'introuvable' }, { docId: 'inconnue', reason: 'introuvable' }]); // indiscernables, sans titre
     expect(JSON.stringify(o)).not.toContain('stu2');
+  });
+
+  it('legal: le parent voit, pour un passage de scope dossier, le nom du dossier comme titre (texte de la politique et du registre)', async () => {
+    const t = testDeps();
+    const { ctx } = await seed(t, { nQcm: 6 });
+    await folderWith(t, 'fo1', ['doc1']);
+    const s = await practiceSession(t.deps, ctx, { folderId: 'fo1', size: 5 });
+    await answerAll(t, ctx, s.questions.map((q) => q.questionId));
+    const page = await listStudentTests(t.deps, parentCtx, SID, {});
+    expect(page.items.map((i) => i.titre)).toEqual(['Histoire']);
   });
 
   it('erreurs: les deux parametres ou aucun 400, 11 fiches 400, docId hors motif 400, doublon 400, size 400, dossier d\'un autre eleve 404, aucune question 409', async () => {

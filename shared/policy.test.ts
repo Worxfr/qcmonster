@@ -37,3 +37,12 @@ describe('version de la politique: coherence entre texte, contrat et site', () =
     for (const i of imports) expect(() => readFileSync(new URL(i.replace('../../../', ''), root)), i).not.toThrow();
   });
 });
+
+describe('ligne « Version : » du texte', () => {
+  it('est exactement POLICY_VERSION', () => {
+    const md = readFileSync(new URL('../docs/legal/politique-confidentialite.md', import.meta.url), 'utf8');
+    const m = [...md.matchAll(/^\*\*Version : ([0-9-]+)\*\*$/gm)];
+    expect(m).toHaveLength(1);
+    expect(m[0][1]).toBe(POLICY_VERSION);
+  });
+});

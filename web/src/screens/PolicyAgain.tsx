@@ -56,7 +56,18 @@ export function PolicyAgain({ onDone }: { onDone: () => void }) {
     <main className="login">
       <Mascot stage={3} size={120} label={false} />
       <h1>La politique de confidentialité a changé</h1>
-      <p className="lead">Nous avons ajouté des nouveautés : chaque élève peut garder des schémas de ses cours, un par un et seulement s'il le choisit ; les formules s'écrivent et s'affichent mieux ; on peut ajouter des pages à un cours ; chaque élève a un identifiant de connexion et un surnom ; et nous gardons l'historique des tests, que tu suis en lecture seule. Viennent s'y ajouter des exercices de raisonnement, où l'élève peut photographier sa copie pour la faire corriger par une IA (la photo est supprimée dès la fin de la correction), une banque de questions variées avec un entraînement sur plusieurs fiches, l'ajout d'une phrase oubliée à la relecture et une archive que l'élève télécharge lui-même. Le texte décrit aussi la modification d'un cours déjà confirmé, qui ouvrira plus tard. Relis le nouveau texte pour continuer.</p>
+      <p className="lead">Nous avons ajouté des nouveautés. Relis le nouveau texte pour continuer.</p>
+      <ul className="lead news">
+        <li>Chaque élève peut garder des schémas de ses cours, un par un et seulement s'il le choisit.</li>
+        <li>Les formules s'écrivent et s'affichent mieux, et on peut ajouter des pages à un cours.</li>
+        <li>Chaque élève a un identifiant de connexion et un surnom.</li>
+        <li>Nous gardons l'historique des tests, que tu suis en lecture seule.</li>
+        <li>Exercices de raisonnement : l'élève peut photographier sa copie pour la faire corriger par une IA (la photo est supprimée dès la fin de la correction).</li>
+        <li>Une banque de questions variées et un entraînement sur plusieurs fiches.</li>
+        <li>L'ajout d'une phrase oubliée à la relecture.</li>
+        <li>Une archive complète que l'élève télécharge lui-même.</li>
+        <li>Bientôt : la modification d'un cours déjà confirmé. Le texte la décrit déjà.</li>
+      </ul>
       <p className="calm">📄 Lire la <PolicyLink /> (elle s'ouvre dans un nouvel onglet).</p>
       <ErrorBox message={error} />
       <label className="check">
@@ -67,7 +78,7 @@ export function PolicyAgain({ onDone }: { onDone: () => void }) {
       <button className="link" onClick={signOut}>Se déconnecter</button>
       <section className="card refuse" aria-labelledby="refuse-t">
         <h2 id="refuse-t">Tu ne veux pas accepter ?</h2>
-        <p>Tu peux retirer ton accord : récupère d'abord tes données, puis supprime la famille. Tous les comptes de la famille et leurs données seront effacés, sans retour possible.</p>
+        <p>Tu peux retirer ton accord : récupère d'abord tes données (le bouton ci-dessous donne l'export JSON de la famille, sans l'historique des tests ; l'archive complète est dans le tableau de bord, après acceptation), puis supprime la famille. Tous les comptes de la famille et leurs données seront effacés, sans retour possible.</p>
         <div className="btn-row">
           <button className="btn btn-small btn-ghost" disabled={busy} onClick={() => void run(downloadExport)}>Télécharger mes données</button>
           <button className="btn btn-small btn-danger" disabled={busy} onClick={() => void remove()}>Supprimer la famille et les comptes</button>
