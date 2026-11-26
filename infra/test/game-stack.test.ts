@@ -122,8 +122,10 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 
   it('photos: le role de suppression ne liste et n\'efface que sous scans/', () => {
     const s3 = (statementsByRole(t)[`qcm-${env}-game-admin-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('s3:')));
-    expect(s3.flatMap(actions).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket']);
+    // R1-B: + figures/ (liste du prefixe et suppression), jamais de lecture
+    expect(s3.flatMap(actions).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:ListBucket', 's3:ListBucket']);
     expect(JSON.stringify(s3)).toContain('scans/*');
+    expect(JSON.stringify(s3)).toContain('figures/*');
   });
 
   it('depend des stacks Auth, Api et Data', () => {

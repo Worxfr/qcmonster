@@ -89,7 +89,7 @@ describe('H1-A: routes et droits', () => {
 
   it('suppression de la famille: le role admin supprime aussi sous exports/ seulement (plus scans/)', () => {
     const s3 = stmtsOf('qcm-dev-family-admin').filter((s) => acts(s).some((a) => a.startsWith('s3:')));
-    expect(s3.flatMap(acts).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket']);
+    expect(s3.flatMap(acts).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:ListBucket', 's3:ListBucket']); // scans/ + exports/ (photos) et figures/ (R1-B)
     const text = JSON.stringify(s3);
     expect(text).toContain('/exports/*');
     expect(text).toContain('/scans/*');

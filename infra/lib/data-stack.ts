@@ -4,7 +4,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
-import { DEPLOY_ROLE_NAME, evalRoleName, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
+import { DEPLOY_ROLE_NAME, evalRoleName, FIGURES_BUCKET_PARAM, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
 
 export interface DataStackProps extends StackProps {
   envName: Env;
@@ -39,6 +39,7 @@ export function webOriginFor(scope: Construct, env: Env): string {
 export class DataStack extends Stack {
   readonly table: dynamodb.Table;
   readonly scansBucket: s3.Bucket;
+  readonly figuresBucket: s3.Bucket;
   readonly vaultBucket: s3.Bucket;
   readonly evalRole: iam.Role;
 
@@ -84,6 +85,12 @@ export class DataStack extends Stack {
       cors: [{ allowedMethods: [s3.HttpMethods.POST], allowedOrigins: [webOrigin], allowedHeaders: ['*'], maxAge: 600 }],
     });
 
+    // Figures gardees par l'eleve (R1, docs/R1-design.md 3.3): privees, lues par URL pre-signee. AUCUN cycle de vie par age: une figure vit
+    // avec son cours et part a sa suppression (code). Pas de CORS (le navigateur ne depose rien). Prod: conservee si la stack est supprimee.
+    this.figuresBucket = new s3.Bucket(this, 'Figures', { ...common, removalPolicy: prod ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY });
+    // shortcut: pas d'autoDeleteObjects (sa ressource personnalisee ajoute une fonction et un role hors des controles M2 et des tags). Dev: les figures
+    // n'expirent jamais, donc le proprietaire vide le bucket (nom dans SSM /qcm/dev/data/figuresBucket) avant de supprimer la pile; l'agent ne le fait pas.
+
     // Coffre du jeu cache: jamais supprime avec la stack, lecture par le seul role d'evaluation.
     this.vaultBucket = new s3.Bucket(this, 'Vault', { ...common, removalPolicy: RemovalPolicy.RETAIN });
 
@@ -112,6 +119,7 @@ export class DataStack extends Stack {
 
     new ssm.StringParameter(this, 'ParamTable', { parameterName: ssmParam(envName, 'data/tableName'), stringValue: this.table.tableName });
     new ssm.StringParameter(this, 'ParamScans', { parameterName: ssmParam(envName, 'data/scansBucket'), stringValue: this.scansBucket.bucketName });
+    new ssm.StringParameter(this, 'ParamFigures', { parameterName: ssmParam(envName, FIGURES_BUCKET_PARAM), stringValue: this.figuresBucket.bucketName });
     new ssm.StringParameter(this, 'ParamVault', { parameterName: ssmParam(envName, 'data/vaultBucket'), stringValue: this.vaultBucket.bucketName });
   }
 }
