@@ -10,6 +10,8 @@ export type When = 'absent' | 'any' | number;
 export interface Write {
   item: Item;
   when: When;
+  /** Supprime l'element (seule sa cle compte) dans la meme ecriture; `when` est alors ignore. */
+  remove?: true;
 }
 
 export interface Store {
@@ -65,10 +67,14 @@ export function dynamoStore(client: DynamoDBDocumentClient, table: string): Stor
     },
     async commit(writes) {
       try {
-        if (writes.length === 1) {
+        if (writes.length === 1 && !writes[0].remove) {
           await client.send(new PutCommand({ TableName: table, Item: stamp(writes[0]), ...condition(writes[0].when) }));
         } else {
-          await client.send(new TransactWriteCommand({ TransactItems: writes.map((w) => ({ Put: { TableName: table, Item: stamp(w), ...condition(w.when) } })) }));
+          await client.send(
+            new TransactWriteCommand({
+              TransactItems: writes.map((w) => (w.remove ? { Delete: { TableName: table, Key: { PK: w.item.PK, SK: w.item.SK } } } : { Put: { TableName: table, Item: stamp(w), ...condition(w.when) } })),
+            }),
+          );
         }
         return true;
       } catch (e) {
@@ -109,11 +115,15 @@ export function memoryStore(): Store & { items: Map<string, Item>; failNextCommi
         return false;
       }
       for (const w of writes) {
+        if (w.remove) continue;
         const cur = items.get(id(w.item));
         if (w.when === 'absent' && cur) return false;
         if (typeof w.when === 'number' && cur?.v !== w.when) return false;
       }
-      for (const w of writes) items.set(id(w.item), structuredClone({ ...w.item, v: nextV(w) }));
+      for (const w of writes) {
+        if (w.remove) items.delete(id(w.item));
+        else items.set(id(w.item), structuredClone({ ...w.item, v: nextV(w) }));
+      }
       return true;
     },
     async remove(key) {

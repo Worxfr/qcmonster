@@ -12,6 +12,8 @@ export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex'
 export const keys = {
   family: (fid: string): Key => ({ PK: `FAMILY#${fid}`, SK: 'META' }),
   student: (fid: string, sid: string): Key => ({ PK: `FAMILY#${fid}`, SK: `STUDENT#${sid}` }),
+  /** Reservation du surnom dans la famille (ID1): `nom` = `nameKey()` de shared/pseudo-rules. Ecrite avec `absent` dans la meme ecriture que l'eleve; porte `studentId`. */
+  name: (fid: string, nom: string): Key => ({ PK: `FAMILY#${fid}`, SK: `NAME#${nom}` }),
   quota: (fid: string, month: string, sid: string): Key => ({ PK: `FAMILY#${fid}`, SK: `QUOTA#${month}#${sid}` }),
   quotaFamily: (fid: string, month: string): Key => ({ PK: `FAMILY#${fid}`, SK: `QUOTA#${month}#FAMILY` }),
   job: (sid: string, jobId: string): Key => ({ PK: `STUDENT#${sid}`, SK: `JOB#${jobId}` }),

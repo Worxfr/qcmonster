@@ -5,14 +5,22 @@ import { keys } from '../../../shared/ddb/keys.js';
 import { quotaDefaults } from '../../../shared/names.js';
 import { POLICY_VERSION } from '../../../shared/policy.js';
 import { setLimit } from '../../../shared/quota.js';
-import { studentView } from '../game/access.js';
+import { checkNickname, nameKey } from '../../../shared/pseudo-rules.js';
+import { displayNameOf, loginIdOf, studentView } from '../game/access.js';
 import { MAX_STUDENTS_PER_FAMILY } from '../game/rules.js';
 import { parisMonth } from '../game/time.js';
-import { badRequest, conflict, forbidden, notFound, type ParentCtx } from '../lib/http.js';
-import { AliasTakenError } from '../lib/identity.js';
-import type { Item } from '../lib/store.js';
+import { badRequest, conflict, forbidden, notFound, pseudoPris, pseudoRefuse, type ParentCtx } from '../lib/http.js';
+import { AliasTakenError, UserGoneError } from '../lib/identity.js';
+import type { Item, Write } from '../lib/store.js';
 import { issueActivation } from './activation.js';
+import { nameSwap, nameTakenByOther, reservedByOther } from './names.js';
 import type { FamilyDeps } from './ports.js';
+
+/** Base de l'identifiant de connexion: le surnom de depart en minuscules ASCII, espaces et apostrophes en tirets (lila, marie-rose). */
+const loginBaseOf = (display: string): string => {
+  const b = display.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[\s'’]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '');
+  return b || 'eleve';
+};
 
 const studentOf = async (deps: FamilyDeps, fid: string, sid: string): Promise<Item> => {
   const s = await deps.store.get(keys.student(fid, sid));
@@ -28,14 +36,20 @@ export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { ps
   const existing = await deps.store.query(`FAMILY#${ctx.familyId}`, 'STUDENT#');
   if (existing.length >= MAX_STUDENTS_PER_FAMILY) throw forbidden('Nombre maximal d\'élèves atteint');
 
+  // Surnom de depart: memes regles que le surnom choisi par l'eleve (liste de mots, chiffres, adresses), en plus de la forme du contrat.
+  const nick = checkNickname(body.pseudo, { parentEmail: ctx.email });
+  if (!nick.ok) throw pseudoRefuse();
+  const displayName = nick.value;
+  if (await nameTakenByOther(deps, ctx.familyId, '', displayName)) throw pseudoPris();
+
   const studentId = deps.newId();
-  const base = body.pseudo.trim().replace(/\s+/g, '-');
-  let pseudo = '';
+  const base = loginBaseOf(displayName);
+  let loginId = '';
   let sub = '';
   for (let i = 0; ; i++) {
-    pseudo = `${base}-${deps.suffix()}`; // suffixe aleatoire: le pseudo n'est pas devinable et reste unique
+    loginId = `${base}-${deps.suffix()}`; // suffixe aleatoire (5 caracteres sans ambiguite): l'identifiant n'est pas devinable et reste unique
     try {
-      ({ sub } = await deps.identity.createStudent({ studentId, familyId: ctx.familyId, alias: pseudo }));
+      ({ sub } = await deps.identity.createStudent({ studentId, familyId: ctx.familyId, alias: loginId }));
       break;
     } catch (e) {
       if (!(e instanceof AliasTakenError) || i >= 2) throw e;
@@ -45,7 +59,8 @@ export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { ps
   const link = issueActivation(deps, deps.webOrigin, ctx.familyId, studentId);
   const student: Item = {
     ...keys.student(ctx.familyId, studentId),
-    pseudo,
+    loginId,
+    displayName,
     niveau: body.schoolLevel,
     moins15: body.under15,
     consentementLe: deps.now().toISOString(),
@@ -57,7 +72,11 @@ export async function createStudent(deps: FamilyDeps, ctx: ParentCtx, body: { ps
     createdAt: deps.now().toISOString(),
   };
   try {
-    if (!(await deps.store.commit([{ item: student, when: 'absent' }, link.write]))) throw conflict();
+    // Le surnom est reserve dans la meme ecriture que l'eleve: deux creations en course sur le meme surnom, une seule gagne.
+    const reserve: Write = { item: { ...keys.name(ctx.familyId, nameKey(displayName)), studentId, creeLe: deps.now().toISOString() }, when: 'absent' };
+    if (!(await deps.store.commit([{ item: student, when: 'absent' }, link.write, reserve]))) {
+      throw (await reservedByOther(deps, ctx.familyId, studentId, displayName)) ? pseudoPris() : conflict();
+    }
   } catch (e) {
     await deps.identity.deleteUser(studentId); // pas d'utilisateur Cognito sans eleve en base
     throw e;
@@ -74,8 +93,8 @@ export async function createLink(deps: FamilyDeps, ctx: ParentCtx, sid: string) 
   return { url: link.url, expiresAt: link.expiresAt };
 }
 
-export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string, body: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: string }) {
-  if (body.status === undefined && body.pageQuota === undefined && body.schoolLevel === undefined) throw badRequest();
+export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string, body: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: string; displayName?: string }) {
+  if (body.status === undefined && body.pageQuota === undefined && body.schoolLevel === undefined && body.displayName === undefined) throw badRequest();
   const s = await studentOf(deps, ctx.familyId, sid);
   const meta = await deps.store.get(keys.family(ctx.familyId));
   const familyLimit = Number(meta?.plafondPages ?? quotaDefaults(deps.env).familyPages);
@@ -84,9 +103,20 @@ export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   const next: Item = { ...s };
   if (body.status !== undefined) next.statut = body.status;
   if (body.pageQuota !== undefined) next.quotaPages = body.pageQuota;
-  if (body.schoolLevel !== undefined) next.niveau = body.schoolLevel; // rectification (droit de correction); le pseudo et `under15` se refont en recreant l'eleve
+  if (body.schoolLevel !== undefined) next.niveau = body.schoolLevel; // rectification (droit de correction); `under15` se refait en recreant l'eleve
+  const writes: Write[] = [{ item: next, when: s.v ?? 'any' }];
+  let renamed: string | undefined;
+  if (body.displayName !== undefined) {
+    // Le parent renomme: memes regles que l'eleve, et refus si un frere ou une soeur porte deja ce nom (reservation dans la meme ecriture).
+    const nick = checkNickname(body.displayName, { parentEmail: ctx.email });
+    if (!nick.ok) throw pseudoRefuse();
+    if (await nameTakenByOther(deps, ctx.familyId, sid, nick.value)) throw pseudoPris();
+    renamed = nick.value;
+    next.displayName = nick.value;
+    writes.push(...(await nameSwap(deps, ctx.familyId, sid, displayNameOf(s), nick.value)));
+  }
   // Base d'abord: un eleve suspendu est refuse par l'API immediatement, meme si Cognito echoue ensuite.
-  if (!(await deps.store.commit([{ item: next, when: s.v ?? 'any' }]))) throw conflict('Réessaie');
+  if (!(await deps.store.commit(writes))) throw renamed !== undefined && (await reservedByOther(deps, ctx.familyId, sid, renamed)) ? pseudoPris() : conflict('Réessaie');
   // A chaque requete portant `status` (idempotent): si Cognito a echoue, relancer la meme requete repare.
   if (body.status !== undefined) await deps.identity.setEnabled(sid, body.status === 'actif');
   if (body.pageQuota !== undefined) {
@@ -110,4 +140,39 @@ export async function deleteStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   await purgeStudent(deps, ctx.familyId, await studentOf(deps, ctx.familyId, sid));
   // Les archives d'export deja faites contiennent les passages et le profil de l'eleve: elles partent avec lui (celles de la famille entiere).
   await deps.archives.deleteFamily(ctx.familyId);
+}
+
+/**
+ * Nouvel identifiant de connexion (parent seulement, mot de passe inchange). Cognito d'abord, base ensuite; rejouable: si Cognito porte deja un alias
+ * different de la base (appel interrompu), c'est lui qu'on ecrit en base au lieu d'en generer un troisieme. La deconnexion globale a lieu a CHAQUE appel.
+ */
+export async function regenerateLoginId(deps: FamilyDeps, ctx: ParentCtx, sid: string): Promise<{ loginId: string }> {
+  const s = await studentOf(deps, ctx.familyId, sid);
+  const inBase = loginIdOf(s);
+  let current: string | undefined;
+  try {
+    current = await deps.identity.getAlias(sid);
+  } catch (e) {
+    if (e instanceof UserGoneError) throw notFound();
+    throw e;
+  }
+  let next: string;
+  if (current && current !== inBase) next = current;
+  else {
+    const base = /^(.+)-[a-z0-9]{4,5}$/i.exec(inBase)?.[1]?.toLowerCase() ?? 'eleve';
+    for (let i = 0; ; i++) {
+      next = `${base}-${deps.suffix()}`;
+      try {
+        await deps.identity.updateAlias(sid, next);
+        break;
+      } catch (e) {
+        if (e instanceof UserGoneError) throw notFound();
+        if (!(e instanceof AliasTakenError) || i >= 2) throw e;
+      }
+    }
+  }
+  // Le champ `pseudo` brut d'un ancien compte n'est jamais reecrit: il garde l'ancien alias, sans effet (loginIdOf lit `loginId` d'abord).
+  if (next !== inBase && !(await deps.store.commit([{ item: { ...s, loginId: next }, when: s.v ?? 'any' }]))) throw conflict('Réessaie');
+  await deps.identity.signOut(sid);
+  return { loginId: next };
 }

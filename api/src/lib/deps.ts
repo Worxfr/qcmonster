@@ -13,12 +13,23 @@ export interface Deps {
   newId: () => string;
   /** Jeton d'activation en clair (256 bits, base64url). */
   newToken: () => string;
-  /** 4 caracteres [a-z0-9] pour le suffixe du pseudo. */
+  /** 5 caracteres de LOGIN_SUFFIX_ALPHABET pour le suffixe de l'identifiant de connexion. */
   suffix: () => string;
+}
+
+/** Alphabet du suffixe: sans 0 o 1 l i (31 caracteres). */
+export const LOGIN_SUFFIX_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+/** 5 caracteres tires par rejet (on ecarte les octets au-dela du plus grand multiple de 31): aucun biais. */
+export function randomSuffix(bytes: (n: number) => Uint8Array = randomBytes): string {
+  const n = LOGIN_SUFFIX_ALPHABET.length;
+  const limit = 256 - (256 % n);
+  let out = '';
+  while (out.length < 5) for (const b of bytes(8)) if (b < limit && out.length < 5) out += LOGIN_SUFFIX_ALPHABET[b % n];
+  return out;
 }
 
 export const realRandom = {
   newId: () => randomUUID(),
   newToken: () => randomBytes(32).toString('base64url'),
-  suffix: () => Array.from(randomBytes(4), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join(''),
+  suffix: randomSuffix,
 };

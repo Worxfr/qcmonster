@@ -25,6 +25,12 @@ export interface Identity {
   /** Parent: pose `famille_id` et le groupe `parent`. Idempotent: refaire l'appel complete ce qui manque. Renvoie false si le compte a une AUTRE famille. */
   attachFamily(username: string, familyId: string): Promise<boolean>;
   setEnabled(username: string, enabled: boolean): Promise<void>;
+  /** Alias de connexion courant (`preferred_username`) tel que Cognito le porte; undefined si l'utilisateur n'a pas d'alias. UserGoneError si l'utilisateur n'existe plus. */
+  getAlias(username: string): Promise<string | undefined>;
+  /** Pose un nouvel alias de connexion (libere l'ancien). AliasTakenError si un autre utilisateur le porte, UserGoneError si l'utilisateur n'existe plus. */
+  updateAlias(username: string, alias: string): Promise<void>;
+  /** Revoque les jetons de rafraichissement de l'utilisateur (idempotent). */
+  signOut(username: string): Promise<void>;
   /** Supprime l'utilisateur; absent = deja supprime (idempotent). */
   deleteUser(username: string): Promise<void>;
 }
@@ -82,6 +88,32 @@ export function cognitoIdentity(userPoolId: string, client: CognitoIdentityProvi
         await client.send(new AdminUserGlobalSignOutCommand({ UserPoolId: userPoolId, Username: username })); // revoque les jetons de rafraichissement
       }
     },
+    async getAlias(username) {
+      try {
+        const u = await client.send(new AdminGetUserCommand({ UserPoolId: userPoolId, Username: username }));
+        return u.UserAttributes?.find((a) => a.Name === 'preferred_username')?.Value;
+      } catch (e) {
+        if (name(e) === 'UserNotFoundException') throw new UserGoneError();
+        throw e;
+      }
+    },
+    async updateAlias(username, alias) {
+      try {
+        await client.send(new AdminUpdateUserAttributesCommand({ UserPoolId: userPoolId, Username: username, UserAttributes: [{ Name: 'preferred_username', Value: alias }] }));
+      } catch (e) {
+        if (name(e) === 'AliasExistsException') throw new AliasTakenError();
+        if (name(e) === 'UserNotFoundException') throw new UserGoneError();
+        throw e;
+      }
+    },
+    async signOut(username) {
+      try {
+        await client.send(new AdminUserGlobalSignOutCommand({ UserPoolId: userPoolId, Username: username }));
+      } catch (e) {
+        if (name(e) === 'UserNotFoundException') throw new UserGoneError();
+        throw e;
+      }
+    },
     async deleteUser(username) {
       try {
         await client.send(new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: username }));
@@ -99,6 +131,12 @@ export function memoryIdentity(): Identity & {
   failCreate: number;
   /** Fait echouer AdminAddUserToGroup (apres l'ecriture de famille_id). */
   failAddToGroup: boolean;
+  /** Nombre d'appels signOut (par utilisateur). */
+  signOuts: Map<string, number>;
+  /** Fait echouer signOut une fois. */
+  failSignOut: number;
+  /** Fait echouer updateAlias une fois, apres avoir pose l'alias (reponse perdue). */
+  failAfterAlias: number;
 } {
   const users = new Map<string, { sub: string; familyId?: string; alias?: string; enabled: boolean; password?: string; groups: string[] }>();
   const self = {
@@ -106,10 +144,13 @@ export function memoryIdentity(): Identity & {
     failPasswordPolicy: false,
     failCreate: 0,
     failAddToGroup: false,
+    signOuts: new Map<string, number>(),
+    failSignOut: 0,
+    failAfterAlias: 0,
     async createStudent(a: { studentId: string; familyId: string; alias: string }) {
       await Promise.resolve();
-      if (self.failCreate > 0) {
-        self.failCreate--;
+      if (self.failCreate > 0 || [...users.values()].some((u) => u.alias === a.alias)) {
+        if (self.failCreate > 0) self.failCreate--;
         throw new AliasTakenError();
       }
       const sub = `sub-${a.studentId}`;
@@ -137,6 +178,32 @@ export function memoryIdentity(): Identity & {
       await Promise.resolve();
       const u = users.get(username);
       if (u) u.enabled = enabled;
+    },
+    async getAlias(username: string) {
+      await Promise.resolve();
+      const u = users.get(username);
+      if (!u) throw new UserGoneError();
+      return u.alias;
+    },
+    async updateAlias(username: string, alias: string) {
+      await Promise.resolve();
+      const u = users.get(username);
+      if (!u) throw new UserGoneError();
+      if ([...users.entries()].some(([k, o]) => k !== username && o.alias === alias)) throw new AliasTakenError();
+      u.alias = alias;
+      if (self.failAfterAlias > 0) {
+        self.failAfterAlias--;
+        throw new Error('ThrottlingException');
+      }
+    },
+    async signOut(username: string) {
+      await Promise.resolve();
+      if (!users.has(username)) throw new UserGoneError();
+      if (self.failSignOut > 0) {
+        self.failSignOut--;
+        throw new Error('ThrottlingException');
+      }
+      self.signOuts.set(username, (self.signOuts.get(username) ?? 0) + 1);
     },
     async deleteUser(username: string) {
       await Promise.resolve();

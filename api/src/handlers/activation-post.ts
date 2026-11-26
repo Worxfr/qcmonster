@@ -3,7 +3,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import { ActivationRequestSchema } from '../../../shared/contract/generated/schemas.js';
 import { log } from '../../../shared/log/index.js';
 import { activate } from '../family/activation.js';
-import { HttpError, json, noContent, parseBody } from '../lib/http.js';
+import { HttpError, json, parseBody } from '../lib/http.js';
 import { familyDeps } from './runtime.js';
 
 /** POST /activation: route PUBLIQUE (sans JWT). Jeton inconnu, expire ou utilise: meme 404. */
@@ -11,9 +11,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const t0 = Date.now();
   try {
     const d = familyDeps();
-    await activate(d, d.identity, parseBody(event, ActivationRequestSchema));
+    const out = await activate(d, d.identity, parseBody(event, ActivationRequestSchema));
     log({ step: 'activation-post', status: 'ok', durationMs: Date.now() - t0 });
-    return noContent();
+    return json(200, out);
   } catch (e) {
     if (e instanceof HttpError) {
       log({ step: 'activation-post', status: 'rejected', durationMs: Date.now() - t0 });

@@ -147,8 +147,9 @@ describe('POST /students', () => {
     const r = await newStudent(t);
     const sid = r.student.studentId;
     expect(r.student).toMatchObject({ status: 'actif', schoolLevel: 'seconde', under15: false, pageQuota: 20 });
-    expect(r.student.pseudo).toMatch(/^Pseudo-s\d{3}$/);
-    expect(t.identity.users.get(sid)).toMatchObject({ familyId: FID, alias: r.student.pseudo, groups: ['eleve'] });
+    expect(r.student.loginId).toMatch(/^pseudo-s\d{3}$/);
+    expect(r.student).toMatchObject({ pseudo: r.student.loginId, displayName: 'Pseudo' }); // `pseudo` = identifiant (compatibilite 1.8.0)
+    expect(t.identity.users.get(sid)).toMatchObject({ familyId: FID, alias: r.student.loginId, groups: ['eleve'] });
     const token = tokenOf(r.activationLink.url);
     expect(r.activationLink.url).toBe(`https://front.example.invalid/activer#token=${token}`);
     expect(Date.parse(r.activationLink.expiresAt) - t.clk.now().getTime()).toBe(ACTIVATION_TTL_MS);
@@ -162,7 +163,7 @@ describe('POST /students', () => {
     const t = testDeps();
     await family(t);
     t.identity.failCreate = 2;
-    expect((await newStudent(t)).student.pseudo).toMatch(/^Pseudo-/);
+    expect((await newStudent(t)).student.loginId).toMatch(/^pseudo-/);
     const t2 = testDeps();
     await family(t2);
     t2.identity.failCreate = 3;
@@ -186,7 +187,8 @@ describe('POST /students', () => {
     const t = testDeps();
     await family(t);
     const r = await createStudent(t.deps, parentCtx, { pseudo: ' Deux  mots ', schoolLevel: 'premiere', under15: true, ...CONSENT });
-    expect(r.student.pseudo).toMatch(/^Deux-mots-s/);
+    expect(r.student.loginId).toMatch(/^deux-mots-s/);
+    expect(r.student.displayName).toBe('Deux mots');
   });
 });
 
@@ -359,7 +361,7 @@ describe('students-link, update, delete', () => {
     await getSession(t.deps, ctx, 'docA', '20');
     t.clk.advance(2000);
     await postAnswer(t.deps, ctx, { questionId: qid('docA', 'qcm', 1), choice: 'B' });
-    const mine = (k: { PK: string; SK: string }) => k.PK === `STUDENT#${sid}` || k.PK === `DOC#docA` || k.PK === 'JOB#job1' || k.SK === `STUDENT#${sid}` || k.SK.endsWith(`#${sid}`) || k.PK === `ACTIVATION#${sha256(tokenOf(r.activationLink.url))}`;
+    const mine = (k: { PK: string; SK: string; studentId?: unknown }) => k.PK === `STUDENT#${sid}` || k.PK === `DOC#docA` || k.PK === 'JOB#job1' || k.SK === `STUDENT#${sid}` || k.SK.endsWith(`#${sid}`) || (k.SK.startsWith('NAME#') && k.studentId === sid) || k.PK === `ACTIVATION#${sha256(tokenOf(r.activationLink.url))}`;
     const before = [...t.store.items.values()].filter(mine).length;
     const others = [...t.store.items.values()].filter((k) => !mine(k)).length;
     expect(before).toBeGreaterThan(10);
