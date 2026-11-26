@@ -77,3 +77,5 @@ Le plafond `jobCapEur(pages)` vaut pour **tout le job**, somme des sections (le 
 | Plafond cumule d'essais | sans objet | 100 EUR |
 
 Source unique: `costThresholdsFor(env)` dans `shared/names.ts`. En dev, les seuils mensuels sont alignes sur le plafond cumule pour ne jamais bloquer avant lui, et l'alerte part a 80 EUR. Limite: l'alarme lit le compteur du MOIS; si les 100 EUR s'etalent sur plusieurs mois, elle peut ne pas se declencher, le plafond cumule bloque quand meme. Les budgets AWS (20/25/40 EUR) ne sont crees que par la stack prod et sont inchanges. Le plafond par scan `max(0,25 ; 0,15 x pages)` est inchange.
+
+**Q1 (banque de questions).** Le second tour de generation (`variantes`, un appel Haiku de 6 000 jetons au plus, puis un second controle a l'aveugle) passe par `callModel`, donc par la garde: refus avant l'appel si le plafond du job est atteint, et toute erreur d'appel est absorbee (la fiche est publiee avec la banque du premier tour). Estimation non mesuree: environ 0,0014 EUR par fiche (0,003 EUR au plus), tres en dessous des 6 centimes de `GEN_RESERVE_CENTS`. Le plafond par scan est inchange.

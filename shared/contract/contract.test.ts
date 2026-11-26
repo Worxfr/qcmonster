@@ -19,7 +19,7 @@ const addFormats = unwrap<(a: AjvLike) => AjvLike>(addFormatsImport);
 const spec = parse(readFileSync(new URL('./openapi.yaml', import.meta.url), 'utf8'));
 const EXPECTED = [
   'POST /scans', 'GET /jobs/{jobId}', 'GET /jobs/{jobId}/transcription', 'POST /jobs/{jobId}/confirm', 'POST /jobs/{jobId}/cancel',
-  'GET /docs', 'GET /docs/{docId}', 'DELETE /docs/{docId}', 'POST /docs/{docId}/report', 'GET /docs/{docId}/session', 'POST /answers',
+  'GET /docs', 'GET /docs/{docId}', 'DELETE /docs/{docId}', 'POST /docs/{docId}/report', 'GET /docs/{docId}/session', 'POST /answers', 'POST /practice/session',
   'GET /me', 'GET /me/progress', 'POST /students', 'POST /students/{sid}/activation-link', 'PATCH /students/{sid}', 'DELETE /students/{sid}',
   'GET /family/dashboard', 'GET /family/leaderboard', 'POST /reports/{id}/validate', 'GET /family/export', 'DELETE /family',
   // contract-v1.1 (L1c)
@@ -72,7 +72,17 @@ describe('contrat OpenAPI', () => {
     expect(() => zodSchemas.StudentCreateRequestSchema.parse({ pseudo: 'Lila', schoolLevel: 'seconde', under15: false, parentalAuthority: false })).toThrow();
   });
   it('aucune question de session ne porte de cle de reponse', () => {
-    expect(Object.keys(spec.components.schemas.Question.properties).sort()).toEqual(['choices', 'kind', 'prompt', 'questionId']);
+    expect(Object.keys(spec.components.schemas.Question.properties).sort()).toEqual(['choices', 'docId', 'docTitle', 'kind', 'prompt', 'questionId']);
+  });
+  it('Q1: PracticeSession sans cle ni mot attendu, 10 fiches au plus, exemple valide, reservee a l\'eleve', () => {
+    expect(JSON.stringify(spec.components.schemas.PracticeSession)).not.toMatch(/"(cle|attendu|correctAnswer)"/);
+    expect(spec.components.schemas.PracticeSession.properties.docIds.maxItems).toBe(10);
+    expect(spec.components.schemas.PracticeRequest.properties.docIds.maxItems).toBe(10);
+    const ex = spec.paths['/practice/session'].post.responses['200'].content['application/json'].example;
+    expect(zodSchemas.PracticeSessionSchema.safeParse(ex).success).toBe(true);
+    expect(zodSchemas.PracticeRequestSchema.safeParse({ docIds: Array.from({ length: 11 }, (_, i) => `d${i}`) }).success).toBe(false);
+    expect(zodSchemas.PracticeRequestSchema.safeParse({ docIds: ['a'], size: 7 }).success).toBe(false);
+    expect(Object.keys(spec.paths).filter((p) => p.startsWith('/students/') && JSON.stringify(spec.paths[p]).includes('PracticeSession'))).toEqual([]);
   });
   it('contrat v1: /me d\'un parent sans famille repond 404; le PDF est refuse en 400 (pas de page reservee)', () => {
     expect(Object.keys(spec.paths['/me'].get.responses)).toContain('404');
@@ -83,7 +93,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.6.0');
+    expect(spec.info.version).toBe('1.7.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);

@@ -17,6 +17,7 @@ import { isAppend, lastSentences, releaseLock, sectionOffset, appendBaseOf } fro
 import { addVerifyCostOnce, currentAttempt, draftKey } from './steps-cost.js';
 import { sanitizeLatex, splitMath } from '../../../shared/latex.js';
 import { validFiche, type FicheParagraph, type RecallItem } from './blocks.js';
+import { addVariants } from './pool-gen.js';
 import { ModelOutputError, normalize, parseModelJson, salvageTruncatedList, sliceRanges, thinEvenly, words, type SliceRange } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
@@ -430,6 +431,7 @@ async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, Eligibl
 }
 
 export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; qcm: number; gaps: number; doublon: boolean; skipped?: boolean }> {
+  const startedMs = ctx.now().getTime();
   const job = await ctx.db.get(jobKey(i.sid, i.jobId));
   const plan = job ? planOf(job) : undefined;
   const slot = plan ? keptSections(plan)[i.index ?? 0] : undefined;
@@ -475,6 +477,11 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
     await ctx.db.put(GapItemSchema.parse({ ...keys.gap(docId, k + 1), questionId: questionId(docId, 'gap', k + 1), phrase: sanitizeLatex(g.phrase.trim()), attendu: g.attendu.trim(), claimId: g.claimId }));
   }
 
+  // Q1: second tour (la banque), apres le premier. Toute erreur d'appel de modele y est absorbee (pool-gen.ts).
+  const extra = await addVariants(ctx, i, docId, eligible, { qcm: made.qcm, gaps: made.gaps }, startedMs);
+  const nbQcm = made.qcm.length + extra.qcm;
+  const nbGaps = made.gaps.length + extra.gaps;
+
   // Empreinte et doublon (meme famille), sur le texte de la section seule. Un texte sans groupe de mots n'est jamais un doublon.
   const sec = await sectionOf(ctx, i.jobId, job, i.index ?? 0);
   const mh = minhash(sec.sentences.map((s) => s.text).join(' '));
@@ -508,15 +515,16 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
     ...(topic ? { sujet: topic } : {}),
     ...(folderId ? { dossierId: folderId } : {}),
     pages: job.pages,
+    nbQuestions: nbQcm + nbGaps,
     ...(plan && slot && typeof job.coursId === 'string' ? { coursId: job.coursId, sectionIndex: sec.rank, sectionCount: sec.kept.length } : {}),
   });
   // La fiche est ecrite en dernier: elle n'apparait dans les listes que complete.
   await ctx.db.put({ ...fiche, ...gsi1.doc(job.familyId as string, `${createdAt}#${docId}`), familyId: job.familyId, studentId: i.sid, jobId: i.jobId, resume: sanitizeLatex(made.resume), ...(made.fiche ? { body: made.fiche.body, recall: made.fiche.recall } : {}) });
-  if (plan) return { docId, qcm: made.qcm.length, gaps: made.gaps.length, doublon }; // la fin du scan est le pas `finalize`
+  if (plan) return { docId, qcm: nbQcm, gaps: nbGaps, doublon }; // la fin du scan est le pas `finalize`
   const done = await ctx.db.get(jobKey(i.sid, i.jobId));
   const micros = (done?.coutMicros as number | undefined) ?? 0;
-  await transition(ctx, i.sid, i.jobId, ['generation'], 'termine', { finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros), doublon, nbQcm: made.qcm.length, nbTrous: made.gaps.length });
-  return { docId, qcm: made.qcm.length, gaps: made.gaps.length, doublon };
+  await transition(ctx, i.sid, i.jobId, ['generation'], 'termine', { finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros), doublon, nbQcm, nbTrous: nbGaps });
+  return { docId, qcm: nbQcm, gaps: nbGaps, doublon };
 }
 
 /** Dernier pas: le scan est termine. `docId` = premiere fiche, `docIds` = les fiches reellement creees (une section sans affirmation n'en a pas). */

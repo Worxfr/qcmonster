@@ -4,7 +4,7 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyStructured
 import type { ZodType } from 'zod';
 import { log } from '../../../shared/log/index.js';
 
-export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise';
+export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question';
 
 /** Erreur attendue, convertie en reponse du contrat. Toute autre erreur est journalisee (code seul) puis devient un 500 generique: rien n'est relance, donc le runtime Lambda ne journalise ni message ni pile (A4). */
 export class HttpError extends Error {

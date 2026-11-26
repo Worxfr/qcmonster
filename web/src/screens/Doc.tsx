@@ -7,6 +7,7 @@ import { safeUrl } from '../game';
 import { errMsg, useLoad } from '../hooks';
 import { go } from '../router';
 import { folderError } from './Folders';
+import { SizePicker } from './Practice';
 import type { Claim } from '../types';
 import { Rich } from '../components/Math';
 import { FigureView } from './confirm/FigureCard';
@@ -20,6 +21,7 @@ export function DocView({ id, claimId }: { id: string; claimId?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [read, setRead] = useState<{ xp: number } | null>(null);
   const [reading, setReading] = useState(false);
+  const [size, setSize] = useState(10); // taille du test (Q1)
   if (d.loading) return <Loading />;
   if (!d.data) return <ErrorBox message={d.error} />;
   const doc = d.data;
@@ -77,7 +79,8 @@ export function DocView({ id, claimId }: { id: string; claimId?: string }) {
             </ul>
           </section>
         ) : null}
-        <button className="btn btn-big" onClick={() => go(`/quiz/${encodeURIComponent(id)}`)}>🎮 S'entraîner</button>
+        <SizePicker value={size} onChange={setSize} />
+        <button className="btn btn-big" onClick={() => go(`/quiz/${encodeURIComponent(id)}${size === 10 ? '' : `?size=${size}`}`)}>🎮 S'entraîner</button>
       </Card>
       <FolderCard docId={id} initial={doc.folderId ?? ''} />
       <Card title="Ce que dit ta fiche">

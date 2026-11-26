@@ -298,10 +298,10 @@ describe('students-link, update, delete', () => {
     const v = await updateStudent(t.deps, parentCtx, SID, { status: 'suspendu' });
     expect(v.status).toBe('suspendu');
     expect(t.identity.users.get(SID)?.enabled).toBe(false);
-    await rejects(getSession(t.deps, s.ctx, 'doc1'), 403);
+    await rejects(getSession(t.deps, s.ctx, 'doc1', '20'), 403);
     await updateStudent(t.deps, parentCtx, SID, { status: 'actif' });
     expect(t.identity.users.get(SID)?.enabled).toBe(true);
-    await getSession(t.deps, s.ctx, 'doc1');
+    await getSession(t.deps, s.ctx, 'doc1', '20');
     // C4: une requete portant `status` rappelle toujours Cognito (reprise apres un echec Cognito).
     await updateStudent(t.deps, parentCtx, SID, { status: 'suspendu' });
     t.identity.users.get(SID)!.enabled = true; // Cognito n'avait pas suivi
@@ -356,7 +356,7 @@ describe('students-link, update, delete', () => {
     await put({ ...keys.week(FID, '2026-W49', sid) });
     await put({ ...keys.quota(FID, '2026-12', sid) });
     await t.identity.attachFamily(sid, FID);
-    await getSession(t.deps, ctx, 'docA');
+    await getSession(t.deps, ctx, 'docA', '20');
     t.clk.advance(2000);
     await postAnswer(t.deps, ctx, { questionId: qid('docA', 'qcm', 1), choice: 'B' });
     const mine = (k: { PK: string; SK: string }) => k.PK === `STUDENT#${sid}` || k.PK === `DOC#docA` || k.PK === 'JOB#job1' || k.SK === `STUDENT#${sid}` || k.SK.endsWith(`#${sid}`) || k.PK === `ACTIVATION#${sha256(tokenOf(r.activationLink.url))}`;
@@ -411,7 +411,7 @@ describe('export et suppression de la famille', () => {
     expect(doc.claims).toMatchObject([{ claimId: '01', text: 'Le Soleil est une etoile.', status: 'verifiee' }]);
     expect(doc.questions).toEqual([
       { questionId: 'doc1:gap:01', kind: 'gap', prompt: 'Le ____ 1', answer: 'Énergie' },
-      { questionId: 'doc1:qcm:01', kind: 'qcm', prompt: 'Question 1 ?', choices: ['A', 'B', 'C', 'D'], answer: 'B' },
+      { questionId: 'doc1:qcm:01', kind: 'qcm', prompt: 'Question 1 ? alpha01doc1 beta01doc1', choices: ['A', 'B', 'C', 'D'], answer: 'B' },
     ]);
     expect(e.reports).toEqual([{ reportId: 'rep1', docId: 'doc1', claimId: '01', studentId: SID, comment: 'La date est fausse', status: 'ouvert', createdAt: 'x' }]);
     const raw = JSON.stringify(e);

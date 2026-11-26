@@ -23,7 +23,7 @@ const profile = async (t: TestEnv, sid = SID) => (await t.store.get(keys.profile
 
 /** Ouvre la session puis repond a `n` questions du QCM, `gapMs` apres la precedente. */
 async function play(t: TestEnv, ctx: Parameters<typeof postAnswer>[1], n: number, gapMs: number, choice = good, from = 1): Promise<AnswerResult[]> {
-  await getSession(t.deps, ctx, 'doc1');
+  await getSession(t.deps, ctx, 'doc1', '20');
   const out: AnswerResult[] = [];
   for (let i = from; i < from + n; i++) {
     t.clk.advance(gapMs);
@@ -32,23 +32,39 @@ async function play(t: TestEnv, ctx: Parameters<typeof postAnswer>[1], n: number
   return out;
 }
 
+// Q1: 50 XP au plus par fiche et 20 questions au plus par tirage. Les tests de charge des regles de points (plafond quotidien, rafale, series de
+// jours) utilisent donc plusieurs fiches de 10 questions (`d1`, `d2`...) et elargissent le tirage du passage ouvert (`openWide`).
+const gq = (i: number, kind: 'qcm' | 'gap' = 'qcm') => qid(`d${Math.ceil(i / 10)}`, kind, ((i - 1) % 10) + 1);
+async function seedMany(t: TestEnv, n: number, o: { nGap?: number } = {}) {
+  let out;
+  for (let d = 1; d <= Math.ceil(n / 10); d++) out = await seed(t, { docId: `d${d}`, nQcm: Math.min(10, n - (d - 1) * 10), ...(d === 1 && o.nGap ? { nGap: o.nGap } : {}) });
+  return out!;
+}
+/** Ouvre une session (remise a zero de la serie) dont le tirage contient les `n` premieres questions de `seedMany` (plus les trous demandes). */
+async function openWide(t: TestEnv, ctx: Parameters<typeof postAnswer>[1], n: number, extra: string[] = []) {
+  await getSession(t.deps, ctx, 'd1', '20');
+  const p = (await t.store.get(keys.profile(SID)))!;
+  const cur = p.currentTest as Record<string, unknown>;
+  await t.store.commit([{ item: { ...p, currentTest: { ...cur, draw: [...Array.from({ length: n }, (_, i) => gq(i + 1)), ...extra] } }, when: p.v ?? 'any' }]);
+}
+
 describe('session-get: jamais de reponse', () => {
   it('renvoie enonces et choix, sans cle ni mot attendu ni affirmation', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3, nGap: 2 });
-    const s = await getSession(t.deps, ctx, 'doc1');
-    expect(s.questions.map((q) => q.questionId)).toEqual(['doc1:qcm:01', 'doc1:qcm:02', 'doc1:qcm:03', 'doc1:gap:01', 'doc1:gap:02']);
+    const s = await getSession(t.deps, ctx, 'doc1', '20');
+    expect(s.questions.map((q) => q.questionId).sort()).toEqual(['doc1:gap:01', 'doc1:gap:02', 'doc1:qcm:01', 'doc1:qcm:02', 'doc1:qcm:03']); // Q1: ordre tire au hasard
     const text = JSON.stringify(s);
     for (const secret of ['"cle"', 'attendu', 'Énergie', 'claimId', 'verdict', 'statut']) expect(text).not.toContain(secret);
-    expect(s.questions[0].choices).toEqual(['A', 'B', 'C', 'D']);
-    expect(s.questions[3].choices).toBeUndefined();
+    expect(s.questions.find((q) => q.kind === 'qcm')!.choices).toEqual(['A', 'B', 'C', 'D']);
+    expect(s.questions.find((q) => q.kind === 'gap')!.choices).toBeUndefined();
   });
   it('ignore un element invalide; 404 pour la fiche d\'un autre eleve; 403 si suspendu', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 1, nGap: 1 });
     await t.store.commit([{ item: { ...keys.qcm('doc1', 9), questionId: 'mauvais' }, when: 'any' }, { item: { ...keys.gap('doc1', 9), questionId: 'mauvais' }, when: 'any' }]);
-    expect((await getSession(t.deps, ctx, 'doc1')).questions).toHaveLength(2);
-    await rejects(getSession(t.deps, ctx, 'autre'), 404);
+    expect((await getSession(t.deps, ctx, 'doc1', '20')).questions).toHaveLength(2);
+    await rejects(getSession(t.deps, ctx, 'autre', '20'), 404);
     await rejects(getSession(t.deps, { ...ctx, sub: 'sub-autre' }, 'doc1'), 403); // jeton d'un autre compte
     const t2 = testDeps();
     const s2 = await seed(t2, { status: 'suspendu' });
@@ -58,7 +74,7 @@ describe('session-get: jamais de reponse', () => {
     const t = testDeps();
     await seed(t);
     const other = await seed(t, { fid: 'fam2', sid: 'stu2', docId: 'doc2' });
-    await rejects(getSession(t.deps, other.ctx, 'doc1'), 404);
+    await rejects(getSession(t.deps, other.ctx, 'doc1', '20'), 404);
   });
 });
 
@@ -66,7 +82,7 @@ describe('answers-post: XP par question', () => {
   it('QCM: 5 XP du premier coup, 2 au second essai, rien ensuite; la bonne reponse n\'est revelee qu\'a la fin', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     const r1 = await answer(t, ctx, qid('doc1', 'qcm', 1), good);
     expect(r1).toMatchObject({ correct: true, xpGained: 5, correctAnswer: 'B' });
@@ -86,7 +102,7 @@ describe('answers-post: XP par question', () => {
   it('QCM: deux mauvaises reponses revelent la bonne', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     await answer(t, ctx, qid('doc1', 'qcm', 3), 'A');
     t.clk.advance(2000);
@@ -98,7 +114,7 @@ describe('answers-post: XP par question', () => {
   it('trou: 5 XP, accents et casse ignores, une seule tentative; la reponse est revelee si faux', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 1, nGap: 2 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     expect(await answer(t, ctx, qid('doc1', 'gap', 1), ' energie. ')).toMatchObject({ correct: true, xpGained: 5 });
     t.clk.advance(2000);
@@ -126,11 +142,11 @@ describe('answers-post: XP par question', () => {
     t.clk.advance(2000);
     await answer(t, ctx, qid('doc1', 'qcm', 1), 'C'); // faux, essais epuises
     t.clk.advance(24 * 3600 * 1000);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(5);
     t.clk.advance(24 * 3600 * 1000);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(0);
   });
@@ -158,7 +174,7 @@ describe('anti-triche', () => {
   it('moins de 1 s apres la precedente: refus (429) sans RIEN reveler sur la justesse, ni essai compte', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     // La bonne et les mauvaises reponses recoivent exactement la meme reponse: aucun oracle.
     const outcomes: string[] = [];
     for (const choice of ['A', good, 'C', good]) {
@@ -175,7 +191,7 @@ describe('anti-triche', () => {
   it('trou: la rafale ne permet pas de deviner le mot', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 1, nGap: 1 });
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     const seen = new Set<string>();
     for (const w of ['faux', 'energie', 'autre']) {
       t.clk.advance(200);
@@ -183,10 +199,13 @@ describe('anti-triche', () => {
     }
     expect([...seen]).toEqual(['429']);
   });
-  it('sans session ouverte, la premiere reponse est acceptee', async () => {
+  it('Q1: sans session ouverte, une reponse est refusee (409), rien n\'est ecrit', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    expect((await answer(t, ctx, qid('doc1', 'qcm', 1), good)).xpGained).toBe(5);
+    await rejects(answer(t, ctx, qid('doc1', 'qcm', 1), good), 409);
+    expect(await t.store.get(keys.profile(SID))).toBeUndefined();
+    expect(await t.store.query(`STUDENT#${SID}`, 'ATT#')).toHaveLength(0);
+    expect(await t.store.query(`STUDENT#${SID}`, 'TEST#')).toHaveLength(0);
   });
   it('serie de 10 en moins de 20 s: aucun bonus; en 25 s: +20, et +30 si parfaite sur des affirmations verifiees', async () => {
     const t = testDeps();
@@ -202,7 +221,7 @@ describe('anti-triche', () => {
   it('serie terminee mais imparfaite: +20 seulement; affirmation en erreur: pas de bonus parfait', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     const xp: number[] = [];
     for (let i = 1; i <= 10; i++) {
       t.clk.advance(2500);
@@ -222,8 +241,9 @@ describe('anti-triche', () => {
   it('sans session ouverte aujourd\'hui, les reponses ne comptent pas pour la serie de 10 (critere des 20 s)', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1'); // session d'hier
-    t.clk.advance(24 * 3600 * 1000);
+    t.clk.set('2026-12-01T23:30:00+01:00');
+    await getSession(t.deps, ctx, 'doc1', '20'); // session ouverte hier soir
+    t.clk.advance(60 * 60_000); // apres minuit, moins de 3 h plus tard
     const xp: number[] = [];
     for (let i = 1; i <= 10; i++) {
       t.clk.advance(2500);
@@ -231,13 +251,6 @@ describe('anti-triche', () => {
     }
     expect(xp).toEqual(Array(10).fill(5)); // pas de +20 ni +30
     expect((await profile(t)).series.n).toBe(0);
-    const t2 = testDeps();
-    const s2 = await seed(t2);
-    for (let i = 1; i <= 10; i++) {
-      t2.clk.advance(2500);
-      await answer(t2, s2.ctx, qid('doc1', 'qcm', i), good); // jamais de session
-    }
-    expect((await profile(t2)).series.n).toBe(0);
   });
   it('rejouer les memes questions ne fabrique pas de series', async () => {
     const t = testDeps();
@@ -256,12 +269,12 @@ describe('anti-triche', () => {
   });
   it('plafond de 250 XP par jour: on peut repondre, on ne gagne plus', async () => {
     const t = testDeps();
-    const { ctx } = await seed(t, { nQcm: 60 });
+    const { ctx } = await seedMany(t, 60);
     let total = 0;
-    await getSession(t.deps, ctx, 'doc1');
+    await openWide(t, ctx, 60);
     for (let i = 1; i <= 60; i++) {
       t.clk.advance(2500);
-      const r = await answer(t, ctx, qid('doc1', 'qcm', i), good);
+      const r = await answer(t, ctx, gq(i), good);
       total += r.xpGained;
       expect(r.correct).toBe(true);
     }
@@ -270,34 +283,35 @@ describe('anti-triche', () => {
   });
   it('plus de 100 bonnes reponses en 10 minutes: gains en quarantaine pour la journee', async () => {
     const t = testDeps();
-    const { ctx } = await seed(t, { nQcm: 99, nGap: 5 });
-    await getSession(t.deps, ctx, 'doc1');
+    const { ctx } = await seedMany(t, 100);
+    await seed(t, { docId: 'g1', nQcm: 0, nGap: 5 });
+    await openWide(t, ctx, 99, [1, 2, 3, 4].map((k) => qid('g1', 'gap', k)));
     const next = async (q: string, choice: string) => {
       t.clk.advance(1100);
       return answer(t, ctx, q, choice);
     };
-    for (let i = 1; i <= 99; i++) await next(qid('doc1', 'qcm', i), good);
-    await next(qid('doc1', 'gap', 1), 'energie'); // 100e: pas encore plus de 100
+    for (let i = 1; i <= 99; i++) await next(gq(i), good);
+    await next(qid('g1', 'gap', 1), 'energie'); // 100e: pas encore plus de 100
     expect((await profile(t)).quarantineDay).toBeUndefined();
-    await next(qid('doc1', 'gap', 2), 'energie'); // 101e: quarantaine
+    await next(qid('g1', 'gap', 2), 'energie'); // 101e: quarantaine
     const p = await profile(t);
     expect(p.quarantineDay).toBe('2026-12-01');
     expect(p.xp).toBe(250); // plafond atteint avant la rafale, quarantaine ou non
-    await next(qid('doc1', 'gap', 3), 'energie');
+    await next(qid('g1', 'gap', 3), 'energie');
     expect((await profile(t)).quarantineXp).toBeGreaterThan(0); // gains comptes mais non credites
     // Le lendemain la quarantaine est levee.
     t.clk.advance(24 * 3600 * 1000);
-    await getSession(t.deps, ctx, 'doc1');
+    await openWide(t, ctx, 0, [qid('g1', 'gap', 4)]);
     t.clk.advance(2000);
-    expect((await answer(t, ctx, qid('doc1', 'gap', 4), 'energie')).xpGained).toBe(5);
+    expect((await answer(t, ctx, qid('g1', 'gap', 4), 'energie')).xpGained).toBe(5);
   });
   it('100 bonnes reponses espacees de plus de 10 minutes ne declenchent rien', async () => {
     const t = testDeps();
-    const { ctx } = await seed(t, { nQcm: 20 });
-    await getSession(t.deps, ctx, 'doc1');
+    const { ctx } = await seedMany(t, 12);
+    await openWide(t, ctx, 12);
     for (let i = 1; i <= 12; i++) {
-      t.clk.advance(11 * 60_000);
-      await answer(t, ctx, qid('doc1', 'qcm', i), good);
+      t.clk.advance(11 * 60_000); // 12 reponses en 132 min: sous les 3 h d'un test
+      await answer(t, ctx, gq(i), good);
     }
     expect((await profile(t)).quarantineDay).toBeUndefined();
     expect((await profile(t)).recent).toHaveLength(1);
@@ -305,7 +319,7 @@ describe('anti-triche', () => {
   it('deux reponses simultanees a la meme question ne paient qu\'une fois', async () => {
     const t = testDeps();
     const { ctx } = await seed(t);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(3000);
     const r = await Promise.allSettled([answer(t, ctx, qid('doc1', 'qcm', 1), good), answer(t, ctx, qid('doc1', 'qcm', 1), good)]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
@@ -315,7 +329,7 @@ describe('anti-triche', () => {
     const t = testDeps();
     const { ctx } = await seed(t);
     t.store.failNextCommits(3);
-    await rejects(getSession(t.deps, ctx, 'doc1'), 409);
+    await rejects(getSession(t.deps, ctx, 'doc1', '20'), 409);
   });
 });
 
@@ -323,23 +337,23 @@ describe('series de jours, gels, bonus de pages', () => {
   /** Gagne 30 XP (6 bonnes reponses) a la date donnee. */
   async function validDay(t: TestEnv, ctx: Parameters<typeof postAnswer>[1], iso: string, from: number) {
     t.clk.set(iso);
-    await getSession(t.deps, ctx, 'doc1');
+    await openWide(t, ctx, 80);
     for (let i = from; i < from + 6; i++) {
       t.clk.advance(2000);
-      await answer(t, ctx, qid('doc1', 'qcm', i), good);
+      await answer(t, ctx, gq(i), good);
     }
   }
   it('un jour compte a partir de 30 XP; jours de suite = serie; un trou consomme un gel; sans gel la serie repart', async () => {
     const t = testDeps();
-    const { ctx } = await seed(t, { nQcm: 80 });
-    await getSession(t.deps, ctx, 'doc1');
+    const { ctx } = await seedMany(t, 80);
+    await openWide(t, ctx, 80);
     for (let i = 1; i <= 5; i++) {
       t.clk.advance(2000);
-      await answer(t, ctx, qid('doc1', 'qcm', i), good); // 25 XP: pas encore valide
+      await answer(t, ctx, gq(i), good); // 25 XP: pas encore valide
     }
     expect((await profile(t)).streak).toBe(0);
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 6), good);
+    await answer(t, ctx, gq(6), good);
     expect((await profile(t)).streak).toBe(1);
     await validDay(t, ctx, '2026-12-02T10:00:00+01:00', 7);
     expect((await profile(t)).streak).toBe(2);
@@ -359,7 +373,7 @@ describe('series de jours, gels, bonus de pages', () => {
   });
   it('les gels sont remis a 2 au changement de mois', async () => {
     const t = testDeps();
-    const { ctx } = await seed(t, { nQcm: 40 });
+    const { ctx } = await seedMany(t, 80);
     await validDay(t, ctx, '2026-12-30T10:00:00+01:00', 1);
     await validDay(t, ctx, '2027-01-04T10:00:00+01:00', 7); // 4 jours manques > 2 gels: la serie repart de 1
     const p = await profile(t);
@@ -369,7 +383,7 @@ describe('series de jours, gels, bonus de pages', () => {
   });
   it('7 jours de suite: badge serie_7 et +2 pages, plafonnees a +6 par famille et par mois', async () => {
     const t = testDeps({ iso: '2026-12-01T10:00:00+01:00' });
-    const { ctx } = await seed(t, { nQcm: 80 });
+    const { ctx } = await seedMany(t, 80);
     for (let d = 0; d < 7; d++) {
       await validDay(t, ctx, `2026-12-0${1 + d}T10:00:00+01:00`, 1 + d * 6);
     }
@@ -465,7 +479,7 @@ describe('badges renvoyes: seulement ceux du catalogue (docs/game-rules.md)', ()
     const { ctx } = await seed(t);
     const p0 = { xp: 0, correct: 99, perfectSeries: 0, validReports: 0, readFirst: true, streak: 0, freezes: 2, freezeMonth: '2026-12', badges: ['premier_scan'], xpBySubject: { svt: 495 }, subjects: { month: '2026-12', list: ['maths', 'physique', 'svt', 'francais'] }, series: { n: 0, perfect: true, risky: false }, recent: [], quarantineXp: 0 };
     await t.store.commit([{ item: { ...keys.profile(SID), ...p0 }, when: 'any' }]);
-    await getSession(t.deps, ctx, 'doc1');
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
     const r = await answer(t, ctx, qid('doc1', 'qcm', 1), good);
     expect(r.badges.sort()).toEqual(['cent_bonnes_reponses', 'maitre_svt']);

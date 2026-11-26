@@ -20,8 +20,9 @@ export const fake = {
     if (isMock) await post('/__test/suggest', { on: true });
   },
   /** Dossiers et fiches déjà prêts, sans passer par un scan (mode mock seulement). */
-  async seed(data: { folders?: string[]; docs?: { title: string; subject?: string; topic?: string; folder?: string }[] }) {
-    if (isMock) await post('/__test/seed', data);
+  async seed(data: { folders?: string[]; docs?: { title: string; subject?: string; topic?: string; folder?: string; questions?: number }[] }): Promise<{ docs: string[]; folders: { folderId: string; name: string }[] }> {
+    if (!isMock) return { docs: [], folders: [] };
+    return (await post('/__test/seed', data)).json(); // `questions`: banque de questions de la fiche (Q1)
   },
   /** Historique de tests déjà prêt (24 passages en 2026-2027, 6 en 2025-2026), sans passer par le jeu (mode mock seulement). */
   async history(opts: { recent?: number; old?: number } = {}) {

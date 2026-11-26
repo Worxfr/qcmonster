@@ -116,6 +116,9 @@ export interface TestItem {
   xpGained: number;
   items: TestLine[];
   ttl?: number;
+  /** Q1, facultatifs: une entree H1 sans eux reste valide (scope `fiche`). `docId` reste la premiere fiche. */
+  scope?: 'fiche' | 'fiches' | 'dossier';
+  docIds?: string[];
 }
 
 export const scorePct = (correct: number, total: number): number => (total > 0 ? Math.round((100 * correct) / total) : 0);
@@ -163,6 +166,8 @@ export interface TestSummary {
   scorePct: number;
   xpGained: number;
   status: 'complet' | 'incomplet';
+  scope?: 'fiche' | 'fiches' | 'dossier';
+  docIds?: string[];
 }
 
 /** Resume du contrat (`TestSummary`): liste blanche de champs, aucun texte de question ni reponse donnee. */
@@ -186,6 +191,8 @@ export function toSummary(it: Record<string, unknown>, testId: string): TestSumm
     scorePct: scorePct(correct, total),
     xpGained: Number(it.xpGained) || 0,
     status: answered >= total ? 'complet' : 'incomplet',
+    ...(it.scope === 'fiches' || it.scope === 'dossier' ? { scope: it.scope } : {}),
+    ...(Array.isArray(it.docIds) ? { docIds: (it.docIds as unknown[]).filter((d): d is string => typeof d === 'string').slice(0, 10) } : {}),
   };
 }
 

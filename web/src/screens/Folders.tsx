@@ -14,6 +14,9 @@ export function folderError(e: unknown): string {
   return errMsg(e);
 }
 
+/** « S'entraîner sur ce dossier »; au-dela de 10 fiches, le serveur prend les 10 les moins travaillees (Q1 P7). */
+export const trainLabel = (n: number): string => (n > 10 ? `🎮 S'entraîner (10 fiches parmi ${n})` : "🎮 S'entraîner sur ce dossier");
+
 export function Folders() {
   const f = useLoad(() => api.folders(), []);
   const [name, setName] = useState('');
@@ -78,6 +81,7 @@ export function Folders() {
                   </div>
                 ) : (
                   <div className="btn-row">
+                    <button type="button" className="btn btn-small" disabled={d.scanCount === 0} onClick={() => go(`/entrainement?folderId=${encodeURIComponent(d.folderId)}`)}>{trainLabel(d.scanCount)}<span className="sr-only"> {d.name}</span></button>
                     <button type="button" className="btn btn-small btn-ghost" onClick={() => { setEditing(d.folderId); setDraft(d.name); }}>Renommer<span className="sr-only"> {d.name}</span></button>
                     <button type="button" className="btn btn-small btn-ghost" onClick={() => setDeleting(d.folderId)}>Supprimer<span className="sr-only"> {d.name}</span></button>
                   </div>

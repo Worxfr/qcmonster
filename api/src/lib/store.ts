@@ -123,10 +123,21 @@ export function memoryStore(): Store & { items: Map<string, Item>; failNextCommi
   };
 }
 
-const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}) });
+const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
 
 /** Adaptateur `TreeDb` (shared/delete-tree.ts) au-dessus d'un Store: pour les tests; en production on passe `dynamoTreeDb` de shared. */
 export const storeTreeDb = (store: Store): TreeDb => ({
+  async mutateTest(key, fn) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cur = await store.get(key);
+      if (!cur) return;
+      const r = fn(cur);
+      if (r === 'garder') return;
+      if (r === 'supprimer') return store.remove(key);
+      if (await store.commit([{ item: { ...(r as Item), PK: key.PK, SK: key.SK }, when: cur.v ?? 'any' }])) return;
+    }
+    throw new Error('suppression incomplete (conflit persistant)');
+  },
   async list(pk, skPrefix) {
     return (await store.query(pk, skPrefix)).map(treeKey);
   },

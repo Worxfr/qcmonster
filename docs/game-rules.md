@@ -76,6 +76,7 @@ Elle ne meurt jamais et ne s'attriste pas: si l'eleve s'absente, elle dort. Pas 
 7. Heure serveur pour les series.
 8. Plus de **100 bonnes reponses en 10 minutes**: gains en quarantaine, parent notifie.
 9. Les bonnes reponses ne sont **jamais** envoyees avant la reponse.
+10. (Q1) **50 XP au plus par fiche**, pour toute la vie de la fiche (`DOC_XP_CAP`): seuls les points de reponse comptent (ni serie, ni page, ni revision, ni signalement). Au-dela, la reponse reste corrigee mais ne rapporte rien (`capped`). La serie de 10 ne compte que les reponses dont la question peut encore rapporter (fiche non pleine). Une reponse n'est acceptee que pour une question du test ouvert (`PROFILE.currentTest.draw`), pendant 3 h au plus apres la derniere reponse.
 
 ## 8. Texte a trous
 

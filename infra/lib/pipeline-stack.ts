@@ -211,12 +211,15 @@ export class PipelineStack extends Stack {
     // pour nettoyer si la confirmation perd la course contre l'annulation ou l'expiration. BatchWriteItem seulement: le code n'appelle jamais DeleteItem.
     // shortcut: IAM ne filtre pas la cle de tri; ce role peut donc supprimer tout element des partitions STUDENT# et JOB#. Le code et ses tests restent la garde. A resserrer si ces elements changent de partition.
     grantWrite(confirmRole);
-    // Suppression (docs-delete): lit pour verifier l'appartenance, supprime la fiche et le texte lu. Aucune photo, aucune ecriture.
+    // Suppression (docs-delete): lit pour verifier l'appartenance, supprime la fiche et le texte lu. Aucune photo.
+    // Q1: supprimer une fiche d'un passage de test sur plusieurs fiches REECRIT ce passage (`mutateTest` = UpdateItem conditionnel a la version, STUDENT#), seule ecriture du role.
     deleteRole.addToPolicy(ddbApi(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:DeleteItem', 'dynamodb:BatchWriteItem']));
     // FEAT-A. Toutes les conditions portent sur la cle de partition (IAM ne filtre pas la cle de tri: le code et ses tests gardent les types d'elements).
     const leading = (actions: string[], ...pks: string[]) =>
       new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`], conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': pks } } });
     confirmRole.addToPolicy(leading(['dynamodb:BatchWriteItem'], 'STUDENT#*', 'JOB#*'));
+    // Q1 (B1 de la relecture de la PR #96): `deleteDocTree` appelle `mutateTest` (UpdateItem) pour retirer une fiche d'un passage multi-fiches. Sans ce droit: AccessDenied et fiche a moitie videe.
+    deleteRole.addToPolicy(leading(['dynamodb:UpdateItem'], 'STUDENT#*'));
     // `callerOf` (api/src/pipeline/http.ts) lit FAMILY#<fid> (Query, prefixe STUDENT#) a chaque requete d'un eleve pour retrouver son identifiant: toute fonction ouverte a l'eleve a ce droit.
     // shortcut: IAM ne filtre pas la cle de tri, donc cette Query donne aussi acces a FAMILY#/META, REPORT#, QUOTA#. Le code ne lit que STUDENT#; a resserrer si l'identite de l'eleve passe par le jeton.
     const familyQuery = () => leading(['dynamodb:Query'], 'FAMILY#*');

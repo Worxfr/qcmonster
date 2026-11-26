@@ -34,7 +34,7 @@ const words = (s) => s.trim().split(/\s+/).filter(Boolean).length;
 
 let S;
 function reset({ role = 'eleve', family = true, student = true, pagesLimit = 20 } = {}) {
-  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, archives: 0 };
+  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, archives: 0, bank: new Set(), seen: new Set(), docXp: new Map(), draw: null };
   if (family && student) S.students.push({ studentId: 'stu1', pseudo: 'Lila-7k2f', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 });
 }
 reset();
@@ -208,7 +208,106 @@ function seed({ folders = [], docs = [] } = {}) {
     S.jobs.push(j);
     j.docIds.push(docId);
     S.docs.push({ docId, jobId, title: x.title, subject: x.subject ?? 'svt', topic: x.topic ?? x.title, ...(folderId ? { folderId } : {}), createdAt: iso(), summary: 'Résumé de test.', claims: [] });
+    // Q1: une banque de `questions` questions variees (regles du vrai serveur: tirage, 409 hors tirage, 50 XP au plus par fiche).
+    if (x.questions !== undefined) {
+      S.bank.add(docId);
+      S.questions.set(docId, Array.from({ length: x.questions }, (_, i) => {
+        const k = i + 1;
+        return k % 2 ? { questionId: `${docId}-b${k}`, kind: 'qcm', prompt: `Question ${k} sur ${x.title}`, choices: [`Bonne ${k}`, 'Faux A', 'Faux B', 'Faux C'], answer: `Bonne ${k}` }
+          : { questionId: `${docId}-b${k}`, kind: 'gap', prompt: `Complète ${x.title} ${k} : ____`, answer: `mot${k}` };
+      }));
+    }
   }
+}
+
+// ---- Q1: tirage, controle du tirage, plafond de 50 XP par fiche (memes regles que le vrai serveur) ----
+const DOC_CAP = 50;
+const publicQ = (q, d) => { const { answer: _a, ...r } = q; return d ? { ...r, docId: d.docId, docTitle: d.title } : r; };
+const docOf = (qid) => S.docs.find((d) => qid.startsWith(`${d.docId}-`));
+/** Tirage: a tour de role entre fiches, les questions jamais repondues d'abord. */
+function drawFrom(docs, size) {
+  const queues = docs.map((d) => {
+    const qs = [...(S.questions.get(d.docId) ?? [])];
+    return [...qs.filter((q) => !S.seen.has(q.questionId)), ...qs.filter((q) => S.seen.has(q.questionId))];
+  });
+  const out = [];
+  while (out.length < size && queues.some((q) => q.length)) for (const q of queues) if (q.length && out.length < size) out.push(q.shift());
+  return out;
+}
+const SIZES = [5, 10, 15, 20];
+const paidOf = (docId) => S.docXp.get(docId) ?? 0;
+function openDraw(docs, qs, scope, titre) {
+  S.draw = { testId: id('tst'), ids: qs.map((q) => q.questionId), docIds: docs.map((d) => d.docId), scope, titre, answers: new Map() };
+}
+function practice(res, b) {
+  const hasDocs = b.docIds !== undefined;
+  if (hasDocs === (b.folderId !== undefined)) return err(res, 400, 'requete_invalide', 'Requête invalide');
+  if (b.size !== undefined && !SIZES.includes(b.size)) return err(res, 400, 'requete_invalide', 'Requête invalide');
+  const size = b.size ?? 10;
+  const skipped = [];
+  let docs = [];
+  let scope = 'fiches';
+  let folderName = '';
+  if (hasDocs) {
+    if (!Array.isArray(b.docIds) || b.docIds.length < 1 || b.docIds.length > 10 || new Set(b.docIds).size !== b.docIds.length) return err(res, 400, 'requete_invalide', 'Requête invalide');
+    for (const i of b.docIds) {
+      const d = S.docs.find((x) => x.docId === i);
+      if (d) docs.push(d); else skipped.push({ docId: i, reason: 'introuvable' });
+    }
+  } else {
+    const f = S.folders.find((x) => x.folderId === b.folderId);
+    if (!f) return err(res, 404, 'introuvable', 'Introuvable');
+    scope = 'dossier';
+    folderName = f.name;
+    docs = S.docs.filter((d) => d.folderId === f.folderId).slice(0, 10);
+  }
+  const usable = [];
+  for (const d of docs) {
+    if ((S.questions.get(d.docId) ?? []).length === 0) skipped.push({ docId: d.docId, title: d.title, reason: 'sans_question' });
+    else usable.push(d);
+  }
+  if (!usable.length) return err(res, 409, 'aucune_question', 'Aucune question pour le moment');
+  const qs = drawFrom(usable, size);
+  const avail = usable.reduce((n, d) => n + (S.questions.get(d.docId) ?? []).length, 0);
+  const title = scope === 'dossier' ? folderName : `${usable.length} fiches`;
+  openDraw(usable, qs, scope, title);
+  return send(res, 200, { scope, title, docIds: usable.map((d) => d.docId), questions: qs.map((q) => publicQ(q, docOf(q.questionId))), available: avail, short: qs.length < size, xpRemaining: usable.map((d) => ({ docId: d.docId, xpRemaining: Math.max(0, DOC_CAP - paidOf(d.docId)) })), skipped });
+}
+function answerBank(res, b) {
+  const d = docOf(b.questionId);
+  if (!S.draw || !S.draw.ids.includes(b.questionId)) return err(res, 409, 'etat_invalide', "Ouvre d'abord un test");
+  if (!d) return err(res, 404, 'introuvable', 'Introuvable');
+  const q = (S.questions.get(d.docId) ?? []).find((x) => x.questionId === b.questionId);
+  const correct = norm(String(b.choice)) === norm(q.answer);
+  let gain = 0;
+  let capped = false;
+  const first = !S.seen.has(q.questionId);
+  if (correct && first) {
+    gain = Math.min(5, Math.max(0, DOC_CAP - paidOf(d.docId)));
+    capped = gain < 5;
+    S.docXp.set(d.docId, paidOf(d.docId) + gain);
+    S.xp += gain;
+  }
+  S.seen.add(q.questionId);
+  // Passage de l'historique: un seul pour tout le test, quel que soit le nombre de fiches.
+  const dr = S.draw;
+  let t = S.tests.find((x) => x.testId === dr.testId);
+  if (!t) {
+    const multi = dr.docIds.length > 1 || dr.scope === 'dossier';
+    t = { testId: dr.testId, docId: dr.docIds[0], titre: multi ? dr.titre : d.title, matiere: 'autre', mode: 'mixte', schoolYear: schoolYearOf(Date.now()), startedAt: iso(), total: dr.ids.length, answered: 0, correct: 0, firstTry: 0, scorePct: 0, xpGained: 0, status: 'incomplet', ...(multi ? { scope: dr.scope, docIds: dr.docIds } : {}), questions: [] };
+    S.tests.unshift(t);
+  }
+  if (!t.questions.some((x) => x.questionId === q.questionId)) {
+    t.questions.push({ questionId: q.questionId, rank: dr.ids.indexOf(q.questionId) + 1, kind: q.kind, correct, attempts: 1, firstTry: correct, xpGained: gain, answeredAt: iso(), choice: String(b.choice), prompt: q.prompt, ...(q.choices ? { choices: q.choices } : {}), correctAnswer: q.answer });
+    t.answered = t.questions.length;
+    t.correct = t.questions.filter((x) => x.correct).length;
+    t.firstTry = t.correct;
+    t.xpGained += gain;
+    t.scorePct = Math.round((100 * t.correct) / t.total);
+    t.status = t.answered >= t.total ? 'complet' : 'incomplet';
+    t.endedAt = iso();
+  }
+  return send(res, 200, { correct, xpGained: gain, ...(capped ? { capped: true } : {}), badges: [], ...(correct ? {} : { correctAnswer: q.answer }), progress: progress() });
 }
 
 const folderOut = (f) => ({ folderId: f.folderId, name: f.name, createdAt: f.createdAt, scanCount: S.docs.filter((d) => d.folderId === f.folderId).length });
@@ -340,7 +439,10 @@ const server = createServer(async (req, res) => {
       return send(res, 201, folderOut(f));
     }
     case 'GET /docs': return send(res, 200, { items: S.docs.map(({ claims: _c, summary: _s, ...d }) => d) });
+    case 'POST /practice/session': return parent ? err(res, 403, 'interdit', 'Interdit') : practice(res, b);
     case 'POST /answers': {
+      const bq = [...S.bank].some((d) => String(b.questionId).startsWith(`${d}-`));
+      if (bq) return answerBank(res, b);
       const q = [...S.questions.values()].flat().find((x) => x.questionId === b.questionId);
       if (!q) return err(res, 400, 'requete_invalide', 'Question inconnue');
       const correct = norm(String(b.choice)) === norm(q.answer);
@@ -420,7 +522,14 @@ const server = createServer(async (req, res) => {
       if (first) S.xp += 10;
       return send(res, 200, { xpGained: first ? 10 : 0, badges: [], progress: progress() });
     }
-    if (m === 'GET' && seg[3] === 'session') return send(res, 200, { docId: ID, questions: (S.questions.get(ID) ?? []).map(({ answer: _a, ...q }) => q) });
+    if (m === 'GET' && seg[3] === 'session') {
+      if (!S.bank.has(ID)) return send(res, 200, { docId: ID, questions: (S.questions.get(ID) ?? []).map(({ answer: _a, ...q }) => q) });
+      const size = url.searchParams.get('size') === null ? 10 : Number(url.searchParams.get('size'));
+      if (!SIZES.includes(size)) return err(res, 400, 'requete_invalide', 'Requête invalide');
+      const qs = drawFrom([d], size);
+      openDraw([d], qs, 'fiche', d.title);
+      return send(res, 200, { docId: ID, questions: qs.map((q) => publicQ(q)), available: (S.questions.get(ID) ?? []).length, short: qs.length < size, xpRemaining: Math.max(0, DOC_CAP - paidOf(ID)) });
+    }
   }
   if (seg[1] === 'me' && seg[2] === 'export' && seg[3] === 'archive') {
     if (parent) return err(res, 403, 'interdit', 'Interdit');
