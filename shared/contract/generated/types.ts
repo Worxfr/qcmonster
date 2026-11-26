@@ -4137,7 +4137,7 @@ export interface operations {
                  *       "schoolLevel": "seconde",
                  *       "under15": false,
                  *       "parentalAuthority": true,
-                 *       "policyVersion": "2026-11-25"
+                 *       "policyVersion": "2026-11-28"
                  *     }
                  */
                 "application/json": components["schemas"]["StudentCreateRequest"];
@@ -4601,7 +4601,7 @@ export interface operations {
                 /**
                  * @example {
                  *       "consent": true,
-                 *       "policyVersion": "2026-11-26"
+                 *       "policyVersion": "2026-11-28"
                  *     }
                  */
                 "application/json": components["schemas"]["FamilyCreateRequest"];
@@ -4632,7 +4632,7 @@ export interface operations {
                 /**
                  * @example {
                  *       "consent": true,
-                 *       "policyVersion": "2026-11-25"
+                 *       "policyVersion": "2026-11-28"
                  *     }
                  */
                 "application/json": components["schemas"]["FamilyCreateRequest"];

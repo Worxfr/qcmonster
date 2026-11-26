@@ -935,7 +935,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/StudentCreateRequest' }
-            example: { pseudo: Lila, schoolLevel: seconde, under15: false, parentalAuthority: true, policyVersion: '2026-11-25' }
+            example: { pseudo: Lila, schoolLevel: seconde, under15: false, parentalAuthority: true, policyVersion: '2026-11-28' }
       responses:
         '201':
           description: Eleve cree
@@ -1148,7 +1148,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/FamilyCreateRequest' }
-            example: { consent: true, policyVersion: '2026-11-26' }
+            example: { consent: true, policyVersion: '2026-11-28' }
       responses:
         '204': { description: Accepte (policyOutdated repasse a faux) }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1164,7 +1164,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/FamilyCreateRequest' }
-            example: { consent: true, policyVersion: '2026-11-25' }
+            example: { consent: true, policyVersion: '2026-11-28' }
       responses:
         '201':
           description: Famille creee
