@@ -3272,6 +3272,26 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "corrections": [
+                 *         {
+                 *           "id": "p1-s2",
+                 *           "text": "Elle se deroule dans les chloroplastes des cellules vegetales."
+                 *         }
+                 *       ],
+                 *       "removed": [
+                 *         "p1-s8"
+                 *       ],
+                 *       "added": [
+                 *         {
+                 *           "key": "n1",
+                 *           "afterId": "p1-s3",
+                 *           "text": "Phrase oubliee ajoutee apres la troisieme."
+                 *         }
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["ReviseRequest"];
             };
         };
