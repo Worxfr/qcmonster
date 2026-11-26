@@ -36,15 +36,23 @@ export function isSafeFormula(src: string): boolean {
 
 export type Segment = { text: string } | { math: string };
 
-/** Separe un texte en segments de texte et de formule (`$...$`; `\$` est un dollar litteral). `undefined` si les `$` ne sont pas en nombre pair. */
+/**
+ * Separe un texte en segments de texte et de formule (`$...$`). `undefined` si les `$` ne sont pas en nombre pair.
+ * Hors formule: `\$` est un dollar litteral et `\\` un antislash litteral (les autres `\x` restent tels quels). Dans une formule, chaque paire
+ * `\x` est gardee telle quelle pour KaTeX (`\\` est un saut de ligne, `\$` un dollar): une formule peut donc finir par `\\` avant son `$` fermant.
+ */
 export function splitMath(text: string): Segment[] | undefined {
   const out: Segment[] = [];
   let cur = '';
   let inMath = false;
   for (let k = 0; k < text.length; k++) {
     const c = text[k];
-    if (c === '\\' && text[k + 1] === '$') {
-      cur += inMath ? '\\$' : '$'; // hors formule, `\$` devient `$` litteral; dans une formule il reste echappe pour KaTeX
+    const n = text[k + 1];
+    if (c === '\\' && n !== undefined && inMath) {
+      cur += c + n;
+      k++;
+    } else if (c === '\\' && (n === '$' || n === '\\')) {
+      cur += n;
       k++;
     } else if (c === '$') {
       if (inMath) out.push({ math: cur });
@@ -57,6 +65,36 @@ export function splitMath(text: string): Segment[] | undefined {
   if (cur) out.push({ text: cur });
   return out;
 }
+
+/** Ecrit un texte simple pour `splitMath`: l'antislash est double AVANT que le dollar soit echappe (sinon `\\$` serait relu comme un dollar echappe). */
+export const escapeText = (t: string): string => t.replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+
+/** Contenu d'une formule refusee, lu comme texte simple: seul `\$` redevient `$` (les autres paires sont gardees). */
+const mathToText = (m: string): string => {
+  let out = '';
+  for (let k = 0; k < m.length; k++) {
+    if (m[k] === '\\' && m[k + 1] === '$') {
+      out += '$';
+      k++;
+    } else if (m[k] === '\\' && m[k + 1] !== undefined) {
+      out += m[k] + m[k + 1];
+      k++;
+    } else out += m[k];
+  }
+  return out;
+};
+
+/** Retire les `$` non echappes (nombre impair): les paires `\x` sont sautees, jamais coupees. */
+const dropBareDollars = (t: string): string => {
+  let out = '';
+  for (let k = 0; k < t.length; k++) {
+    if (t[k] === '\\' && t[k + 1] !== undefined) {
+      out += t[k] + t[k + 1];
+      k++;
+    } else if (t[k] !== '$') out += t[k];
+  }
+  return out;
+};
 
 /** Texte accepte tel quel: longueur, caracteres, `$` pairs et chaque formule sure. Sert a refuser une correction de l'eleve (400). */
 export function isSafeText(text: string): boolean {
@@ -72,8 +110,8 @@ export function isSafeText(text: string): boolean {
 export function sanitizeLatex(text: string): string {
   const clean = text.replace(new RegExp(CONTROL.source, 'g'), '').slice(0, MAX_TEXT);
   const seg = splitMath(clean);
-  if (seg === undefined) return clean.replace(/(?<!\\)\$/g, '');
-  return seg.map((s) => ('text' in s ? s.text.replace(/\$/g, '\\$') : isSafeFormula(s.math) ? `$${s.math}$` : s.math.replace(/\\\$/g, '$'))).join('');
+  if (seg === undefined) return dropBareDollars(clean);
+  return seg.map((s) => ('text' in s ? escapeText(s.text) : isSafeFormula(s.math) ? `$${s.math}$` : escapeText(mathToText(s.math)))).join('');
 }
 
 /** Source d'un bloc `formule` (sans delimiteurs): la source si elle est sure, sinon `undefined` (le bloc devient un paragraphe de texte simple). */

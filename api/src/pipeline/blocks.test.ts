@@ -40,7 +40,7 @@ describe('parseBlocks', () => {
     const r = parseBlocks([page(1, '= \\href{javascript:x}{y}\n\nSoit $\\input{a}$ et $x^2$.')]);
     expect(r.blocks![0].kind).toBe('paragraphe');
     expect(r.pages[0].sentences[0].text).not.toContain('$');
-    expect(r.pages[0].sentences[1].text).toBe('Soit \\input{a} et $x^2$.');
+    expect(r.pages[0].sentences[1].text).toBe('Soit \\\\input{a} et $x^2$.');
   });
 
   it('doute: marque par ~, supprime partout au-dela de 40 %', () => {

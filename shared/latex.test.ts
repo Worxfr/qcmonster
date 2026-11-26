@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasFormula, isSafeFormula, isSafeText, sanitizeFormulaBlock, sanitizeLatex, splitMath, stripFormulas } from './latex.js';
+import { escapeText, hasFormula, isSafeFormula, isSafeText, sanitizeFormulaBlock, sanitizeLatex, splitMath, stripFormulas } from './latex.js';
 
 describe('isSafeFormula', () => {
   it.each(['E = mc^{2}', '\\frac{a}{b}', '\\idotsint f', '\\defeq x', '\\letter', '\\text{un \\{ ok}'])('accepte %s', (f) => expect(isSafeFormula(f)).toBe(true));
@@ -31,7 +31,7 @@ describe('splitMath, isSafeText', () => {
 describe('sanitizeLatex', () => {
   it('garde une formule sure, retire les delimiteurs d\'une formule interdite', () => {
     expect(sanitizeLatex('Soit $x^2$.')).toBe('Soit $x^2$.');
-    expect(sanitizeLatex('Voir $\\href{http://a}{b}$ ici')).toBe('Voir \\href{http://a}{b} ici');
+    expect(sanitizeLatex('Voir $\\href{http://a}{b}$ ici')).toBe('Voir \\\\href{http://a}{b} ici'); // texte simple: l'antislash est double (relu comme un seul)
   });
   it('`$` impair: tous les `$` non echappes sont retires, le texte reste du texte', () => {
     expect(sanitizeLatex('coute 5 $ environ')).toBe('coute 5  environ');
@@ -52,5 +52,28 @@ describe('formules', () => {
     expect(stripFormulas('La masse $m$ vaut 3 kg')).toBe('La masse vaut 3 kg');
     expect(hasFormula('a $b$')).toBe(true);
     expect(hasFormula('a b')).toBe(false);
+  });
+});
+
+describe('antislash et dollar (alerte CodeQL: echappement incomplet)', () => {
+  it('escapeText: relu a l\'identique par splitMath, y compris un antislash devant un dollar', () => {
+    for (const t of ['\\$', '\\\\$', 'a\\', '$$', '\\x', 'C:\\dir \\$5', '$']) expect(splitMath(escapeText(t)), t).toEqual([{ text: t }]);
+  });
+  it('hors formule `\\\\` est un antislash; dans une formule la paire est gardee (`\\\\` avant le `$` fermant)', () => {
+    expect(splitMath('a \\\\$x$')).toEqual([{ text: 'a \\' }, { math: 'x' }]);
+    expect(splitMath('$a\\\\$')).toEqual([{ math: 'a\\\\' }]);
+    expect(splitMath('$a\\$b$')).toEqual([{ math: 'a\\$b' }]);
+  });
+  it('une formule refusee qui contient `\\$` ne laisse aucun `$` seul: le resultat est relu sans erreur et reste stable', () => {
+    const out = sanitizeLatex('Voir $\\href{a}{\\$}$ ici');
+    expect(splitMath(out)).toEqual([{ text: 'Voir \\href{a}{$} ici' }]);
+    expect(sanitizeLatex(out)).toBe(out);
+  });
+  it('`$` impair: les `$` echappes, y compris apres un antislash double, sont gardes; les autres retires', () => {
+    expect(sanitizeLatex('a \\\\\\$ b $ c')).toBe('a \\\\\\$ b  c');
+    expect(splitMath(sanitizeLatex('x \\\\ $ y'))).toBeDefined();
+  });
+  it('idempotent sur des textes avec antislash', () => {
+    for (const t of ['a\\b', 'a \\\\$x$ b', 'chemin C:\\dir', '$\\def\\a{}$ \\\\']) expect(sanitizeLatex(sanitizeLatex(t)), t).toBe(sanitizeLatex(t));
   });
 });
