@@ -6,7 +6,7 @@ import { errMsg, useLoad } from '../../hooks';
 import { SUBJECTS, SUBJECT_IDS, plural, subjectLabel } from '../../labels';
 import { go } from '../../router';
 import { Rich } from '../../components/Math';
-import { checkCorrection } from '../../latex';
+import { correctionProblem } from '../../correction';
 import type { Block, ConfirmFigure, Job, Sentence, Subject } from '../../types';
 import { AutoGrow } from './AutoGrow';
 import { buildModel } from './blocks';
@@ -438,7 +438,7 @@ function SentenceEditor({ s, n, text, formula, removed, changed, canCut, onCommi
   const [draft, setDraft] = useState(text);
   const wrap = useRef<HTMLSpanElement>(null);
   const clean = draft.replace(/\s*\n\s*/g, ' ');
-  const problem = clean.trim() === '' ? 'Une phrase ne peut pas être vide. Pour l’enlever, utilise « Retirer cette phrase ».' : checkCorrection(clean, formula);
+  const problem = clean.trim() === '' ? 'Une phrase ne peut pas être vide. Pour l’enlever, utilise « Retirer cette phrase ».' : correctionProblem(clean, formula);
   const hasMath = formula || /\$/.test(clean);
   useEffect(() => {
     const el = document.getElementById(`cf-in-${s.id}`) as HTMLTextAreaElement | null;

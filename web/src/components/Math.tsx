@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import katex from 'katex';
-import { checkFormula, splitMath } from '../latex';
+import { isSafeFormula, sanitizeFormulaBlock, sanitizeLatex, splitMath } from '../../../shared/latex';
 
 /**
  * Seul endroit du site qui injecte du HTML: la chaine produite par KaTeX (MathML), jamais un texte de l'eleve ou du modele.
@@ -15,7 +15,7 @@ const SINGLE_MI = /<mi>([^<>&])<\/mi>/gu;
 const marked = (html: string) => html.replace(SINGLE_MI, '<mi class="mi-i">$1</mi>');
 
 export function renderMathml(tex: string, display: boolean): string | null {
-  if (checkFormula(tex)) return null;
+  if (!isSafeFormula(tex)) return null;
   try {
     return marked(katex.renderToString(tex, { trust: false, throwOnError: true, maxSize: 10, maxExpand: 1000, strict: 'ignore', output: 'mathml', displayMode: display }));
   } catch {
@@ -30,11 +30,16 @@ export function Formula({ tex, display = false }: { tex: string; display?: boole
 }
 
 /** Texte avec formules `$...$`: le texte est rendu par React (echappe), les formules par KaTeX. `formula`: tout le texte est du LaTeX (bloc `formule`). */
+// Le filtre est celui du serveur (`shared/latex.ts`), reapplique ici quelle que soit la provenance du texte (defense en profondeur).
 export function Rich({ text, formula = false }: { text: string; formula?: boolean }) {
-  if (formula) return <Formula tex={text} display />;
+  if (formula) {
+    const src = sanitizeFormulaBlock(text);
+    return src === undefined ? <code className="math-fallback">{text}</code> : <Formula tex={src} display />;
+  }
+  const seg = splitMath(sanitizeLatex(text)) ?? [{ text }];
   return (
     <>
-      {splitMath(text).map((s, i) => (s.kind === 'text' ? <span key={i}>{s.text}</span> : <Formula key={i} tex={s.tex} />))}
+      {seg.map((s, i) => ('text' in s ? <span key={i}>{s.text}</span> : <Formula key={i} tex={s.math} />))}
     </>
   );
 }

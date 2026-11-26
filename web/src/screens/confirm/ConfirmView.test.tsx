@@ -370,7 +370,7 @@ describe('formules à la relecture', () => {
     await open();
     const box = await openSentence(1);
     await userEvent.type(box, ' $\\href{{javascript:alert(1)}{{x}$');
-    expect(await screen.findByText(/« \\href » n'est pas permise/)).toBeInTheDocument();
+    expect(await screen.findByText(/La formule n'est pas acceptée/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Valider/ })).toBeDisabled();
     await userEvent.clear(box);
     await userEvent.type(box, 'Ça coûte 5 $');

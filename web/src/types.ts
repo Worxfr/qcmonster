@@ -56,5 +56,5 @@ export type ConfirmFigure = S['ConfirmFigure'];
 export type SentenceMark = S['SentenceMark'];
 export type FicheParagraph = S['FicheParagraph'];
 export type RecallItem = S['RecallItem'];
-/** Export asynchrone de l'eleve (lot A, contrat 1.5.1): etat de la fabrication. */
-export type ExportState = { status: 'en_cours' | 'echec' | 'pret'; archive?: ExportArchive };
+/** Export asynchrone de l'eleve (contrat 1.5.1): `state` en_cours | pret (avec `archive`) | echec. */
+export type ExportState = S['ExportStatus'];

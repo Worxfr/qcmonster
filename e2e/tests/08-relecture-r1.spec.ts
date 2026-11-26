@@ -111,7 +111,7 @@ test.describe('Relecture en paragraphes (R1-C)', () => {
     await page.locator('button.cf-sent', { hasText: 'mesurer' }).click();
     const f = page.locator('textarea.cf-text');
     await f.fill('Voir $\\href{javascript:alert(1)}{ici}$');
-    await expect(page.getByRole('alert')).toContainText('\\href');
+    await expect(page.getByRole('alert')).toContainText('La formule n\'est pas acceptée');
     await expect(page.getByRole('button', { name: /^Valider/ })).toBeDisabled();
     await shot(page, '3-formule-refusee-pc');
     await f.fill('Pour mesurer, on utilise $\\frac{a}{b}$ comme unité.');
@@ -322,8 +322,8 @@ test.describe('Cours coloré, fiche, export (R1-C)', () => {
     let polls = 0;
     await page.route('**/me/export/archive', (r) => (r.request().method() === 'OPTIONS' ? r.fulfill({ status: 204, headers: { ...CORS, 'access-control-allow-methods': 'GET,POST,OPTIONS' } }) : r.fulfill(ok({ exportId: 'E1' }, 202))));
     await page.route('**/me/export/archive/E1', (r) => (polls++ < 1
-      ? r.fulfill(ok({ status: 'en_cours' }))
-      : r.fulfill(ok({ status: 'pret', archive: { url: 'http://127.0.0.1:1/a.zip', expiresAt: '2099-01-01T00:10:00Z', format: 'zip', sizeBytes: 3145728, students: 1, tests: 2, truncated: false, courses: 3, figures: 5 } }))));
+      ? r.fulfill(ok({ exportId: 'E1', state: 'en_cours' }))
+      : r.fulfill(ok({ exportId: 'E1', state: 'pret', archive: { url: 'http://127.0.0.1:1/a.zip', expiresAt: '2099-01-01T00:10:00Z', format: 'zip', sizeBytes: 3145728, students: 1, tests: 2, truncated: false, courses: 3, figures: 5 } }))));
     await page.goto('/#/docs');
     await page.getByRole('button', { name: 'Télécharger mes données' }).click();
     await expect(page.getByRole('link', { name: /Télécharger l'archive/ })).toBeVisible({ timeout: 20_000 });

@@ -24,12 +24,12 @@ export function ExportMine({ pollMs = POLL_MS }: { pollMs?: number }) {
         await new Promise((r) => setTimeout(r, i === 0 ? Math.min(pollMs, 500) : pollMs));
         if (!live.current) return;
         const st = await api.myExport(exportId);
-        if (st.status === 'pret' && st.archive) {
+        if (st.state === 'pret' && st.archive) {
           setArchive(st.archive);
           setPhase('ready');
           return;
         }
-        if (st.status === 'echec') throw new Error('echec');
+        if (st.state === 'echec') throw new Error('echec');
       }
       throw new Error('delai');
     } catch (e) {

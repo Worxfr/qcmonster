@@ -90,7 +90,7 @@ export const api = {
   exportArchive: () => call<ExportArchive>('POST', '/family/export/archive'),
   /** Export de l'eleve (asynchrone, lot A): demande, puis lecture de l'etat jusqu'a `pret`. */
   startMyExport: () => call<{ exportId: string }>('POST', '/me/export/archive'),
-  myExport: async (exportId: string): Promise<ExportState> => normalizeExport(await call<unknown>('GET', `/me/export/archive/${e(exportId)}`)),
+  myExport: (exportId: string) => call<ExportState>('GET', `/me/export/archive/${e(exportId)}`),
   /** Re-acceptation de la politique en vigueur (parent). */
   acceptPolicy: (b: FamilyCreateRequest) => call<void>('POST', '/family/policy', b),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),
@@ -105,11 +105,3 @@ export async function uploadScan(upload: { url: string; fields: Record<string, s
   if (!res.ok) throw new Error(`Envoi impossible (${res.status})`);
 }
 
-/** Forme de la reponse de `GET /me/export/archive/{id}`: `{ status, archive? }` attendu; on tolere aussi l'archive a plat (`url`) et `etat`. */
-export function normalizeExport(raw: unknown): ExportState {
-  const r = (raw ?? {}) as Record<string, unknown>;
-  const archive = (r.archive && typeof r.archive === 'object' ? r.archive : typeof r.url === 'string' ? r : undefined) as ExportArchive | undefined;
-  const st = String(r.status ?? r.etat ?? r.state ?? (archive ? 'pret' : 'en_cours'));
-  if (st === 'pret' && archive?.url) return { status: 'pret', archive };
-  return { status: st === 'echec' ? 'echec' : 'en_cours' };
-}

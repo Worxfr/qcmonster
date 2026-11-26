@@ -2,7 +2,6 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { normalizeExport } from './api';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
 const IMG = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
@@ -91,7 +90,7 @@ describe('Télécharger mes données (élève)', () => {
     routes['GET /folders*'] = () => json({ items: [] });
     routes['POST /me/export/archive'] = () => json({ exportId: 'E1' }, 202);
     let n = 0;
-    routes['GET /me/export/archive/E1'] = () => (n++ < 1 ? json({ status: 'en_cours' }) : json({ status: 'pret', archive: { url: 'https://exports.example/a.zip', expiresAt: '2026-12-01T10:10:00Z', format: 'zip', sizeBytes: 2048000, students: 1, tests: 3, truncated: false, courses: 2, figures: 4 } }));
+    routes['GET /me/export/archive/E1'] = () => (n++ < 1 ? json({ exportId: 'E1', state: 'en_cours' }) : json({ exportId: 'E1', state: 'pret', archive: { url: 'https://exports.example/a.zip', expiresAt: '2026-12-01T10:10:00Z', format: 'zip', sizeBytes: 2048000, students: 1, tests: 3, truncated: false, courses: 2, figures: 4 } }));
     open('#/docs');
     await userEvent.click(await screen.findByRole('button', { name: 'Télécharger mes données' }));
     expect(await screen.findByText(/Je prépare ton archive/)).toBeInTheDocument();
@@ -106,10 +105,5 @@ describe('Télécharger mes données (élève)', () => {
     open('#/docs');
     await userEvent.click(await screen.findByRole('button', { name: 'Télécharger mes données' }));
     expect(await screen.findByText(/3 archives cette heure/)).toBeInTheDocument();
-  });
-  it('normalizeExport tolère l\'archive à plat', () => {
-    expect(normalizeExport({ url: 'https://x/a.zip' }).status).toBe('pret');
-    expect(normalizeExport({ status: 'echec' }).status).toBe('echec');
-    expect(normalizeExport({ status: 'en_cours' }).status).toBe('en_cours');
   });
 });
