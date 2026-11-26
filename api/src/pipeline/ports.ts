@@ -41,8 +41,22 @@ export interface Db {
 
 /** Adaptateur vers le port de suppression en cascade de shared/delete-tree.ts (cles seules). */
 export const treeDbFrom = (db: Db): TreeDb => ({
-  list: async (pk, skPrefix) => (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK })),
+  list: async (pk, skPrefix) =>
+    (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) })),
   remove: (ks) => db.remove(ks),
+  async mutateTest(key, fn) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cur = await db.get(key);
+      if (!cur) return;
+      const r = fn(cur);
+      if (r === 'garder') return;
+      if (r === 'supprimer') return db.remove([key]);
+      const { PK: _pk, SK: _sk, v, ...rest } = r as Item & { v?: number };
+      void _pk; void _sk; void v;
+      if (await db.update(key, { set: rest, add: { v: 1 }, cond: { exists: true, ...(typeof cur.v === 'number' ? { eq: { v: cur.v } } : { absent: ['v'] }) } })) return;
+    }
+    throw new Error('suppression incomplete (conflit persistant)');
+  },
 });
 
 export interface PresignedPost {

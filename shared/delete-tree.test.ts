@@ -146,3 +146,80 @@ describe('historique des tests (H1): les passages TEST# partent avec la fiche, l
     expect(db.keys().filter((x) => x.SK.startsWith('TEST#'))).toEqual([]);
   });
 });
+
+describe('Q1: effacement d\'un passage multi-fiches', () => {
+  const line = (q: string, r: number, ok: boolean, xp = 5) => ({ q, r, k: 'qcm', ok, n: 1, f: ok, xp, at: 'x', c: 'B' });
+  const multi = (extra: Record<string, unknown> = {}) => ({
+    ...keys.test('s1', '2026-12-01T09:00:00Z', '01JTESTID0000000000000000A'),
+    docId: 'd1', docIds: ['d1', 'd2', 'd3'], scope: 'fiches', titre: '3 fiches', mode: 'qcm', total: 6, answered: 6, correct: 4, firstTry: 4, xpGained: 20,
+    items: [line('d1:qcm:01', 1, true), line('d2:qcm:01', 2, true), line('d3:qcm:01', 3, false, 0), line('d1:qcm:02', 4, true), line('d2:qcm:02', 5, false, 0), line('d3:qcm:02', 6, true)],
+    ...extra,
+  });
+  const base = () => [keys.student('f1', 's1'), keys.doc('s1', 'd1'), keys.doc('s1', 'd2'), keys.doc('s1', 'd3'), keys.qcm('d1', 1), keys.qcm('d2', 1), keys.qcm('d3', 1), multi()];
+  const test = (db: ReturnType<typeof memoryTreeDb>) => db.get(multi()) as Record<string, unknown> | undefined;
+
+  it('supprimer la PREMIERE fiche: le passage reste avec 2 fiches, docId = la 2e, compteurs recalcules', async () => {
+    const db = memoryTreeDb(base());
+    await deleteDocTree(db, 's1', 'd1');
+    expect(test(db)).toMatchObject({ docId: 'd2', docIds: ['d2', 'd3'], scope: 'fiches', titre: '2 fiches', total: 4, answered: 4, correct: 2, firstTry: 2, xpGained: 10 });
+    expect((test(db)!.items as { q: string }[]).map((l) => l.q)).toEqual(['d2:qcm:01', 'd3:qcm:01', 'd2:qcm:02', 'd3:qcm:02']);
+  });
+  it('supprimer une AUTRE fiche: ses lignes partent, le passage reste', async () => {
+    const db = memoryTreeDb(base());
+    await deleteDocTree(db, 's1', 'd3');
+    expect(test(db)).toMatchObject({ docId: 'd1', docIds: ['d1', 'd2'], total: 4, titre: '2 fiches' });
+  });
+  it('passage incomplet: total approche, jamais sous le nombre de lignes', async () => {
+    const db = memoryTreeDb([...base().slice(0, -1), multi({ total: 10, answered: 6, items: (multi().items as unknown[]) })]);
+    await deleteDocTree(db, 's1', 'd2');
+    expect(test(db)).toMatchObject({ total: 8, answered: 4 });
+  });
+  it('la DERNIERE fiche restante efface le passage; une seule fiche restante: scope fiche', async () => {
+    const db = memoryTreeDb(base());
+    await deleteDocTree(db, 's1', 'd1');
+    await deleteDocTree(db, 's1', 'd2');
+    expect(test(db)).toMatchObject({ scope: 'fiche', docIds: ['d3'], docId: 'd3' });
+    await deleteDocTree(db, 's1', 'd3');
+    expect(test(db)).toBeUndefined();
+  });
+  it('passage d\'une seule fiche: supprime comme avant', async () => {
+    const one = { ...keys.test('s1', '2026-12-02T09:00:00Z', '01JTESTID0000000000000000B'), docId: 'd1', items: [line('d1:qcm:01', 1, true)] };
+    const db = memoryTreeDb([...base(), one]);
+    await deleteDocTree(db, 's1', 'd1');
+    expect(db.get(one)).toBeUndefined();
+    expect(test(db)).toBeDefined();
+  });
+  it('reponse concurrente: la reecriture est refaite sur l\'element relu, la ligne ajoutee entre-temps n\'est pas perdue', async () => {
+    let db: ReturnType<typeof memoryTreeDb>;
+    let once = true;
+    db = memoryTreeDb(base(), {
+      beforeWrite: (key) => {
+        if (!once) return;
+        once = false;
+        const cur = db.get(key) as Record<string, unknown> & { v: number };
+        // une reponse arrive: nouvelle ligne et version suivante
+        db = Object.assign(db, {});
+        (cur.items as unknown[]).push(line('d2:qcm:03', 7, true));
+        cur.v += 1;
+      },
+    });
+    await deleteDocTree(db, 's1', 'd1');
+    const items = test(db)!.items as { q: string }[];
+    expect(items.map((l) => l.q)).toContain('d2:qcm:03');
+    expect(items.some((l) => l.q.startsWith('d1:'))).toBe(false);
+  });
+  it('5 conflits de suite: erreur levee', async () => {
+    const db = memoryTreeDb(base(), { beforeWrite: (key) => void ((db.get(key) as { v: number }).v += 1) });
+    await expect(deleteDocTree(db, 's1', 'd1')).rejects.toThrow(/incomplete/);
+  });
+  it('deleteStudentTree et deleteFamilyTree: aucun TEST# ne reste, mutateTest jamais appele', async () => {
+    const db = memoryTreeDb([keys.family('f1'), ...base()]);
+    await deleteStudentTree(db, 'f1', 's1');
+    expect(db.keys().filter((x) => x.SK.startsWith('TEST#'))).toEqual([]);
+    expect(db.mutations).toBe(0);
+    const db2 = memoryTreeDb([keys.family('f1'), ...base()]);
+    await deleteFamilyTree(db2, 'f1');
+    expect(db2.keys().filter((x) => x.SK.startsWith('TEST#'))).toEqual([]);
+    expect(db2.mutations).toBe(0);
+  });
+});

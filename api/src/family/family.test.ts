@@ -411,7 +411,7 @@ describe('export et suppression de la famille', () => {
     expect(doc.claims).toMatchObject([{ claimId: '01', text: 'Le Soleil est une etoile.', status: 'verifiee' }]);
     expect(doc.questions).toEqual([
       { questionId: 'doc1:gap:01', kind: 'gap', prompt: 'Le ____ 1', answer: 'Énergie' },
-      { questionId: 'doc1:qcm:01', kind: 'qcm', prompt: 'Question 1 ? alpha01 beta01', choices: ['A', 'B', 'C', 'D'], answer: 'B' },
+      { questionId: 'doc1:qcm:01', kind: 'qcm', prompt: 'Question 1 ? alpha01doc1 beta01doc1', choices: ['A', 'B', 'C', 'D'], answer: 'B' },
     ]);
     expect(e.reports).toEqual([{ reportId: 'rep1', docId: 'doc1', claimId: '01', studentId: SID, comment: 'La date est fausse', status: 'ouvert', createdAt: 'x' }]);
     const raw = JSON.stringify(e);

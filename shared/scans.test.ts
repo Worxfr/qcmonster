@@ -157,6 +157,7 @@ describe('elements DynamoDB 1.3', () => {
     expect(FolderItemSchema.safeParse({ ...keys.folder('s1', 'f1'), nom: 'Brevet', nomCle: 'brevet', createdAt: 'x' }).success).toBe(true);
     const store: TreeKey[] = [{ PK: 'FAMILY#fam', SK: 'STUDENT#s1' }, { PK: 'STUDENT#s1', SK: 'FOLDER#f1' }, { PK: 'STUDENT#s1', SK: 'DOC#d1' }, { PK: 'STUDENT#s2', SK: 'FOLDER#f9' }];
     const db: TreeDb = {
+      mutateTest: async () => undefined,
       list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))),
       remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)),
     };
@@ -342,7 +343,7 @@ describe('relecture 2 de la PR 40', () => {
       { PK: 'STUDENT#s1', SK: 'DOC#d1' }, { PK: 'STUDENT#s2', SK: 'COURS#c9' }, { PK: 'STUDENT#s2', SK: 'COURS#c9#T01' },
       { PK: 'JOB#j1', SK: 'TEXT#1' }, { PK: 'JOB#j2', SK: 'TEXT#1' },
     ];
-    const db: TreeDb = { list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))), remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)) };
+    const db: TreeDb = { mutateTest: async () => undefined, list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))), remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)) };
     expect(await deleteCoursTree(db, 's1', 'c9')).toBe(0); // cours d'un autre eleve: rien supprime
     expect(await deleteCoursTree(db, 's1', 'zzz')).toBe(0);
     expect(store).toHaveLength(9);
@@ -370,7 +371,7 @@ describe('cours conserve', () => {
   });
   it('suppression d\'un eleve: en-tete et texte du cours supprimes, ceux d\'un autre eleve conserves', async () => {
     const store: TreeKey[] = [{ PK: 'FAMILY#fam', SK: 'STUDENT#s1' }, { PK: 'STUDENT#s1', SK: 'COURS#c1' }, { PK: 'STUDENT#s1', SK: 'COURS#c1#T01' }, { PK: 'STUDENT#s1', SK: 'DOC#d1' }, { PK: 'STUDENT#s2', SK: 'COURS#c9' }];
-    const db: TreeDb = { list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))), remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)) };
+    const db: TreeDb = { mutateTest: async () => undefined, list: async (pk, p) => store.filter((k) => k.PK === pk && (!p || k.SK.startsWith(p))), remove: async (ks) => void ks.forEach((k) => store.splice(store.findIndex((x) => x.PK === k.PK && x.SK === k.SK), 1)) };
     await deleteStudentTree(db, 'fam', 's1');
     expect(store).toEqual([{ PK: 'STUDENT#s2', SK: 'COURS#c9' }]);
   });
