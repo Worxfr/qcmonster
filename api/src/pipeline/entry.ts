@@ -20,6 +20,10 @@ import { ulid, type Ctx } from './ctx.js';
 import { guarded, json } from './http.js';
 import { dynamoDb, type PresignedPost, type ScanStore, type Sfn } from './ports.js';
 import { awaitConfirm, awaitUpload, expire, failJob, scanCheck, scanStart, transcribe, type WfInput } from './steps.js';
+import { reviseCancel } from '../revise/cancel.js';
+import { reviseCreate } from '../revise/create.js';
+import { reviseGet } from '../revise/get.js';
+import { revCommit, revExtract, revFail, revGenerate, revPrepare } from '../revise/machine.js';
 import { extract, finalize, generate, quotaConsume, sectionCost, sectionsPlan } from './steps-doc.js';
 
 const need = (name: string): string => process.env[name] ?? (() => { throw new Error(`variable ${name} absente`); })();
@@ -109,7 +113,7 @@ function context(): Promise<Ctx> {
       // Bucket des figures (lot B: variable QCM_FIGURES_BUCKET, parametre SSM data/figuresBucket); `sharp` n'est charge que par l'etape cropFigures.
       figures: fig.bucket ? await s3Figures(fig.bucket, need('QCM_SCANS_BUCKET')) : disabledFigureStore(),
       crop: sharpCrop(),
-      cfg: { figuresEnabled: fig.enabled, figureBoxModel: process.env.FIGURE_BOX_MODEL === 'sonnet' ? 'sonnet' : 'haiku' },
+      cfg: { figuresEnabled: fig.enabled, figureBoxModel: process.env.FIGURE_BOX_MODEL === 'sonnet' ? 'sonnet' : 'haiku', reviseEnabled: process.env.REVISE_ENABLED === 'true' }, // M1 #90: ferme tant que la variable n'est pas `true`
       models: { haiku: process.env.QCM_MODEL_HAIKU ?? '', sonnet: process.env.QCM_MODEL_SONNET ?? '' },
       port: await modelPortFromEnv(),
       costStore: costStoreFromDynamo(client, table),
@@ -171,3 +175,13 @@ export const extractHandler = step((c, i: WfInput) => extract(c, i));
 export const quotaConsumeHandler = step((c, i: WfInput & { verify?: { coutCentimes?: number } }) => quotaConsume(c, i));
 export const generateHandler = step((c, i: WfInput) => generate(c, i));
 export const failHandler = step((c, i: WfInput & { error?: { Error?: string } }) => failJob(c, i));
+
+// M1 #90 (modifier un cours confirme). Routes: `revise-create` (interrupteur REVISE_ENABLED), `revise-get`, `revise-cancel`. Etapes de la machine `revise`.
+export const reviseCreateHandler = http('revise-create', reviseCreate);
+export const reviseGetHandler = http('revise-get', reviseGet);
+export const reviseCancelHandler = http('revise-cancel', reviseCancel);
+export const revPrepareHandler = step((c, i: unknown) => revPrepare(c, i));
+export const revExtractHandler = step((c, i: unknown) => revExtract(c, i));
+export const revGenerateHandler = step((c, i: unknown) => revGenerate(c, i));
+export const revCommitHandler = step((c, i: unknown) => revCommit(c, i));
+export const revFailHandler = step((c, i: unknown) => revFail(c, i));

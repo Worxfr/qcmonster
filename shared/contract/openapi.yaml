@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.10.0
+  version: 1.11.0
   description: |
-    Contrat d'API QCMonster (contract-v1.10.0 (M1, docs/M1-design.md, issue #89): phrase oubliee ajoutee a la relecture (`ConfirmRequest.added`, `AddedSentence`, `ConfirmSection.fromSentenceId` accepte une cle d'ajout, `Sentence.added` dans `Cours`); contract-v1.9.0 (E1, docs/E1-design.md, issue #43): exercices de raisonnement a la demande (`/docs/{docId}/exercices`, `/exercices/{exoId}`, indices, solution) et correction de la copie photographiee (`/exercices/{exoId}/copies`, `/copies/{copieId}`), `kind: exo` dans les lignes de test, `DocSummary.exerciceCount`, codes d'erreur `matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte`, `pas_encore`, `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies`, `copie_deja_rendue`, `solution_vue`, `en_correction`; contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.11.0 (M1, docs/M1-design.md, issue #90, partie 1): modifier un cours apres confirmation (`POST /cours/{coursId}/revisions`, `GET /cours/{coursId}/revisions/{revisionId}`, `POST /cours/{coursId}/revisions/{revisionId}/cancel`, `ReviseRequest`, `Revision`, `Cours.revision`), codes d'erreur `fiche_trop_revisee` (409) et `plafond_revisions` (429), `TestDetail` `retired` et `AnswerResult.retired` (lus par la partie 2); contract-v1.10.0 (M1, docs/M1-design.md, issue #89): phrase oubliee ajoutee a la relecture (`ConfirmRequest.added`, `AddedSentence`, `ConfirmSection.fromSentenceId` accepte une cle d'ajout, `Sentence.added` dans `Cours`); contract-v1.9.0 (E1, docs/E1-design.md, issue #43): exercices de raisonnement a la demande (`/docs/{docId}/exercices`, `/exercices/{exoId}`, indices, solution) et correction de la copie photographiee (`/exercices/{exoId}/copies`, `/copies/{copieId}`), `kind: exo` dans les lignes de test, `DocSummary.exerciceCount`, codes d'erreur `matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte`, `pas_encore`, `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies`, `copie_deja_rendue`, `solution_vue`, `en_correction`; contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -588,6 +588,67 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: "Un ajout de pages est ouvert sur ce cours (v1.6, `etat_invalide`): annule-le d'abord.", content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: Un ajout est en cours } } } }
+  /cours/{coursId}/revisions:
+    post:
+      operationId: createRevision
+      tags: [cours]
+      summary: "Modifie le texte d'un cours confirme: corriger, retirer ou ajouter des phrases (handler revise-create, M1 #90, v1.11). Eleve seulement: le parent a 403."
+      description: |
+        Une modification est un travail asynchrone sur une copie: rien n'est ecrit dans le cours ni dans les fiches avant la fin, un echec laisse tout intact. Une seule operation a la fois par cours (ajout de pages, modification, suppression). Les affirmations touchees sont retirees de la fiche (jamais effacees) et remplacees; les points deja gagnes restent comptes dans les 50 points de la fiche. Limites: 20 changements, 3 fiches touchees, 1 modification par cours et par jour, 2 par eleve et par jour, 0,10 EUR par modification, 0,50 EUR par mois et par eleve, 1,50 EUR par famille. Refus 400 `requete_invalide` (rien n'est modifie, message constant): phrase inconnue, premiere phrase d'une section, section vide, moins de 40 mots, LaTeX invalide, trop de changements ou de fiches. Un cours sans fiche touchee (sections ignorees) est modifie tout de suite: 200 `Revision` `terminee`. La route repond 404 tant qu'elle n'est pas activee sur l'environnement.
+      parameters: [{ $ref: '#/components/parameters/CoursId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviseRequest' }
+      responses:
+        '200':
+          description: "Aucune fiche touchee: modification faite"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Revision' }
+              example: { revisionId: 01JEXAMPLE0REV0000000000AB, coursId: 01JEXAMPLE0CRS0000000000AA, etat: terminee, fiches: [], message: Modification terminée, createdAt: '2026-12-01T10:05:00Z' }
+        '202':
+          description: Modification lancee; l'ecran interroge `GET /cours/{coursId}/revisions/{revisionId}`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Revision' }
+              example: { revisionId: 01JEXAMPLE0REV0000000000AA, coursId: 01JEXAMPLE0CRS0000000000AA, etat: en_cours, etape: preparation, fiches: [{ docId: 01JEXAMPLE0DOC0000000000AA, etat: en_cours }], createdAt: '2026-12-01T10:05:00Z' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`etat_invalide` (autre operation en cours sur le cours, fiche en generation ou en echec) ou `fiche_trop_revisee`"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: fiche_trop_revisee, message: "Cette fiche a ete trop retouchee : supprime-la et rescanne" } } }
+        '429':
+          description: "`plafond_revisions` ou `budget_epuise`"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: plafond_revisions, message: "Trop de modifications pour le moment" } } }
+  /cours/{coursId}/revisions/{revisionId}:
+    get:
+      operationId: getRevision
+      tags: [cours]
+      summary: "Etat d'une modification (handler revise-get). Jamais de texte du cours."
+      parameters: [{ $ref: '#/components/parameters/CoursId' }, { $ref: '#/components/parameters/RevisionId' }]
+      responses:
+        '200':
+          description: Etat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Revision' }
+              example: { revisionId: 01JEXAMPLE0REV0000000000AA, coursId: 01JEXAMPLE0CRS0000000000AA, etat: en_cours, etape: verification, fiches: [{ docId: 01JEXAMPLE0DOC0000000000AA, etat: en_cours, numerosRestants: 70 }], createdAt: '2026-12-01T10:05:00Z' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /cours/{coursId}/revisions/{revisionId}/cancel:
+    post:
+      operationId: cancelRevision
+      tags: [cours]
+      summary: "Annule une modification avant le debut de sa validation (handler revise-cancel). Rien n'a ete ecrit dans le cours."
+      parameters: [{ $ref: '#/components/parameters/CoursId' }, { $ref: '#/components/parameters/RevisionId' }]
+      responses:
+        '204': { description: Annulee }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "`etat_invalide`: la validation a commence ou la modification est finie", content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: etat_invalide, message: "Cette modification ne peut plus etre annulee" } } } }
   /practice/session:
     post:
       operationId: postPracticeSession
@@ -1319,6 +1380,7 @@ components:
     JobId: { name: jobId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     CoursId: { name: coursId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    RevisionId: { name: revisionId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     FolderId: { name: folderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     ExoId: { name: exoId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     CopieId: { name: copieId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
@@ -1354,7 +1416,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris, matiere_non_prevue, plafond_exercices, fiche_trop_courte, pas_encore, trop_tot, deja_en_cours, quota_copies, plafond_copies, copie_deja_rendue, solution_vue, en_correction], description: "E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris, matiere_non_prevue, plafond_exercices, fiche_trop_courte, pas_encore, trop_tot, deja_en_cours, quota_copies, plafond_copies, copie_deja_rendue, solution_vue, en_correction, fiche_trop_revisee, plafond_revisions], description: "M1 #90 (1.11.0): `fiche_trop_revisee` (409): la fiche a epuise ses numeros de questions ou d'affirmations, la supprimer et rescanner; `plafond_revisions` (429): 1 modification par cours et par jour, 2 par eleve et par jour, ou plafond mensuel de cout atteint (0,50 EUR par eleve, 1,50 EUR par famille). E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -1491,6 +1553,13 @@ components:
               maxItems: 24
               items: { $ref: '#/components/schemas/Figure' }
               description: "Facultatif (v1.5): figures conservees, avec `url` pre-signee de 5 minutes (eleve seulement). Supprimees avec le cours."
+            revision:
+              type: object
+              required: [revisionId, etat]
+              properties:
+                revisionId: { type: string }
+                etat: { type: string, enum: [en_cours] }
+              description: "Facultatif (v1.11): present tant qu'une modification du cours est ouverte (un autre appareil de l'eleve voit la banniere)."
             marks:
               type: array
               maxItems: 500
@@ -1734,6 +1803,32 @@ components:
           maxItems: 20
           items: { $ref: '#/components/schemas/AddedSentence' }
           description: "Facultatif (v1.10, M1 #89): phrases oubliees ajoutees par l'eleve, apres une phrase donnee ou tout au debut. 20 au plus et 6000 caracteres au total (limite dite ici, controlee par le serveur). Chaque phrase ajoutee est extraite et verifiee dans les sources COMME UNE PHRASE LUE, sans traitement de faveur: si aucune source ne la confirme elle reste non verifiable et ne donne aucune question. Le texte est une entree de l'eleve: il est controle (LaTeX) et jamais interprete comme une consigne. Refus 400 `requete_invalide` (rien n'est modifie): ancre inconnue, cle en double, ancre vers un ajout plus tard dans le tableau, phrase vide, LaTeX invalide, 20 ajouts ou 6000 caracteres depasses, seuil de 40 mots. Le serveur attribue les identifiants `p<page>-s<n>` (plus grand numero de la page + 1, retraits compris); aucun identifiant existant ne change. Eleve seulement."
+    ReviseRequest:
+      type: object
+      description: "Modification d'un cours confirme (v1.11, M1 #90). 20 changements au plus au total (`corrections` + `removed` + `added`, limite controlee par le serveur). Memes regles que la relecture: `corrections` (id + texte), `removed`, `added` (`AddedSentence`, ancre = une phrase du cours ou une cle d'ajout plus haut). Refuse: retirer la premiere phrase d'une section ou toutes ses phrases, descendre sous 40 mots."
+      properties:
+        corrections: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/Sentence' } }
+        removed: { type: array, maxItems: 20, items: { type: string, pattern: '^p[0-9]+-s[0-9]+$' } }
+        added: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/AddedSentence' } }
+    RevisionFiche:
+      type: object
+      required: [docId, etat]
+      properties:
+        docId: { type: string }
+        etat: { type: string, enum: [en_cours, terminee, echec] }
+        numerosRestants: { type: integer, minimum: 0, maximum: 99, description: "Numeros libres de la fiche avant `fiche_trop_revisee` (99 moins le plus grand numero pris). Un avertissement s'affiche sous 20; une modification en reserve 20." }
+    Revision:
+      type: object
+      required: [revisionId, coursId, etat, fiches, createdAt]
+      description: "Etat d'une modification. Aucun champ ne porte de texte du cours."
+      properties:
+        revisionId: { type: string }
+        coursId: { type: string }
+        etat: { type: string, enum: [en_cours, terminee, echec] }
+        etape: { type: string, enum: [preparation, verification, generation, validation] }
+        fiches: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/RevisionFiche' } }
+        message: { type: string, maxLength: 200, description: "Message constant, jamais un texte du cours" }
+        createdAt: { type: string, format: date-time }
     AddedSentence:
       type: object
       required: [key, afterId, text]
@@ -2027,6 +2122,7 @@ components:
         correct: { type: boolean }
         correctAnswer: { type: string, description: Revele seulement apres la reponse }
         xpGained: { type: integer, minimum: 0 }
+        retired: { type: boolean, description: "v1.11: la question a ete retiree par une correction du cours pendant que la session etait ouverte; elle est corrigee normalement, sans point. Ecrit par la partie 2 de M1 #90." }
         capped: { type: boolean, description: "Vrai si la reponse aurait rapporte des points mais la fiche a atteint 50 XP (v1.7); `xpGained` vaut alors 0 pour cette part" }
         badges: { type: array, items: { type: string } }
         progress: { $ref: '#/components/schemas/Progress' }
@@ -2229,6 +2325,7 @@ components:
                       prompt: { type: string, maxLength: 1000, description: "Relu dans la fiche (absent si la question n'existe plus)" }
                       choices: { type: array, items: { type: string, maxLength: 300 } }
                       correctAnswer: { type: string, description: Present seulement si la question est terminee }
+                      retired: { type: boolean, description: "v1.11: question retiree apres une correction du cours (le prompt reste lisible). Ecrit par la partie 2 de M1 #90." }
     TestPage:
       type: object
       required: [items]

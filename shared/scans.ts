@@ -373,3 +373,21 @@ export function machineTimeoutNeededS(o: { uploadS: number; transcribeS: number;
 }
 /** Plancher du delai de la machine (16 h): 12 h de confirmation, 20 min d'envoi, lecture et 6 sections, avec de la marge. */
 export const MACHINE_TIMEOUT_MIN_S = 16 * 3600;
+
+// --- M1 #90 (docs/M1-design.md 3 et 6, defauts P9 a P14): limites d'une modification de cours.
+export const REVISION_MAX_CHANGES = 20;
+export const REVISION_MAX_DOCS = 3;
+export const REVISION_PER_COURS_PER_DAY = 1;
+export const REVISION_PER_STUDENT_PER_DAY = 2;
+/** Cout reserve a la creation (= plafond d'une modification, 0,10 EUR) puis regle au cout reel, en micro-euros. */
+export const REVISION_RESERVE_MICROS = 100_000;
+export const REVISION_MONTH_STUDENT_MICROS = 500_000;
+export const REVISION_MONTH_FAMILY_MICROS = 1_500_000;
+/** Capacite d'une fiche: numeros a deux chiffres, jamais reutilises. Une modification reserve ces numeros a la creation. */
+export const REVISION_MAX_NN = 99;
+export const REVISION_NEW_CLAIMS = 20;
+export const REVISION_NEW_QUESTIONS = 10;
+export const REVISION_BANK_MAX = 40;
+export const REVISION_CLAIMS_RETIRED_MAX = 200;
+/** Delai de la copie de travail et du job (secondes): 7 jours. */
+export const REVISION_TTL_S = 7 * 86_400;

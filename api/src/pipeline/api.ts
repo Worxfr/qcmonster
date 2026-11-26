@@ -2,7 +2,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import { ConfirmRequestSchema, ScanCreateRequestSchema } from '../../../shared/contract/generated/schemas.js';
 import { costGateFor } from '../../../shared/cost.js';
-import { keys, monthParis } from '../../../shared/ddb/keys.js';
+import { keys, monthParis, sha256 } from '../../../shared/ddb/keys.js';
 import { cleanLabel, cleanTopic, MAX_COURS_BLOCKS, MAX_COURS_FIGURES, MAX_COURS_SECTIONS, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
 import { deleteCoursTree } from '../../../shared/delete-tree.js';
 import { CoursBlocksItemSchema, CoursItemSchema, CoursTextItemSchema } from '../../../shared/items.js';
@@ -156,7 +156,7 @@ async function ownJob(ctx: Ctx, event: APIGatewayProxyEventV2): Promise<{ sid: s
   const sid = requireStudent(caller);
   const jobId = pathId(event, 'jobId');
   const job = await ctx.db.get(jobKey(sid, jobId));
-  if (!job) return fail('introuvable', 'Introuvable');
+  if (!job || job.kind === 'revision') return fail('introuvable', 'Introuvable'); // M1 #90: une modification de cours n'est jamais un scan (confirmation, annulation, lecture)
   return { sid, jobId, job };
 }
 
@@ -296,8 +296,19 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     const newBlocks = (jobBlocks ?? []).filter((b) => (b.kind === 'figure' ? choice.get(b.figureId ?? '')?.keep === true : (b.sentenceIds ?? []).some((id) => !removed.has(id)))).length;
     if (oldBlocks + newBlocks > MAX_COURS_BLOCKS) return fail('requete_invalide', 'Ce cours a atteint la limite de mise en forme : scanne ces pages comme un nouveau cours.');
   }
-  // Ajout de pages: de ce point, la restauration complete (cours, textes, figures) est due si la confirmation n'aboutit pas.
-  if (base && !(await ctx.db.update(jobKey(sid, jobId), { set: { confirmStartedAt: iso(ctx) }, cond: { exists: true, eq: { state: 'a_confirmer' } } }))) return fail('etat_invalide', "Le job n'est plus à confirmer");
+  // Reclamation de la confirmation AVANT toute ecriture du cours (dette de #89, revue de la PR #101 m2): deux requetes DIFFERENTES (deux onglets) ne se melangent plus.
+  // Le premier qui pose `confirmFp` (empreinte de la requete) gagne; une autre requete recoit 409 sans rien ecrire. La MEME requete rejouee apres une panne reprend (memes
+  // identifiants de fiches: `confirmDocIds`). Pour un ajout de pages, `confirmStartedAt` garde son role (restauration complete due des ce point).
+  const fp = sha256(JSON.stringify(req));
+  if (typeof job.confirmFp === 'string' && job.confirmFp !== fp) return fail('etat_invalide', 'Une autre confirmation est en cours pour ce scan');
+  const planned = job.confirmFp === fp && Array.isArray(job.confirmDocIds) ? (job.confirmDocIds as string[]) : [];
+  let rank = 0;
+  const plannedDocIds = chosen.flatMap((c) => (c.ignore ? [] : [planned[rank++] ?? ctx.newId()]));
+  const claimed = await ctx.db.update(jobKey(sid, jobId), {
+    set: { confirmStartedAt: (job.confirmStartedAt as string | undefined) ?? iso(ctx), confirmFp: fp, confirmDocIds: plannedDocIds },
+    cond: { exists: true, eq: { state: 'a_confirmer', ...(job.confirmFp === undefined ? {} : { confirmFp: fp }) }, ...(job.confirmFp === undefined ? { absent: ['confirmFp'] } : {}) },
+  });
+  if (!claimed) return fail('etat_invalide', "Le job n'est plus à confirmer");
   // (a) identifiants: un docId par section non ignoree; le cours porte l'identifiant du job (deterministe: une relance ne laisse pas d'orphelin).
   // Ajout de pages (F10): le cours est celui du job (`appendTo`), ses identifiants de blocs et de figures continuent ceux du cours (P15).
   const coursId = base ? (job.appendTo as string) : jobId;
@@ -319,7 +330,8 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     else await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)).catch(() => undefined);
     return fail('indisponible', 'Service momentanément indisponible, réessaie');
   }
-  const sections = chosen.map((c) => ({ ...c, ...(c.ignore ? {} : { docId: ctx.newId() }) }));
+  let docRank = 0;
+  const sections = chosen.map((c) => ({ ...c, ...(c.ignore ? {} : { docId: plannedDocIds[docRank++] }) }));
   const docIds = sections.flatMap((s) => (s.docId ? [s.docId] : []));
   // (b) cours durable (sans TTL), corrections appliquees, section ignoree conservee. Une ecriture identique rejouee est sans effet.
   const createdAt = iso(ctx);
@@ -391,7 +403,7 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
 export async function jobsCancel(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const { sid, jobId, job } = await ownJob(ctx, event);
   if (job.state !== 'en_attente_envoi' && job.state !== 'a_confirmer') return fail('etat_invalide', 'Ce traitement ne peut plus être annulé');
-  if (job.confirmStartedAt !== undefined) return fail('etat_invalide', 'La confirmation est en cours, réessaie dans un instant'); // ajout: la restauration complete releve de l'expiration
+  if (job.appendTo !== undefined && job.confirmStartedAt !== undefined) return fail('etat_invalide', 'La confirmation est en cours, réessaie dans un instant'); // ajout: la restauration complete releve de l'expiration
   const won = await endWithoutDoc(ctx, sid, jobId, ['en_attente_envoi', 'a_confirmer'], 'rejete', MESSAGES.cancelled);
   if (!won) return fail('etat_invalide', 'Ce traitement ne peut plus être annulé');
   const after = await loadJob(ctx, sid, jobId);

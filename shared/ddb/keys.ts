@@ -68,6 +68,15 @@ export const keys = {
   copieOuv: (sid: string): Key => ({ PK: `STUDENT#${sid}`, SK: 'COPIEOUV' }),
   /** Verrou: la correction en cours de l'eleve (une seule). */
   copieActive: (sid: string): Key => ({ PK: `STUDENT#${sid}`, SK: 'COPIEACTIVE' }),
+  // --- M1 #90 (docs/M1-design.md 4 et 6): modification d'un cours confirme. Aucune table ni index nouveau.
+  /** Compteurs du jour de l'eleve: `n` (modifications) et `c_<coursId>` (par cours). `ttl` 2 jours. Ecrit par `revise-create` seul. */
+  revDay: (sid: string, day: string): Key => ({ PK: `STUDENT#${sid}`, SK: `REVJ#${day}` }),
+  /** Cout du mois (micro-euros, reserve puis cout reel), par eleve. `ttl` 40 jours. */
+  revMonth: (sid: string, month: string): Key => ({ PK: `STUDENT#${sid}`, SK: `REVM#${month}` }),
+  /** Cout du mois (micro-euros), par famille. `ttl` 40 jours. */
+  revFamily: (fid: string, month: string): Key => ({ PK: `FAMILY#${fid}`, SK: `REVQ#${month}` }),
+  /** Requete d'une modification, sous le job (`JOB#<revisionId>`): `ttl` 7 jours, supprimee a la fin. */
+  revChanges: (revisionId: string): Key => ({ PK: `JOB#${revisionId}`, SK: 'CHANGES' }),
   /** Jeton d'activation en clair; seul son hache est stocke. */
   activation: (token: string): Key => ({ PK: `ACTIVATION#${sha256(token)}`, SK: 'META' }),
 };

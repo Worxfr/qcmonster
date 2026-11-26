@@ -124,7 +124,11 @@ export async function deleteStudentTree(db: TreeDb, familyId: string, sid: strin
       docIds.add(k.SK.slice(4));
       n += await deleteDocTree(db, sid, k.SK.slice(4), { garderTests: true }); // les TEST# partent tous ensemble plus bas: aucun mutateTest
     }
-    if (k.SK.startsWith('JOB#')) n += await removeAll(db, await db.list(`JOB#${k.SK.slice(4)}`)); // TEXT#
+    if (k.SK.startsWith('JOB#')) {
+      n += await removeAll(db, await db.list(`JOB#${k.SK.slice(4)}`)); // TEXT#, CHANGES
+      // M1 #90: une modification de cours ouverte a des fiches de travail `DOC#<revisionId>-<k>` (sans en-tete: aucun `DOC#` de l'eleve ne les montre); le job les liste dans `docIds`.
+      for (const d of k.docIds ?? []) if (d.startsWith(`${k.SK.slice(4)}-`)) n += await removeAll(db, await db.list(`DOC#${d}`));
+    }
   }
   n += await removeAll(db, (await db.list(`STUDENT#${sid}`)).filter((k) => !k.SK.startsWith('DOC#')));
   // Signalements de l'eleve (commentaire libre): ceux qui portent son `studentId`, ou, pour les anciens sans `studentId`, ceux d'une de ses fiches.

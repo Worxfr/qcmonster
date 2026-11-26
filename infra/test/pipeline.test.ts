@@ -44,7 +44,7 @@ describe('Pipeline (L2a)', () => {
       it('seul le role de traitement peut appeler Bedrock, et il est dans processingRoleNames', () => {
         expect(processingRoleNames(env)).toContain(`qcm-${env}-pipeline-role`);
         const roles = Object.values(t.findResources('AWS::IAM::Role')).map((r) => (r as { Properties: { RoleName?: string } }).Properties.RoleName).filter(Boolean); // la machine d'etats a son role genere (sans Bedrock)
-        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-scans-delete', 'api-confirm', 'api-list', 'api-export', 'export'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
+        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-scans-delete', 'api-confirm', 'api-list', 'api-export', 'export'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`, `qcm-${env}-revise-start-role`, `qcm-${env}-revise-role`]).sort());
         const bedrock = (re: RegExp) => actions(statements(t, re)).filter((a) => a.startsWith('bedrock:'));
         expect(bedrock(/pipelineapi/i)).toEqual([]);
         expect(bedrock(/pipelinetriggerrole/i)).toEqual([]);

@@ -9,6 +9,7 @@ import { ID_RE, iso, type Ctx } from '../pipeline/ctx.js';
 import { bodyOf, callerOf, fail, json, noContent, pathId, requireStudent, type Caller } from '../pipeline/http.js';
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { claimStatus } from '../pipeline/steps-doc.js';
+import { ficheLockedByRevision } from '../revise/lock.js';
 import { figuresOfSection, loadCoursBlocks, sectionRank, sentenceOrder, signFigures } from '../cours/view.js';
 import { ALLOWED_HOSTS } from '../verify/fetch.js';
 
@@ -109,6 +110,8 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
 export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const c = await callerOf(ctx, event);
   const { sid, doc } = await findDoc(ctx, c, pathId(event, 'docId'));
+  // M1 #90: une fiche touchee par une modification ouverte de son cours n'est pas supprimee (409, aucune ecriture); les autres fiches du cours restent supprimables.
+  if (await ficheLockedByRevision(ctx, sid, doc)) return fail('etat_invalide', 'Une modification est en cours');
   const n = await deleteDocTree(treeDbFrom(ctx.db), sid, pathId(event, 'docId'), { deleteFiles: (ks) => ctx.s3.deleteKeys(ks) });
   if (n === 0) return fail('introuvable', 'Introuvable');
   // Le texte du cours (TEXT#, TTL 7 jours) part avec la fiche: une suppression demandee efface aussi la transcription.

@@ -35,7 +35,7 @@ const EXPECTED = [
   'GET /students/{sid}/tests/{testId}', 'POST /family/export/archive', 'POST /family/policy', 'POST /me/export/archive', 'GET /me/export/archive/{exportId}',
   // contract-v1.9 (E1)
   'GET /docs/{docId}/exercices', 'POST /docs/{docId}/exercices', 'GET /exercices/{exoId}', 'POST /exercices/{exoId}/indice', 'POST /exercices/{exoId}/solution',
-  'POST /exercices/{exoId}/copies', 'POST /copies/{copieId}/submit', 'GET /copies/{copieId}', 'DELETE /copies/{copieId}',
+  'POST /exercices/{exoId}/copies', 'POST /copies/{copieId}/submit', 'GET /copies/{copieId}', 'DELETE /copies/{copieId}', 'POST /cours/{coursId}/revisions', 'GET /cours/{coursId}/revisions/{revisionId}', 'POST /cours/{coursId}/revisions/{revisionId}/cancel',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -96,7 +96,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.10.0');
+    expect(spec.info.version).toBe('1.11.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);

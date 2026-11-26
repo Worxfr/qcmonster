@@ -30,6 +30,7 @@ export function transition(ctx: Ctx, sid: string, jobId: string, from: JobState[
  */
 export async function endWithoutDoc(ctx: Ctx, sid: string, jobId: string, from: JobState[], to: 'rejete' | 'echec' | 'expire', message: string): Promise<boolean> {
   const cur = await ctx.db.get(jobKey(sid, jobId));
+  if (cur?.kind === 'revision') return false; // M1 #90: la fin d'une modification de cours est `rev-fail` (jamais un chemin de scan: quota, photos, cours supprime)
   const micros = (cur?.coutMicros as number | undefined) ?? 0;
   const job = await transition(ctx, sid, jobId, from, to, { message, finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros) });
   if (!job) return false;

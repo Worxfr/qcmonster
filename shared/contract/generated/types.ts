@@ -303,6 +303,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cours/{coursId}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Modifie le texte d'un cours confirme: corriger, retirer ou ajouter des phrases (handler revise-create, M1 #90, v1.11). Eleve seulement: le parent a 403.
+         * @description Une modification est un travail asynchrone sur une copie: rien n'est ecrit dans le cours ni dans les fiches avant la fin, un echec laisse tout intact. Une seule operation a la fois par cours (ajout de pages, modification, suppression). Les affirmations touchees sont retirees de la fiche (jamais effacees) et remplacees; les points deja gagnes restent comptes dans les 50 points de la fiche. Limites: 20 changements, 3 fiches touchees, 1 modification par cours et par jour, 2 par eleve et par jour, 0,10 EUR par modification, 0,50 EUR par mois et par eleve, 1,50 EUR par famille. Refus 400 `requete_invalide` (rien n'est modifie, message constant): phrase inconnue, premiere phrase d'une section, section vide, moins de 40 mots, LaTeX invalide, trop de changements ou de fiches. Un cours sans fiche touchee (sections ignorees) est modifie tout de suite: 200 `Revision` `terminee`. La route repond 404 tant qu'elle n'est pas activee sur l'environnement.
+         */
+        post: operations["createRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cours/{coursId}/revisions/{revisionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Etat d'une modification (handler revise-get). Jamais de texte du cours. */
+        get: operations["getRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cours/{coursId}/revisions/{revisionId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Annule une modification avant le debut de sa validation (handler revise-cancel). Rien n'a ete ecrit dans le cours. */
+        post: operations["cancelRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/practice/session": {
         parameters: {
             query?: never;
@@ -892,10 +946,10 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description M1 #90 (1.11.0): `fiche_trop_revisee` (409): la fiche a epuise ses numeros de questions ou d'affirmations, la supprimer et rescanner; `plafond_revisions` (429): 1 modification par cours et par jour, 2 par eleve et par jour, ou plafond mensuel de cout atteint (0,50 EUR par eleve, 1,50 EUR par famille). E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris" | "matiere_non_prevue" | "plafond_exercices" | "fiche_trop_courte" | "pas_encore" | "trop_tot" | "deja_en_cours" | "quota_copies" | "plafond_copies" | "copie_deja_rendue" | "solution_vue" | "en_correction";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris" | "matiere_non_prevue" | "plafond_exercices" | "fiche_trop_courte" | "pas_encore" | "trop_tot" | "deja_en_cours" | "quota_copies" | "plafond_copies" | "copie_deja_rendue" | "solution_vue" | "en_correction" | "fiche_trop_revisee" | "plafond_revisions";
             message: string;
             /**
              * Format: date
@@ -1042,6 +1096,12 @@ export interface components {
             blocks?: components["schemas"]["Block"][];
             /** @description Facultatif (v1.5): figures conservees, avec `url` pre-signee de 5 minutes (eleve seulement). Supprimees avec le cours. */
             figures?: components["schemas"]["Figure"][];
+            /** @description Facultatif (v1.11): present tant qu'une modification du cours est ouverte (un autre appareil de l'eleve voit la banniere). */
+            revision?: {
+                revisionId: string;
+                /** @enum {string} */
+                etat: "en_cours";
+            };
             /** @description Facultatif (v1.5): resultat de la verification des sources, phrase par phrase, calcule a la lecture depuis les fiches liees (vide tant que la verification n'est pas finie; les fiches supprimees n'y figurent plus). */
             marks?: components["schemas"]["SentenceMark"][];
         };
@@ -1255,6 +1315,33 @@ export interface components {
             removed?: string[];
             /** @description Facultatif (v1.10, M1 #89): phrases oubliees ajoutees par l'eleve, apres une phrase donnee ou tout au debut. 20 au plus et 6000 caracteres au total (limite dite ici, controlee par le serveur). Chaque phrase ajoutee est extraite et verifiee dans les sources COMME UNE PHRASE LUE, sans traitement de faveur: si aucune source ne la confirme elle reste non verifiable et ne donne aucune question. Le texte est une entree de l'eleve: il est controle (LaTeX) et jamais interprete comme une consigne. Refus 400 `requete_invalide` (rien n'est modifie): ancre inconnue, cle en double, ancre vers un ajout plus tard dans le tableau, phrase vide, LaTeX invalide, 20 ajouts ou 6000 caracteres depasses, seuil de 40 mots. Le serveur attribue les identifiants `p<page>-s<n>` (plus grand numero de la page + 1, retraits compris); aucun identifiant existant ne change. Eleve seulement. */
             added?: components["schemas"]["AddedSentence"][];
+        };
+        /** @description Modification d'un cours confirme (v1.11, M1 #90). 20 changements au plus au total (`corrections` + `removed` + `added`, limite controlee par le serveur). Memes regles que la relecture: `corrections` (id + texte), `removed`, `added` (`AddedSentence`, ancre = une phrase du cours ou une cle d'ajout plus haut). Refuse: retirer la premiere phrase d'une section ou toutes ses phrases, descendre sous 40 mots. */
+        ReviseRequest: {
+            corrections?: components["schemas"]["Sentence"][];
+            removed?: string[];
+            added?: components["schemas"]["AddedSentence"][];
+        };
+        RevisionFiche: {
+            docId: string;
+            /** @enum {string} */
+            etat: "en_cours" | "terminee" | "echec";
+            /** @description Numeros libres de la fiche avant `fiche_trop_revisee` (99 moins le plus grand numero pris). Un avertissement s'affiche sous 20; une modification en reserve 20. */
+            numerosRestants?: number;
+        };
+        /** @description Etat d'une modification. Aucun champ ne porte de texte du cours. */
+        Revision: {
+            revisionId: string;
+            coursId: string;
+            /** @enum {string} */
+            etat: "en_cours" | "terminee" | "echec";
+            /** @enum {string} */
+            etape?: "preparation" | "verification" | "generation" | "validation";
+            fiches: components["schemas"]["RevisionFiche"][];
+            /** @description Message constant, jamais un texte du cours */
+            message?: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         AddedSentence: {
             /** @description Cle temporaire choisie par le client (n1, n2...), unique dans la requete; sert d'ancre a un autre ajout et de `fromSentenceId` d'une section. */
@@ -1532,6 +1619,8 @@ export interface components {
             /** @description Revele seulement apres la reponse */
             correctAnswer?: string;
             xpGained: number;
+            /** @description v1.11: la question a ete retiree par une correction du cours pendant que la session etait ouverte; elle est corrigee normalement, sans point. Ecrit par la partie 2 de M1 #90. */
+            retired?: boolean;
             /** @description Vrai si la reponse aurait rapporte des points mais la fiche a atteint 50 XP (v1.7); `xpGained` vaut alors 0 pour cette part */
             capped?: boolean;
             badges: string[];
@@ -1740,6 +1829,8 @@ export interface components {
                 choices?: string[];
                 /** @description Present seulement si la question est terminee */
                 correctAnswer?: string;
+                /** @description v1.11: question retiree apres une correction du cours (le prompt reste lisible). Ecrit par la partie 2 de M1 #90. */
+                retired?: boolean;
             })[];
         };
         TestPage: {
@@ -1967,6 +2058,7 @@ export interface components {
         JobId: string;
         DocId: string;
         CoursId: string;
+        RevisionId: string;
         FolderId: string;
         ExoId: string;
         CopieId: string;
@@ -3162,6 +3254,178 @@ export interface operations {
                      * @example {
                      *       "code": "etat_invalide",
                      *       "message": "Un ajout est en cours"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                coursId: components["parameters"]["CoursId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseRequest"];
+            };
+        };
+        responses: {
+            /** @description Aucune fiche touchee: modification faite */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "revisionId": "01JEXAMPLE0REV0000000000AB",
+                     *       "coursId": "01JEXAMPLE0CRS0000000000AA",
+                     *       "etat": "terminee",
+                     *       "fiches": [],
+                     *       "message": "Modification terminée",
+                     *       "createdAt": "2026-12-01T10:05:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Revision"];
+                };
+            };
+            /** @description Modification lancee; l'ecran interroge `GET /cours/{coursId}/revisions/{revisionId}` */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "revisionId": "01JEXAMPLE0REV0000000000AA",
+                     *       "coursId": "01JEXAMPLE0CRS0000000000AA",
+                     *       "etat": "en_cours",
+                     *       "etape": "preparation",
+                     *       "fiches": [
+                     *         {
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "etat": "en_cours"
+                     *         }
+                     *       ],
+                     *       "createdAt": "2026-12-01T10:05:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Revision"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `etat_invalide` (autre operation en cours sur le cours, fiche en generation ou en echec) ou `fiche_trop_revisee` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fiche_trop_revisee",
+                     *       "message": "Cette fiche a ete trop retouchee : supprime-la et rescanne"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `plafond_revisions` ou `budget_epuise` */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "plafond_revisions",
+                     *       "message": "Trop de modifications pour le moment"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                coursId: components["parameters"]["CoursId"];
+                revisionId: components["parameters"]["RevisionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Etat */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "revisionId": "01JEXAMPLE0REV0000000000AA",
+                     *       "coursId": "01JEXAMPLE0CRS0000000000AA",
+                     *       "etat": "en_cours",
+                     *       "etape": "verification",
+                     *       "fiches": [
+                     *         {
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "etat": "en_cours",
+                     *           "numerosRestants": 70
+                     *         }
+                     *       ],
+                     *       "createdAt": "2026-12-01T10:05:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Revision"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    cancelRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                coursId: components["parameters"]["CoursId"];
+                revisionId: components["parameters"]["RevisionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Annulee */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `etat_invalide`: la validation a commence ou la modification est finie */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "etat_invalide",
+                     *       "message": "Cette modification ne peut plus etre annulee"
                      *     }
                      */
                     "application/json": components["schemas"]["Error"];

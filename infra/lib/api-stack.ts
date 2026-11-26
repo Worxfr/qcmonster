@@ -107,10 +107,14 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'POST /copies/{copieId}/submit', handler: 'copies-submit', owner: 'game', throttle: { rate: 1, burst: 3 } },
   { route: 'GET /copies/{copieId}', handler: 'copie-get', owner: 'game', throttle: { rate: 5, burst: 10 } },
   { route: 'DELETE /copies/{copieId}', handler: 'copie-delete', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  // contract-v1.11 (M1 #90): modifier un cours confirme. `revise-create` est derriere l'interrupteur `REVISE_ENABLED` (desactive par defaut).
+  { route: 'POST /cours/{coursId}/revisions', handler: 'revise-create', owner: 'pipeline', throttle: { rate: 1, burst: 2 } },
+  { route: 'GET /cours/{coursId}/revisions/{revisionId}', handler: 'revise-get', owner: 'pipeline', throttle: { rate: 5, burst: 10 } },
+  { route: 'POST /cours/{coursId}/revisions/{revisionId}/cancel', handler: 'revise-cancel', owner: 'pipeline', throttle: { rate: 1, burst: 3 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
-export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1'> = {
+export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1' | 'M1'> = {
   'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'practice-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3', 'students-login-id-post': 'L3',
@@ -118,6 +122,7 @@ export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1'
   'scans-list': 'FEAT-A', 'scans-delete': 'FEAT-A', 'docs-patch': 'FEAT-A', 'folders-api': 'FEAT-A', 'cours-api': 'FEAT-A', 'cours-delete': 'FEAT-A',
   'tests-read': 'L3', 'family-progress': 'L3', 'family-export-archive': 'L3', 'me-export-archive': 'R1-A',
   'exo-list': 'E1', 'exo-post': 'E1', 'exo-get': 'E1', 'exo-hint-post': 'E1', 'exo-solution-post': 'E1', 'copies-create': 'E1', 'copies-submit': 'E1', 'copie-get': 'E1', 'copie-delete': 'E1',
+  'revise-create': 'M1', 'revise-get': 'M1', 'revise-cancel': 'M1',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */

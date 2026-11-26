@@ -275,6 +275,7 @@ export async function awaitConfirm(ctx: Ctx, i: WfInput & { token: string }): Pr
 
 /** Delai depasse (envoi ou confirmation): etat `expire`, photo supprimee, quota rendu. */
 export async function expire(ctx: Ctx, i: WfInput & { phase: 'upload' | 'confirm' }): Promise<void> {
+  if ((await ctx.db.get(jobKey(i.sid, i.jobId)))?.kind === 'revision') return; // M1 #90: pas un scan
   await endWithoutDoc(ctx, i.sid, i.jobId, ['en_attente_envoi', 'a_confirmer'], 'expire', i.phase === 'upload' ? MSG.expiredUpload : MSG.expiredConfirm);
 }
 
@@ -284,6 +285,7 @@ export async function expire(ctx: Ctx, i: WfInput & { phase: 'upload' | 'confirm
  * copie de travail `TEXT#`). Idempotent. Un echec supprime tout, sans cas particulier: le texte corrige est perdu avec la photo, l'eleve rescanne.
  */
 export async function purgeScan(ctx: Ctx, sid: string, jobId: string, job: Item): Promise<void> {
+  if (job.kind === 'revision') return; // M1 #90: jamais le cours ni les fiches d'une modification (fin = `rev-fail`)
   // Ajout de pages (F10): le cours existait avant ce job. On le restaure depuis la base ecrite a la creation, on ne le supprime JAMAIS.
   if (job.appendTo) return restoreAfterFailedAppend(ctx, sid, job);
   const ids = new Set<string>();
@@ -306,7 +308,7 @@ export async function purgeScan(ctx: Ctx, sid: string, jobId: string, job: Item)
 /** Toute erreur d'etape: etat `echec`, quota rendu s'il est encore reserve, photos, fiches et cours supprimes. */
 export async function failJob(ctx: Ctx, i: WfInput & { error?: { Error?: string } }): Promise<void> {
   const job = await ctx.db.get(jobKey(i.sid, i.jobId));
-  if (!job) return;
+  if (!job || job.kind === 'revision') return; // M1 #90: une modification de cours se termine par `rev-fail`, jamais par ce filet de scan
   if (isTerminal(job.state)) {
     // Fin deja decidee: on repare seulement un nettoyage interrompu (quota encore reserve, photos et cours restants).
     if (job.state !== 'termine') {

@@ -76,6 +76,14 @@ export const jobCapEur = (pages: number): number => {
   return Math.max(JOB_COST_CAP_EUR, Math.round(JOB_COST_CAP_PER_PAGE_EUR * n * 100) / 100);
 };
 
+/** M1 #90: plafond de cout d'UNE modification de cours (euros), a la place de `jobCapEur` pour un job `kind: revision`. */
+export const REVISION_COST_CAP_EUR = 0.1;
+/** Machine d'etats `revise` (une execution par modification, nommee par `revisionId`) et fonctions de la modification. */
+export const reviseStateMachineName = (env: Env) => `qcm-${env}-revise`;
+/** Roles: `revise-start` (routes, sans Bedrock) et `revise` (etapes de validation, sans Bedrock ni S3). */
+export const reviseStartRoleName = (env: Env) => `qcm-${env}-revise-start-role`;
+export const reviseRoleName = (env: Env) => `qcm-${env}-revise-role`;
+
 /** Role d'evaluation: seul a lire le coffre du jeu cache (cree par la stack Data). */
 export const evalRoleName = (env: Env) => `qcm-${env}-eval-role`;
 

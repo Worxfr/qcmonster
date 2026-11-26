@@ -76,7 +76,7 @@ export async function scansList(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   for (const sid of sids) {
     // `Db.query` pagine jusqu'au bout (LastEvaluatedKey): pas de liste tronquee a 1 Mo.
     const [j, d, f] = await Promise.all([ctx.db.query(`STUDENT#${sid}`, 'JOB#'), ctx.db.query(`STUDENT#${sid}`, 'DOC#'), ctx.db.query(`STUDENT#${sid}`, 'FOLDER#')]);
-    jobs.push(...j.map((x) => pick(x, JOB_FIELDS)));
+    jobs.push(...j.filter((x) => x.kind !== 'revision').map((x) => pick(x, JOB_FIELDS))); // M1 #90: une modification de cours n'est pas un scan
     docs.push(...d.map((x) => pick(x, DOC_FIELDS)));
     folders.push(...f.map((x) => ({ studentId: sid, folderId: x.SK.slice('FOLDER#'.length) })));
   }
