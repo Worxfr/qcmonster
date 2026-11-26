@@ -75,6 +75,7 @@ export async function submitCopie(deps: Deps, ctx: StudentCtx, copieId: string, 
     if (c.etat === 'en_correction') return { etat: 'en_correction' }; // double clic: la meme execution (nommee par copieId)
     if (c.etat !== 'a_envoyer') throw conflict('Cette copie ne peut plus être envoyée');
     const ref = `${String(c.docId)}-${String(num(c.exoNn)).padStart(2, '0')}`;
+    if ((await deps.store.get(keys.exo(String(c.docId), num(c.exoNn))))?.retiree === true) throw err409('etat_invalide', 'Cet exercice a été retiré après une correction du cours, ta copie ne peut plus être envoyée');
     const { p, exo } = await loadExo(deps, ctx, ref);
     if (!exo) throw err409('etat_invalide', "Cet exercice n'est pas prêt");
     const nowD = deps.now();

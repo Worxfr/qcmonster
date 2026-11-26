@@ -1,6 +1,7 @@
 // Famille: creation paresseuse (POST /family), export et suppression complete.
 import { deleteFamilyTree } from '../../../shared/delete-tree.js';
 import { keys, sha256 } from '../../../shared/ddb/keys.js';
+import { retiredClaims } from '../../../shared/items.js';
 import { quotaDefaults } from '../../../shared/names.js';
 import { POLICY_VERSION } from '../../../shared/policy.js';
 import { coursMeta } from '../cours/meta.js';
@@ -109,8 +110,9 @@ export async function exportFamily(deps: Deps, ctx: ParentCtx, opts: ExportOptio
     const docId = d.SK.slice('DOC#'.length);
     const part = await deps.store.query(`DOC#${docId}`);
     const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
+    const gone = retiredClaims(d);
     const claims = part
-      .filter((x) => x.SK.startsWith('CLAIM#'))
+      .filter((x) => x.SK.startsWith('CLAIM#') && !gone.has(Number(x.SK.slice('CLAIM#'.length))))
       .map((cl) => {
         const nn = cl.SK.slice('CLAIM#'.length);
         const v = verdicts.get(nn);
@@ -119,7 +121,7 @@ export async function exportFamily(deps: Deps, ctx: ParentCtx, opts: ExportOptio
       })
       .sort((a, b) => a.claimId.localeCompare(b.claimId));
     const questions = part
-      .filter((x) => x.SK.startsWith('QCM#') || x.SK.startsWith('GAP#'))
+      .filter((x) => (x.SK.startsWith('QCM#') || x.SK.startsWith('GAP#')) && x.retiree !== true) // M1 #90: les questions retirees ne sortent pas dans l'export
       .map((q) =>
         opts.questionText === false
           ? { questionId: String(q.questionId), kind: q.SK.startsWith('QCM#') ? 'qcm' : 'gap' }

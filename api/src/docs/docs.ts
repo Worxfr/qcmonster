@@ -2,7 +2,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import { DocUpdateRequestSchema, ReportRequestSchema } from '../../../shared/contract/generated/schemas.js';
 import { deleteDocTree } from '../../../shared/delete-tree.js';
-import { VerdictItemSchema, SignalementItemSchema } from '../../../shared/items.js';
+import { VerdictItemSchema, SignalementItemSchema, retiredClaims } from '../../../shared/items.js';
 import { keys } from '../../../shared/ddb/keys.js';
 import { cleanTopic } from '../../../shared/scans.js';
 import { ID_RE, iso, type Ctx } from '../pipeline/ctx.js';
@@ -66,8 +66,9 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const { sid, doc } = await findDoc(ctx, c, pathId(event, 'docId'));
   const part = await ctx.db.query(`DOC#${docId}`);
   const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
+  const retiredNn = retiredClaims(doc);
   const claims = part
-    .filter((x) => x.SK.startsWith('CLAIM#'))
+    .filter((x) => x.SK.startsWith('CLAIM#') && !retiredNn.has(Number(x.SK.slice('CLAIM#'.length))))
     .map((cl) => {
       const nn = cl.SK.slice('CLAIM#'.length);
       const v = verdicts.get(nn);

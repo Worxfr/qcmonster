@@ -137,6 +137,7 @@ export function QuizRun({ initial, reopen, multi, back, notice }: { initial: Dra
         <div ref={feedbackRef} role="status" className={result.correct ? 'feedback ok' : 'feedback ko'}>
           <p><strong>{result.correct ? '✓ Bravo !' : '✗ Pas tout à fait.'}</strong> {result.xpGained > 0 && `+${result.xpGained} XP`}</p>
           {!result.correct && result.correctAnswer && <p>La bonne réponse : <strong>{result.correctAnswer}</strong></p>}
+          {result.retired && <p className="notice">Cette question a été retirée après une correction du cours : elle ne rapporte pas de point.</p>}
           {result.capped && <p>Tu as gagné tous les points de cette fiche (50 sur 50). Tu peux continuer pour t'entraîner.</p>}
           {result.badges.map((b) => <p key={b}>🏅 Nouveau badge : {badgeLabel(b)}</p>)}
           <button className="btn" onClick={next}>{i + 1 < qs.length ? 'Suivant' : 'Terminer'}</button>

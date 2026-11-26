@@ -658,3 +658,48 @@ describe('E1: acces declares = acces reels (alimente le test d\'infra e1-access)
     expect(written.filter((sk) => sk === 'PROFILE' || sk.startsWith('TEST#') || sk.startsWith('DAY#') || sk.startsWith('WEEK#'))).toEqual([]);
   });
 });
+
+describe('M1 #90: un exercice retire par une modification du cours', () => {
+  it('n\'est plus liste ni jouable (404), ne compte plus dans les 5, et ses copies restent lisibles', async () => {
+    const w = await world();
+    const ref = await readyExo(w, 1);
+    const autre = await readyExo(w, 2);
+    await w.t.store.commit([{ item: { ...(await w.t.store.get(keys.exo('doc1', 1)))!, retiree: true }, when: 'any' }]);
+    expect((await listExo(w.t.deps, w.ctx, 'doc1')).items.map((x) => x.exoId)).toEqual([autre]);
+    await rejects(getExo(w.t.deps, w.ctx, ref), 404);
+    await rejects(nextHint(w.t.deps, w.ctx, ref), 404);
+    await rejects(showSolution(w.t.deps, w.ctx, ref), 404);
+    expect((await getExo(w.t.deps, w.ctx, autre)).exoId).toBe(autre);
+    expect((await w.t.store.get(keys.exop(SID, 'doc1', 1)))?.etat).toBe('prete'); // progression et points gardes
+  });
+  it('generation: une affirmation retiree n\'est jamais proposee au modele', async () => {
+    const w = await world();
+    const fiche = (await w.t.store.get(keys.doc(SID, 'doc1')))!;
+    await w.t.store.commit([{ item: { ...fiche, claimsRetired: [1, 2, 3, 4] }, when: 'any' }]);
+    await w.t.store.commit([{ item: { ...keys.exop(SID, 'doc1', 1), etat: 'generation', startedAt: w.t.clk.now().getTime(), docId: 'doc1', nn: 1 }, when: 'any' }]);
+    const m = fakeModel(() => '{}');
+    const r = await generateExo({ ...w.t.deps, port: m.port, costStore: m.costStore, models: ARNS, retryDelaysMs: [0, 0, 0] } as never, { sid: SID, fid: FID, docId: 'doc1', nn: 1 });
+    expect(r).toBe('echec'); // moins de 2 affirmations restantes
+    expect(m.calls).toHaveLength(0);
+  });
+  it('createExo: un exercice retire ne compte plus dans les 5 (le 6e est accepte)', async () => {
+    const w = await world();
+    for (let nn = 1; nn <= 5; nn++) await readyExo(w, nn);
+    await rejects(createExo(w.t.deps, w.ctx, 'doc1', w.invoker), 409, 'plafond_exercices');
+    await w.t.store.commit([{ item: { ...(await w.t.store.get(keys.exo('doc1', 2)))!, retiree: true }, when: 'any' }]);
+    expect((await createExo(w.t.deps, w.ctx, 'doc1', w.invoker)).etat).toBe('generation');
+  });
+  it('une copie a_envoyer d\'un exercice retire: 409 avec un message clair (pas un 404)', async () => {
+    const w = await world();
+    const ref = await readyExo(w, 1);
+    await getExo(w.t.deps, w.ctx, ref);
+    w.t.clk.advance(61_000);
+    const c = await createCopie(w.t.deps, w.ctx, ref, { pages: 1, contentType: 'image/jpeg' }, w.files);
+    w.files.objects.set(pageKey(SID, c.copieId, 1), new TextEncoder().encode('photo'));
+    await w.t.store.commit([{ item: { ...(await w.t.store.get(keys.exo('doc1', 1)))!, retiree: true }, when: 'any' }]);
+    const e = await submitCopie(w.t.deps, w.ctx, c.copieId, w.starter, w.files).then(() => undefined, (x: unknown) => x);
+    expect(e).toBeInstanceOf(HttpError);
+    expect((e as HttpError).status).toBe(409);
+    expect((e as HttpError).message).toMatch(/retiré après une correction du cours/);
+  });
+});

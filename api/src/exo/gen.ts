@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { CostBlockedError, JobBudgetExceededError } from '../../../shared/bedrock.js';
 import { toMicros } from '../../../shared/cost.js';
 import { keys } from '../../../shared/ddb/keys.js';
+import { retiredClaims } from '../../../shared/items.js';
 import { ExoDraftSchema, checkDraft, closeTo, norm, type ExoDraft } from '../../../shared/exo.js';
 import { EXO_GEN_COST_CAP_EUR } from '../../../shared/names.js';
 import { contentWords } from '../../../shared/pool.js';
@@ -54,7 +55,8 @@ export async function generateExo(deps: Deps & ModelDeps, input: GenInput): Prom
   const ref = `exo-${input.docId}-${input.nn}`;
   const caller = modelCaller(deps, ref, EXO_GEN_COST_CAP_EUR);
   try {
-    const verdicts = (await deps.store.query(`DOC#${input.docId}`, 'VERDICT#')).filter((v) => v.statut === 'verifiee');
+    const gone = retiredClaims(await deps.store.get(keys.doc(input.sid, input.docId))); // M1 #90: pas d'exercice sur une affirmation retiree
+    const verdicts = (await deps.store.query(`DOC#${input.docId}`, 'VERDICT#')).filter((v) => v.statut === 'verifiee' && !gone.has(Number(String(v.SK).slice('VERDICT#'.length))));
     const claims = (
       await Promise.all(verdicts.map(async (v) => {
         const nn = String(v.SK).slice('VERDICT#'.length);
