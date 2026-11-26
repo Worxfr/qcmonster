@@ -8,10 +8,16 @@ import { checkFormula, splitMath } from '../latex';
  * `throwOnError: true` + try/catch: en cas d'echec la formule est rendue comme TEXTE par React.
  * Pas de `style` en ligne: la politique de securite du site refuse `style-src 'unsafe-inline'` (d'ou `output: 'mathml'`).
  */
+// Chromium transforme une lettre seule d'un <mi> en « lettre mathematique italique » (µ -> U+1D707, text-transform: math-auto);
+// sans police mathematique l'appareil affiche alors un carre vide. On marque ces lettres (`mi-i`): style.css coupe la
+// transformation et leur donne la police KaTeX_Math (italique, servie en 'self'). Les <mi> de plusieurs lettres (sin) ne sont pas touches.
+const SINGLE_MI = /<mi>([^<>&])<\/mi>/gu;
+const marked = (html: string) => html.replace(SINGLE_MI, '<mi class="mi-i">$1</mi>');
+
 export function renderMathml(tex: string, display: boolean): string | null {
   if (checkFormula(tex)) return null;
   try {
-    return katex.renderToString(tex, { trust: false, throwOnError: true, maxSize: 10, maxExpand: 1000, strict: 'ignore', output: 'mathml', displayMode: display });
+    return marked(katex.renderToString(tex, { trust: false, throwOnError: true, maxSize: 10, maxExpand: 1000, strict: 'ignore', output: 'mathml', displayMode: display }));
   } catch {
     return null;
   }

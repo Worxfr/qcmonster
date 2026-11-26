@@ -112,11 +112,9 @@ export function Cours({ id }: { id: string }) {
             return (
               <span className={`cs${m ? ` mk-${m.status}` : ''}${ign ? ' ign' : ''}`}>
                 <Rich text={x.text} formula={block.kind === 'formule'} />
-                {m && (
-                  <a className={`mk mk-${m.status}`} href={`#/doc/${encodeURIComponent(m.docId)}/${encodeURIComponent(m.claimId)}`} aria-label={`${MARK[m.status].text} : voir l'affirmation dans la fiche`}>
+                {m && <>{'\u2060'}<a className={`mk mk-${m.status}`} href={`#/doc/${encodeURIComponent(m.docId)}/${encodeURIComponent(m.claimId)}`} aria-label={`${MARK[m.status].text} : voir l'affirmation dans la fiche`}>
                     <span aria-hidden="true">{MARK[m.status].icon}</span><span className="mk-t"> {MARK[m.status].text}</span>
-                  </a>
-                )}{' '}
+                  </a></>}{' '}
               </span>
             );
           }}

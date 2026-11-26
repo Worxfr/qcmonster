@@ -32,4 +32,13 @@ describe('KaTeX en MathML', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('math')).not.toBeNull();
   });
+  it('µ, π, Ω et x² sont marqués pour la police KaTeX (pas de carré vide)', () => {
+    const h = renderMathml('\\mu \\pi \\Omega x^2 y', false)!;
+    expect(h).toContain('<mi class="mi-i">μ</mi>');
+    expect(h).toContain('<mi class="mi-i">π</mi>');
+    expect(h).toContain('<mi class="mi-i">x</mi>');
+    expect(h).toContain('Ω');
+    expect(renderMathml('\\sin x', false)).toContain('<mi>sin</mi>'); // plusieurs lettres: inchangé
+    expect(h).not.toMatch(/style=/);
+  });
 });

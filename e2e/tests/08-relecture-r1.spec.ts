@@ -124,6 +124,10 @@ test.describe('Relecture en paragraphes (R1-C)', () => {
     await keep.check();
     await expect(page.getByLabel(/Description de l'image/)).toHaveValue(/Schéma d'une cellule/);
     await shot(page, '4-relecture-corrigee-pc');
+    if (SHOTS) {
+      await page.locator('.fig-review').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${SHOTS}/4b-relecture-pc-ecran.png` }); // un seul écran, la photo reste à côté du texte
+    }
 
     await page.getByLabel('Matière').first().selectOption('svt');
     await page.getByRole('button', { name: /vérifie/i }).click();
@@ -133,6 +137,27 @@ test.describe('Relecture en paragraphes (R1-C)', () => {
     expect(b.figures).toEqual([{ figureId: 'f1', keep: true }]);
     expect(b.corrections.map((c) => c.id).sort()).toEqual(['p1-s2', 'p2-s4']);
     expect(b.corrections.find((c) => c.id === 'p2-s4')!.text).toContain('\\frac{a}{b}');
+  });
+
+  test('503 à la confirmation avec image gardée: message dédié, réessai, puis envoi', async ({ page }) => {
+    const bodies: Record<string, unknown>[] = [];
+    await login(page, 'eleve');
+    await routes(page, bodies);
+    let fail = true;
+    await page.route('**/jobs/J1/confirm', (r) => {
+      bodies.push(r.request().postDataJSON());
+      return fail ? r.fulfill(ok({ code: 'indisponible', message: 'Service momentanément indisponible' }, 503)) : r.fulfill(ok({ jobId: 'J1', state: 'verification', pages: 2, createdAt: '2026-12-01T10:00:00Z', status: { stage: 'verification', pagesDone: 2, pagesTotal: 2, startedAt: '2026-12-01T10:00:00Z' } }));
+    });
+    await page.goto('/#/job/J1');
+    await page.getByRole('checkbox', { name: /Garder cette image/ }).check();
+    await page.getByLabel('Matière').first().selectOption('svt');
+    await page.getByRole('button', { name: /vérifie/i }).click();
+    await expect(page.getByText(/pas réussi à garder tes images/)).toBeVisible();
+    await shot(page, '14-503-reessai');
+    fail = false;
+    await page.getByRole('button', { name: 'Réessayer' }).click();
+    await expect.poll(() => bodies.length).toBe(2);
+    expect((bodies[1] as { figures: unknown[] }).figures).toEqual([{ figureId: 'f1', keep: true }]);
   });
 
   test('figure non gardée par défaut: envoyée avec keep false', async ({ page }) => {
@@ -254,6 +279,43 @@ test.describe('Cours coloré, fiche, export (R1-C)', () => {
     await shot(page, '9-fiche-pc');
     await page.setViewportSize({ width: 390, height: 844 });
     await shot(page, '10-fiche-mobile');
+  });
+
+  test('formules lisibles: µ, π, Ω, x², exposant et fraction avec la police KaTeX (pas de carré vide)', async ({ page }) => {
+    const sentence = 'Lettres : $\\mu$, $\\pi$, $\\Omega$, $x^2$, $\\alpha + \\beta$ et $\\frac{a}{b}$, puis $\\sin x \\leq \\sqrt{2}$.';
+    const texts = COURS.texts.map((t) => ({ ...t, sentences: t.sentences.map((x) => (x.id === 'p2-s4' ? { ...x, text: sentence } : x)) }));
+    await page.route('**/cours/C1', (r) => r.fulfill(ok({ ...COURS, texts, marks: [] })));
+    await page.goto('/#/cours/C1');
+    await expect(page.locator('.doc math')).toHaveCount(8);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.fonts.check('16px "KaTeX Math"') && document.fonts.check('16px "KaTeX Main"'))).toBe(true);
+    const mu = page.locator('math mi.mi-i', { hasText: 'μ' }).first();
+    await expect(mu).toBeVisible();
+    expect(await mu.evaluate((e) => getComputedStyle(e).fontFamily)).toContain('KaTeX Math');
+    expect(await mu.evaluate((e) => getComputedStyle(e).textTransform)).toBe('none');
+    const p = page.locator('.doc-p', { hasText: 'Lettres' });
+    await p.scrollIntoViewIfNeeded();
+    if (SHOTS) {
+      mkdirSync(SHOTS, { recursive: true });
+      await p.screenshot({ path: `${SHOTS}/12-formules-police.png`, scale: 'css' });
+    }
+  });
+
+  test('mobile: le dernier paragraphe reste atteignable sous la barre d\'action de la relecture', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await routes(page, []);
+    await page.goto('/#/job/J1');
+    await expect(page.getByRole('heading', { name: "Vérifie ce que j'ai lu" })).toBeVisible();
+    const last = page.locator('button.cf-sent', { hasText: 'paroi rigide' });
+    await last.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const covered = await last.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, Math.min(r.top + r.height / 2, innerHeight - 1));
+      return !(top && (el === top || el.contains(top)));
+    });
+    expect(covered).toBe(false);
+    await shot(page, '13-bas-de-page-mobile');
   });
 
   test('Télécharger mes données: demande, attente, lien', async ({ page }) => {

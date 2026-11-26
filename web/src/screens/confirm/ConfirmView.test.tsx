@@ -115,11 +115,10 @@ describe('écran de relecture', () => {
   it('plusieurs pages: tout le texte est un seul document, onglets pour la photo', async () => {
     stub(tr([['Page un.'], ['Page deux.'], ['Page trois.']]));
     await open();
-    expect(await screen.findByText('Page 1 sur 3')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Photo de ta page 1' })).toHaveAttribute('src', 'https://photos.example/p1.jpg');
-    expect(sentenceBtn(3)).toHaveTextContent('Page trois.'); // visible sans changer de page
+    expect(await screen.findByRole('img', { name: 'Photo de ta page 1' })).toHaveAttribute('src', 'https://photos.example/p1.jpg');
+    expect(screen.queryByText(/Page 1 sur/)).toBeNull(); // pas de compteur en double avec les onglets
+    expect(await findSentence(3)).toHaveTextContent('Page trois.'); // visible sans changer de page
     await userEvent.click(screen.getByRole('tab', { name: /Page 3/ }));
-    expect(screen.getByText('Page 3 sur 3')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Photo de ta page 3' })).toHaveAttribute('src', 'https://photos.example/p3.jpg');
   });
 
@@ -434,5 +433,25 @@ describe('figures à la relecture', () => {
     await open();
     expect(await screen.findByText('Schéma')).toBeInTheDocument();
     expect(screen.getByText('Fig. 1')).toBeInTheDocument();
+  });
+});
+
+describe('503 à la confirmation avec images gardées', () => {
+  const withFig = () => ({ ...tr([['Une phrase.', FILL]]), figures: [fig()], blocks: [...blocks(['p1-s1']), { id: 'b2', kind: 'figure', figureId: 'f1' }, { id: 'b3', kind: 'paragraphe', sentenceIds: ['p1-s2'] }] });
+  it('message dédié, Réessayer renvoie les mêmes choix, « sans les images » envoie keep false', async () => {
+    stub(withFig());
+    confirmStatus = 503;
+    await open();
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Garder cette image/ }));
+    await userEvent.click(screen.getByRole('button', { name: /vérifie/i }));
+    expect(await screen.findByText(/pas réussi à garder tes images/)).toBeInTheDocument();
+    expect(screen.queryByText(/Le job n'est plus/)).toBeNull();
+    expect(screen.getByRole('button', { name: /vérifie/i })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect((sent[1] as { figures: unknown[] }).figures).toEqual([{ figureId: 'f1', keep: true }]);
+    await userEvent.click(screen.getByRole('button', { name: 'Continuer sans garder les images' }));
+    await vi.waitFor(() => expect(sent).toHaveLength(3));
+    expect((sent[2] as { figures: unknown[] }).figures).toEqual([{ figureId: 'f1', keep: false }]);
   });
 });

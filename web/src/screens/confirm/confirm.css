@@ -63,7 +63,7 @@
 .cf-spin { width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .5); border-top-color: #fff; animation: cf-rot .8s linear infinite; }
 @keyframes cf-rot { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .cf-stage img { transition: none; } .cf-spin { animation: none; } }
-@media (min-width: 900px) { .cf-photo .cf-stage { height: calc(100vh - 30rem); min-height: 300px; max-height: 820px; } .cf-viewer.full .cf-stage { height: auto; max-height: none; } }
+@media (min-width: 900px) { .cf-photo .cf-stage { height: calc(100vh - 21rem); min-height: 300px; max-height: 820px; } .cf-viewer.full .cf-stage { height: auto; max-height: none; } }
 
 /* Sections: une couleur ET un numero par fiche */
 .confirm { --s0: #6d28d9; --s1: #0f766e; --s2: #c2410c; --s3: #be185d; --s4: #1d4ed8; --s5: #4d7c0f; }
@@ -212,3 +212,10 @@
 .doc .cf-cutrow::before, .doc .cf-cutrow::after { content: ''; flex: 1; border-top: 2px dashed #d8c8f5; }
 .doc .cf-cut { width: auto; min-height: 36px; padding: 0 .9rem; font-size: .85rem; border-style: solid; border-width: 2px; border-radius: 999px; background: #fff; }
 .doc .cf-cutlimit { order: 3; }
+
+/* Revue R1-C: pastille de verification collee au dernier mot, vert "Verifie" plus net, message de reessai */
+.cs.mk-verifiee { background: #d1fae5; box-shadow: 0 0 0 2px #d1fae5; }
+.cs.mk-erreur { background: #fee2e2; box-shadow: 0 0 0 2px #fee2e2; }
+.cs.mk-non_verifiable { background: #e5e7eb; box-shadow: 0 0 0 2px #e5e7eb; }
+.mk { white-space: nowrap; }
+.cf-retry p { margin: 0 0 .5rem; }

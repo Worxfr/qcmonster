@@ -87,6 +87,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   const rootEl = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyFigs, setBusyFigs] = useState(false); // la sauvegarde des images est momentanement impossible (503)
   const first = useRef(true);
 
   // Hauteur réelle de la barre d'onglets (fixe): la barre d'action se pose juste au-dessus.
@@ -185,15 +186,17 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     : pl.words < MIN_WORDS ? `Il faut au moins ${MIN_WORDS} mots dans les parties gardées.`
     : null;
 
-  async function send() {
+  async function send(noImages = false) {
     if (blocker) return setError(blocker);
     setBusy(true);
     setError(null);
+    setBusyFigs(false);
     const corrections: Sentence[] = kept.filter(isChanged).map((s) => ({ id: s.id, text: textOf(s) }));
     const eff = effectiveSections(secs, all, removed);
     const figures: ConfirmFigure[] = [...model.figures.values()].map((f) => {
       const c = figs[f.figureId];
       const alt = c?.alt?.trim();
+      if (noImages) return { figureId: f.figureId, keep: false };
       return { figureId: f.figureId, keep: c?.keep === true, ...(c?.keep && alt && alt !== f.alt ? { alt } : {}) };
     });
     try {
@@ -217,12 +220,20 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           /* on affiche l'erreur d'origine */
         }
       }
+      // 503 « indisponible » avec des images gardees: la copie des images a echoue, rien n'est perdu, l'etat du scan n'a pas change.
+      if (e instanceof ApiError && (e.status === 503 || e.code === 'indisponible') && keptFigs > 0 && !noImages) {
+        setBusyFigs(true);
+        setError(null);
+        setBusy(false);
+        return;
+      }
       setError(e instanceof ApiError && e.status === 404 ? `${errMsg(e)} Choisis un autre dossier.` : errMsg(e));
       setBusy(false);
     }
   }
 
   const gone = removed.size;
+  const keptFigs = [...model.figures.keys()].filter((k) => figs[k]?.keep).length;
   const summary = `${all.length} ${plural(all.length, 'phrase', 'phrases')}, ${changed} ${plural(changed, 'corrigée', 'corrigées')}${gone ? `, ${gone} ${plural(gone, 'retirée', 'retirées')}` : ''}${secs.length > 1 ? `, ${pl.kept} ${plural(pl.kept, 'fiche', 'fiches')}` : ''}`;
   const idx = Math.min(pageIdx, pages.length - 1);
   const page = pages[idx];
@@ -355,7 +366,6 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
                 </button>
               ))}
             </div>
-            <p className="cf-counter">Page {idx + 1} sur {pages.length}</p>
           </div>
         )}
 
@@ -393,6 +403,15 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         <p className="cf-privacy">Ton cours complet est gardé dans ton espace jusqu'à ce que tu le supprimes ou que ton compte soit supprimé. La photo est effacée maintenant. Tes corrections ne sont gardées qu'une fois envoyées.{model.figures.size > 0 ? ' Les images ne sont gardées que si tu le choisis.' : ''}</p>
         <div className="cf-actions">
           <ErrorBox message={error} />
+          {busyFigs && (
+            <div className="notice cf-retry" role="alert">
+              <p>Je n'ai pas réussi à garder tes images pour le moment. Rien n'est perdu : ton texte et tes choix sont toujours là.</p>
+              <div className="btn-row">
+                <button type="button" className="btn btn-small" onClick={() => void send()}>Réessayer</button>
+                <button type="button" className="btn btn-ghost btn-small" onClick={() => void send(true)}>Continuer sans garder les images</button>
+              </div>
+            </div>
+          )}
           {blocker && <p className="cf-fielderr">{blocker}</p>}
           {!blocker && (
             <p className="cf-plan">
@@ -400,7 +419,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
               {pl.ignored > 0 && `, ${pl.ignored} ${plural(pl.ignored, 'partie ignorée', 'parties ignorées')}`}
             </p>
           )}
-          <button type="button" className="btn btn-big cf-send" onClick={send} disabled={busy || !!blocker} aria-busy={busy}>
+          <button type="button" className="btn btn-big cf-send" onClick={() => void send()} disabled={busy || !!blocker} aria-busy={busy}>
             {busy ? <><span className="cf-spin" aria-hidden="true" /> Vérification en cours…</> : pl.kept > 1 ? `C'est bon, fais ${pl.kept} fiches` : "C'est bon, vérifie !"}
           </button>
         </div>
