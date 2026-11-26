@@ -7,7 +7,7 @@ Statut : conception, aucune ligne de code applicatif. Contrat additif `1.5.0` da
 | # | Sujet | Décision |
 |---|---|---|
 | D1 | Modèle de données | Les **phrases restent l'unité** (corrections, coupes, retraits, affirmations). Une couche de **blocs** (titre, paragraphe, liste, formule, figure) les regroupe dans l'ordre du document. |
-| D2 | Figures | **Recadrage de l'image source** (JPEG 1200 px au plus) **et** description textuelle (`alt`) toujours présente. L'image est canonique, la description sert d'alternative et de repli. |
+| D2 | Figures | **Recadrage de l'image source** (JPEG 1200 px au plus) **et** description textuelle (`alt`) toujours présente. **La figure reste une image** (décision du propriétaire, P7) : la description est un texte alternatif pour l'accessibilité, jamais un substitut. |
 | D3 | Stockage des figures | Nouveau bucket S3 privé `figures`, clé `figures/<sid>/<coursId>/<figureId>.jpg`. Le recadrage temporaire vit dans le préfixe de la photo et part avec elle. |
 | D4 | Conservation | Une figure suit **exactement la vie du cours** : conservée jusqu'à suppression du cours, de l'élève ou de la famille. Rien n'est gardé sans choix explicite de l'élève. Le parent ne reçoit jamais d'image. |
 | D5 | Photo | Inchangé : supprimée à la confirmation. Seuls les recadrages que l'élève a gardés sont copiés avant la suppression. |
@@ -16,8 +16,10 @@ Statut : conception, aucune ligne de code applicatif. Contrat additif `1.5.0` da
 | D8 | Fiche | `Doc.body` (jusqu'à 8 paragraphes avec intertitre facultatif) et `Doc.recall` (rappel final de dates, formules, définitions, nombres). `summary` est conservé pour les clients 1.4. |
 | D9 | Rappel final | Le modèle ne choisit que `claimId` et `kind` ; **le code copie le texte de l'affirmation citée** dans le rappel. Une affirmation en erreur n'est jamais reprise. Une affirmation non vérifiable est reprise avec la mention « non vérifié ». |
 | D10 | Coût | Environ +0,0002 € par page lue, +0,0003 € par fiche. Négligeable devant le plafond de 0,15 € par page, qui ne change pas. |
-| D11 | Rognage | Fait par le serveur avec `sharp`, en **couche Lambda arm64 réservée à `transcribe`** (jamais dans le paquet commun), à partir d'un cadre normalisé donné par le modèle. Repli : figure décrite en texte, sans image. |
+| D11 | Rognage | Fait par le serveur avec `sharp`, en **couche Lambda arm64 réservée à `transcribe`** (jamais dans le paquet commun), à partir d'un cadre normalisé donné par le modèle. Si le cadre est faux : second essai par un modèle plus gros, puis page entière. Si `sharp` est indisponible : le scan est réessayé puis échoue (quota rendu), jamais de figure « texte seul ». |
 | D12 | Identifiants | Blocs et figures sont renumérotés avec un décalage à l'écriture dans le cours : uniques à l'échelle du cours, compatibles avec l'ajout de pages (F10). |
+| D13 | Formules | **LaTeX** (`$…$` dans le texte, source sans délimiteur dans un bloc `formule`), validé par le serveur et affiché en MathML par KaTeX avec `trust: false` ; jamais de HTML injecté sans passer par KaTeX (§2.7). |
+| D14 | Export | L'export de l'**élève** (nouvelle route `POST /me/export/archive`) contient tout, figures comprises. L'export du **parent** garde la règle validée : aucun contenu de cours (point ouvert P16). |
 
 ## 1. Ce qui existe (main `781e9c2`, contrat 1.4.1)
 
@@ -42,7 +44,7 @@ Block { id: "b<n>", kind: titre|paragraphe|liste|formule|figure,
         sentenceIds?: ["p1-s1", ...], figureId?: "f<n>" }
 ```
 
-- `titre` : une phrase. `liste` : une phrase par élément. `formule` : une phrase en texte brut (pas de LaTeX en v1 : `E = mc²`). `paragraphe` : une ou plusieurs phrases. `figure` : aucune phrase.
+- `titre` : une phrase. `liste` : une phrase par élément. `formule` : une phrase dont le texte est du **LaTeX sans délimiteurs** (`E = mc^{2}`, §2.7). `paragraphe` : une ou plusieurs phrases. `figure` : aucune phrase.
 - Chaque phrase appartient à **exactement un** bloc. Un bloc peut s'étendre sur deux pages : si `assemblePages` recolle une phrase, le premier bloc de la page suivante est ajouté au paragraphe précédent.
 - La liste ordonnée des blocs est portée au niveau du document (`Transcription.blocks`, `Cours.blocks`), pas par page : le scan est lu comme un seul document depuis la PR #40.
 
@@ -56,7 +58,7 @@ Un JSON d'objets typés coûte des jetons par bloc et casse facilement à la tro
   "figures":[{"id":"f1","box":[0.1,0.4,0.8,0.35],"kind":"schema","alt":"...","caption":"Fig. 1 ..."}]}]}
 ```
 
-Marqueurs : `#`, `##`, `###` (titre), `- ` (puce), `1. ` (liste numérotée), `= ` (formule), ligne vide (nouveau paragraphe), `~` en début de ligne (lecture douteuse), `[[f<n>]]` (position d'une figure). Le code reste maître : une fonction pure `parseBlocks(md, figures)` produit lignes, blocs et figures, puis réutilise `assemblePages` pour le recollage. Si le Markdown est vide ou illisible, repli sur l'ancien format `lines` (une ligne = un paragraphe d'une phrase) : l'élève voit l'ancienne liste, rien n'échoue.
+Marqueurs : `#`, `##`, `###` (titre), `- ` (puce), `1. ` (liste numérotée), `= ` (formule en LaTeX), ligne vide (nouveau paragraphe), `~` en début de ligne (lecture douteuse), `[[f<n>]]` (position d'une figure). Le code reste maître : une fonction pure `parseBlocks(md, figures)` produit lignes, blocs et figures, puis réutilise `assemblePages` pour le recollage. Si le Markdown est vide ou illisible, repli sur l'ancien format `lines` (une ligne = un paragraphe d'une phrase) : l'élève voit l'ancienne liste, rien n'échoue.
 
 Les noms du prompt sont ceux du contrat (`kind`, `alt`, `caption`, `box`) ; le code fait la correspondance avec les champs du contrat sans traduction (`Figure.figureId` = `id` du modèle, préfixé §2.5).
 
@@ -87,6 +89,26 @@ Le contrat plafonne `blocks` à 400, `Block.sentenceIds` à 200, `figures` à 8,
 
 La lecture d'un job numérote `b1…`, `f1…` à partir de 1. Un ajout de pages (F10) rejoue la lecture dans un nouveau job. **Règle : les identifiants du job restent locaux au job (le contrat de lecture ne change pas) ; au moment d'écrire dans le cours, le serveur renumérote les blocs et figures avec un décalage** (`b<n + nombre de blocs du cours>`, `f<n + plus grand numéro de figure du cours>`). La clé S3 finale utilise l'identifiant renuméroté, donc une figure ajoutée n'écrase jamais une figure existante. `COURS#<id>#B` est réécrit par une écriture conditionnelle sur la version de l'élément (compteur `v`), sous le même verrou que l'ajout de pages de F10 : en cas de conflit, la seconde confirmation relit, renumérote et réessaie. Les identifiants de phrase suivent la règle de F10 (numéros de page décalés). Les numéros de figure du cours peuvent donc ne pas être contigus. Le renvoi de F10 à « P14 » doit pointer vers **P15** ci-dessous.
 
+### 2.7 Formules en LaTeX (décision P13)
+
+**Format.** Une formule seule sur sa ligne est un bloc `formule` dont l'unique phrase contient le LaTeX **sans délimiteurs** (`\frac{a}{b}`). Une formule dans une phrase (paragraphe, liste, titre) est entourée de `$…$` ; un `$` littéral s'écrit `\$`. Le prompt de lecture demande : « écris les formules en LaTeX, `$…$` dans le texte, une ligne `= …` pour une formule seule » et n'autorise que les commandes courantes (fractions, puissances, indices, racines, lettres grecques, sommes et intégrales, vecteurs, `\text`, `aligned`, `cases`, matrices). Le surcoût en jetons est de l'ordre de 50 par page dense (non mesuré).
+
+**Contrôle par le serveur** (`sanitizeLatex`, fonction pure, lot A, appliquée à la lecture ET aux corrections de l'élève à la confirmation) :
+1. 500 caractères au plus par formule, 2 000 par phrase (limite existante), aucun caractère de contrôle ;
+2. `$` en nombre pair dans une phrase (hors `\$`) ;
+3. accolades équilibrées, profondeur d'imbrication de 8 au plus ;
+4. **liste d'interdits** : `\href`, `\url`, `\includegraphics`, `\html*`, `\input`, `\include`, `\write`, `\def`, `\edef`, `\gdef`, `\xdef`, `\let`, `\newcommand`, `\renewcommand`, `\csname`, `\read`, `\catcode`, `\style`, `\class`, `\data`, `\id`, `\cssId`.
+Une formule qui ne passe pas n'est pas rejetée : ses délimiteurs sont retirés et elle reste du **texte simple** (affiché tel quel, échappé). Une correction de l'élève qui ne passe pas est refusée côté écran avec un message ; côté API, 400 `requete_invalide` (rien n'est modifié).
+
+**Affichage (sécurité).** Le site sépare le texte en segments (`splitMath`) : les segments de texte sont rendus par React (échappés), seuls les segments de formule passent par KaTeX (`renderToString`) avec `trust: false`, `throwOnError: false`, `maxSize: 10`, `maxExpand: 1000`, `strict: 'ignore'`, et **`output: 'mathml'`**. Raison du MathML : la politique de sécurité du site (`style-src 'self'`, `infra/lib/web-stack.ts`) interdit les styles en ligne, que la sortie HTML de KaTeX emploie ; le MathML n'en a pas besoin, ne demande ni feuille de style ni polices embarquées, et lit bien avec un lecteur d'écran. Le résultat de KaTeX est la seule chaîne injectée dans le DOM (`dangerouslySetInnerHTML` confiné à un composant `Math`), jamais un texte de l'élève ou du modèle. Tests du lot C : `\href{javascript:…}{x}` et `\url` ne produisent aucun lien, `<script>` dans une formule est échappé, une formule invalide s'affiche en texte simple. Navigateurs : MathML Core est pris en charge par Chrome, Edge, Firefox et Safari récents ; à vérifier sur les appareils de la famille (P17).
+
+**Autres effets.**
+- *Vérification* : la recherche de sources (8 mots au plus) retire les segments `$…$` de l'affirmation. Une affirmation qui contient une formule a toujours `aRisque` (règle existante). Une formule seule a peu de chances d'être vérifiable dans des textes Wikimedia : elle sera souvent `non_verifiable`, donc reprise avec « non vérifié » (D9).
+- *Comptage de mots* : une formule compte pour un mot dans le seuil de 40 mots.
+- *Rappel* : le texte copié contient le LaTeX ; le rappel de type `formule` s'affiche en mode bloc.
+- *QCM et trous* : le mot masqué d'un trou ne peut pas être à l'intérieur d'une formule (`validGap`) ; les énoncés et les choix peuvent contenir `$…$`, rendus par le même composant. Les mêmes contrôles `sanitizeLatex` s'appliquent à la sortie du modèle avant écriture.
+- *Édition* : le champ de correction montre le LaTeX brut, avec un aperçu rendu dessous.
+
 Un cours ancien n'a pas de `COURS#<id>#B` : l'API ne renvoie ni `blocks` ni `figures`, l'écran affiche les phrases comme aujourd'hui.
 
 ## 3. Figures (#71)
@@ -101,7 +123,7 @@ Un cours ancien n'a pas de `COURS#<id>#B` : l'API ne renvoie ni `blocks` ni `fig
 | Donnée de mineur | Oui, image | Non |
 | Accessibilité | Nécessite un texte alternatif | Native |
 
-Décision : l'image recadrée est la figure ; la description courte (`alt`, 300 caractères) est toujours produite dans le même appel, sert de texte alternatif et **remplace l'image si le recadrage échoue** (cadre invalide, image illisible, élève ayant refusé l'image mais gardé la place). Une description n'est jamais présentée comme un fait vérifié : elle n'entre ni dans les affirmations, ni dans la vérification, ni dans les questions. L'élève peut la corriger (`ConfirmFigure.alt`).
+Décision : l'image recadrée est la figure ; la description courte (`alt`, 300 caractères) est toujours produite dans le même appel, sert de texte alternatif et n'est **jamais** un substitut de l'image : si le cadre est faux, on obtient quand même une image (§3.4). Une description n'est jamais présentée comme un fait vérifié : elle n'entre ni dans les affirmations, ni dans la vérification, ni dans les questions. L'élève peut la corriger (`ConfirmFigure.alt`).
 
 Les questions « légender un schéma » (#43) sont hors périmètre ; la structure (`figureId` stable, `alt`, `caption`) les rend possibles plus tard sans changer le contrat.
 
@@ -128,8 +150,8 @@ Si l'élève supprime le cours en gardant les fiches (`fiches=garder`), les figu
 ### 3.3 Confidentialité d'un mineur
 
 - Une figure est un extrait d'une page de cours, donc une donnée d'élève, au même titre que le texte du cours (T3). Elle peut contenir par accident une écriture manuscrite, un nom, un visage (portrait d'une personne publique dans une leçon d'histoire).
-- Mesures : (1) choix explicite et par figure, rien de gardé par défaut ; (2) aucune figure suggérée si la zone est surtout de l'écriture manuscrite ou un portrait de personne non publique (consigne de prompt, mesurée sur le jeu d'essai) ; (3) suppression des métadonnées, taille réduite ; (4) bucket privé, chiffré, TLS exigé, accès public bloqué, accès uniquement par URL pré-signée de 5 minutes après contrôle d'appartenance ; (5) jamais dans les journaux, l'export parent, ni l'état Step Functions ; (6) 8 figures et environ 300 Ko chacune au plus par scan.
-- Le parent ne lit pas le texte du cours : il ne lit pas non plus ses figures (`CoursMeta` n'a que `figureCount`). Même règle, sans exception.
+- Mesures : (1) choix explicite et par figure, rien de gardé par défaut ; (2) aucune figure suggérée si la zone est surtout de l'écriture manuscrite ou un portrait de personne non publique (consigne de prompt, mesurée sur le jeu d'essai) ; (3) suppression des métadonnées, taille réduite ; (4) bucket privé, chiffré, TLS exigé, accès public bloqué, accès uniquement par URL pré-signée de 5 minutes après contrôle d'appartenance ; (5) jamais dans les journaux, l'export parent, ni l'état Step Functions (l'archive de l'élève, elle, les contient : §3.6) ; (6) 8 figures et environ 300 Ko chacune au plus par scan.
+- Le parent ne lit pas le texte du cours : il ne lit pas non plus ses figures (`CoursMeta` n'a que `figureCount`). Même règle pour la lecture et pour l'**export parent** (point ouvert P16). L'**export de l'élève** contient tout, figures comprises (§3.6).
 - Conséquences juridiques : durée, finalité et destinataires sont ajoutés au registre (T3) et à la politique, et un risque est ajouté à l'AIPD. Les textes sont dans le commit séparé (§11).
 
 ### 3.4 Rognage : `sharp` en couche Lambda réservée à `transcribe`
@@ -138,13 +160,29 @@ Le dépôt n'a aucune bibliothèque d'image. `pipeline-stack.ts` construit un se
 
 **Décision : une couche Lambda (`lambda.LayerVersion`, architecture arm64, runtime Node) contenant `sharp`, attachée à la seule fonction `transcribe`.** Le paquet commun déclare `sharp` en `external` et `figures.ts` l'importe dynamiquement (`await import('sharp')`) ; seules les fonctions où la couche est présente le trouvent. La couche est fabriquée par un script de lot B (`npm install --os=linux --cpu=arm64 --include=optional sharp` dans un dossier `nodejs/`, non versionné, exécuté avant `cdk synth` en CI). Pourquoi une couche plutôt qu'un second asset : le code de `transcribe` reste dans le paquet commun (un seul chemin de build), la couche se reconstruit rarement et se teste seule. Alternative écartée : un second `Code.fromAsset` pour `transcribe` seul, qui oblige à dupliquer le build du code applicatif. Autre alternative écartée : recadrer dans le navigateur et téléverser l'image, qui ouvre à un compte d'élève une écriture de fichier arbitraire dans un bucket conservé.
 
-**Repli si `sharp` est indisponible** (import en échec, couche absente, image illisible, ou délai dépassé) : la figure est conservée **sans image** (`Figure.url` absente), avec son `alt` et sa légende, c'est-à-dire « figure décrite en texte ». Le scan n'échoue jamais pour cela, et l'élève voit « Schéma décrit en texte, image non disponible ». Un journal sans contenu (`step: figure-crop`, `status: error`) permet de compter les replis. Point à confirmer : P7.
+**Une figure reste une image** (P7). Cas d'échec et conduite :
+- *Cadre hors bornes ou rognage vide* (le modèle s'est trompé) : une seule reprise par un modèle plus gros (§3.5) pour la page ; si le cadre reste invalide, la figure devient la **page entière**, réduite à 1200 px, sans métadonnées (`Figure.box` absent). L'élève la voit comme « Page entière » et peut la retirer.
+- *`sharp` indisponible ou en erreur* (couche absente, mémoire, délai) : c'est une panne d'infrastructure, pas un cas normal. L'étape `transcribe` renvoie une erreur réessayable (reprise automatique de Step Functions, 2 essais). Si l'erreur persiste, le scan échoue comme un échec de lecture (`failJob`, quota rendu, message « le découpage des schémas a échoué, reprends ta photo »). On ne propose jamais une figure « en texte seul » à la place de l'image. Un scan sans aucune figure ne charge pas `sharp` et n'est donc pas concerné.
+- Un journal sans contenu (`step: figure-crop`, `status`, `fallback: page|retry`) permet de compter les cas.
 
 Risque non mesuré : taille de la couche (de l'ordre de 15 à 25 Mo décompressée, limite Lambda 250 Mo au total) et durée de rognage (estimée 100 ms par figure).
 
-### 3.5 Risque non mesuré
+### 3.5 Précision des cadres et modèle plus gros (P8)
 
-La précision des cadres de Haiku n'est pas mesurée. Le lot API commence par une mesure sur 10 pages avec schémas (cadre jugé correct si le recouvrement est d'au moins 0,6 avec un cadre tracé à la main). En dessous de 70 % de cadres corrects, les figures passent en « description seule » pour l'élève, avec un second appel de recadrage par un modèle plus grand seulement si le propriétaire l'accepte (P8).
+La précision des cadres de Haiku n'est pas mesurée. Le lot API commence par une mesure sur 10 pages avec schémas (cadre jugé correct si le recouvrement est d'au moins 0,6 avec un cadre tracé à la main) : c'est un contrôle de fumée, pas une mesure statistique (viser 30 pages si possible). Décision du propriétaire : **si moins de 70 % des cadres sont corrects, un modèle plus gros est autorisé.** Deux mécanismes, tous deux dans le lot A :
+
+1. **Reprise automatique** (toujours active) : quand le cadre d'une figure est invalide (hors bornes, surface hors 3 % à 90 %), un second appel par Sonnet (`sonnet-5.5` de `shared/pricing.ts`) repère la figure sur cette page seule.
+2. **Mode « Sonnet d'abord »** (interrupteur de configuration `FIGURE_BOX_MODEL=sonnet`, défaut `haiku`) : activé si la mesure donne moins de 70 %. Haiku lit toujours le texte ; pour chaque page qui contient au moins une figure, Sonnet fournit les cadres.
+
+Coût estimé (non mesuré) d'un appel Sonnet par page avec figure : image environ 1 600 jetons + consigne 400, soit 2 000 en entrée (2,2 USD/M), et environ 150 jetons en sortie (11 USD/M) : 0,0044 + 0,0017 = 0,0061 USD, soit **environ 0,0055 € par page**. Pour un scan de 3 pages dont 2 ont des figures : environ 0,011 € en mode « Sonnet d'abord », 0,0055 € par figure reprise en mode automatique (si 30 % des cadres Haiku sont faux : environ 0,002 € par page à figures). Le plafond de job `max(0,25 ; 0,15 × pages)` couvre largement ce surcoût. Lire toute la page avec Sonnet (texte et cadres) coûterait environ 0,014 € par page (25 fois la lecture Haiku) : non retenu.
+
+Infra (lot B) : `procRole` n'a aujourd'hui que le droit d'invoquer Haiku (`haikuArn`, profil système Haiku) ; il faut ajouter `bedrock:InvokeModel` sur l'ARN du profil Sonnet (paramètre SSM `models/sonnet`, déjà utilisé par `eval-stack.ts`) avec la même condition de profil d'inférence, et `QCM_MODEL_SONNET` dans l'environnement de `transcribe`.
+
+### 3.6 Export de l'élève (P14)
+
+Décision du propriétaire : **l'export de l'élève contient tout, figures comprises.** Il n'existe pas aujourd'hui de route d'export côté élève (seul le parent exporte, sans texte de cours). Ajout, additif : `POST /me/export/archive` (élève seulement, 403 pour le parent). **Cette route n'est pas dans le contrat de cette PR** : le test d'infrastructure (`infra/test/stacks.test.ts`) exige que la table `ROUTES` de `api-stack.ts` couvre exactement les routes du contrat, donc le lot A l'ajoute au contrat, à `ROUTES` et à la liste des fonctions dans une seule PR. Seuls les champs facultatifs `courses` et `figures` de `ExportArchive` sont déjà dans le contrat 1.5.0. La route renvoie un `ExportArchive` (lien signé de 10 minutes, zip supprimé au plus tard 2 jours après, 3 archives par heure et par élève). Contenu : `export.json` (profil, dossiers, cours avec texte, blocs et sections, fiches avec affirmations, sources, résumé, paragraphes et rappel, historique des tests **avec les réponses données**), `figures/<coursId>/<figureId>.jpg` pour chaque figure gardée, et `tests/<studentId>.jsonl`. Borne : 200 Mo ; au-delà, les cours les plus anciens sont omis et `truncated` vaut vrai. Le fichier est écrit dans le bucket d'export existant (`exports/`, règle d'expiration existante) par un handler dont le rôle reçoit `GetObject` sur `figures/<sid>/*` et rien d'autre sur `figures/`. Le lien ne porte aucune donnée.
+
+**Point ouvert P16.** L'export du **parent** (`GET /family/export`, `POST /family/export/archive`) garde la règle déjà validée : aucun texte de cours, aucune figure, ni réponses données. Or le parent est celui qui exerce les droits d'accès d'un enfant de moins de 15 ans. À trancher par le propriétaire avec la personne compétente de l'AIPD : le parent doit-il pouvoir obtenir le cours et les figures de son enfant (droit d'accès) ? Défaut : non, la règle validée est conservée et la politique renvoie l'élève à son propre export.
 
 ## 4. Sens des couleurs (#75)
 
@@ -245,20 +283,22 @@ Rien de requis n'est ajouté à une requête ; un client 1.4 reste valide.
 
 | Schéma | Ajout |
 |---|---|
-| `Sentence` | `doubt` (réponse seulement) |
+| `Sentence` | `doubt` (réponse seulement) ; `text` peut contenir du LaTeX (§2.7) |
 | `Transcription` | `blocks`, `figures` |
 | `ConfirmRequest` | `figures` (`ConfirmFigure`: `figureId`, `keep`, `alt`), `removed` |
 | `Cours` | `blocks`, `figures`, `marks` (`SentenceMark`) |
 | `CoursMeta` (export) | `figureCount` |
+| `ExportArchive` | `courses`, `figures` (facultatifs) |
+| Route à venir (lot A, avec `ROUTES`) | `POST /me/export/archive` (élève seul) |
 | `Claim` | `sentenceId` |
 | `Doc` | `body` (`FicheParagraph`), `recall` (`RecallItem`), `figures` |
 | Nouveaux | `Block`, `Figure`, `FigureBox`, `ConfirmFigure`, `SentenceMark`, `FicheParagraph`, `RecallItem` |
 
-Aucune route nouvelle : les URL des figures sont pré-signées dans les réponses existantes (même mécanisme que `photoUrls`). Erreurs : `figureId` inconnu ou `removed` invalide donne 400 `requete_invalide` ; état inchangé.
+Aucune route dans cette PR (la route d'export de l'élève, §3.6, arrive avec le lot A) ; les URL des figures sont pré-signées dans les réponses existantes (même mécanisme que `photoUrls`). `Figure.url` est **requis** (une figure est toujours une image). Erreurs : `figureId` inconnu ou `removed` invalide donne 400 `requete_invalide` ; état inchangé.
 
 ## 11. Confidentialité (commit séparé)
 
-Le commit « docs(legal): R1 » modifie `docs/legal/registre.md` (T3), `politique-confidentialite.md` et `aipd-brouillon.md`. `sous-traitants.md` n'est **pas** modifié : aucun nouveau sous-traitant (AWS, déjà listé, héberge aussi le bucket des figures). La politique dit aussi ce que deviennent les découpages si l'élève n'ouvre jamais la relecture : supprimés avec la photo, au plus tard dans les 2 jours. Il ne touche pas `shared/policy.ts` : `POLICY_VERSION` reste `2026-11-26`. **Les textes sont à valider par le propriétaire** ; une modification de la durée ou de la nature d'une donnée conservée est une information nouvelle pour les familles, donc le relèvement de `POLICY_VERSION` (et le nouveau consentement qui en découle) sera décidé par le propriétaire à la mise en production du lot, pas avant (P10).
+Le commit « docs(legal): R1 » modifie `docs/legal/registre.md` (T3), `politique-confidentialite.md` et `aipd-brouillon.md`. `sous-traitants.md` n'est **pas** modifié : aucun nouveau sous-traitant (AWS, déjà listé, héberge aussi le bucket des figures). La politique dit aussi ce que deviennent les découpages si l'élève n'ouvre jamais la relecture : supprimés avec la photo, au plus tard dans les 2 jours. Un second commit légal (« R1 : export de l'élève, P14 ») ajoute l'export de l'élève et le point ouvert P16. Ils ne touchent pas `shared/policy.ts` : `POLICY_VERSION` reste `2026-11-26`. **Les textes sont à valider par le propriétaire** ; une modification de la durée ou de la nature d'une donnée conservée est une information nouvelle pour les familles, donc le relèvement de `POLICY_VERSION` (et le nouveau consentement qui en découle) sera décidé par le propriétaire à la mise en production du lot, pas avant (P10).
 
 ## 12. Découpage en lots et fichiers propres
 
@@ -266,16 +306,16 @@ Un seul propriétaire par fichier. Les lots A et C peuvent avancer en parallèle
 
 ### Lot R1-A : API et pipeline
 
-- `api/src/pipeline/blocks.ts` (nouveau : `parseBlocks`, bornes §2.5, `validFiche`, copie du rappel) et son test
-- `api/src/pipeline/figures.ts` (nouveau : rognage `sharp` par import dynamique, repli sans image, copie vers `figures/`, renumérotation §2.6)
+- `api/src/pipeline/blocks.ts` (nouveau : `parseBlocks`, bornes §2.5, `validFiche`, copie du rappel), `api/src/pipeline/latex.ts` (nouveau : `sanitizeLatex`, retrait des formules pour la recherche de sources) et leurs tests
+- `api/src/pipeline/figures.ts` (nouveau : rognage `sharp` par import dynamique, reprise Sonnet puis page entière, copie vers `figures/`, renumérotation §2.6)
 - `api/src/pipeline/prompts.ts`, `steps.ts` (`readWindow`, `transcribe`), `steps-doc.ts` (`generate`), `text.ts` (recollage de blocs), `ports.ts` (ports `crop` et `figures`)
 - `api/src/pipeline/api.ts` (**`jobsConfirm`** : validation, copie des figures avant la transition, course perdue, `removed`, `jobsTranscription`, `docsRead`), `api/src/pipeline/job.ts` (`failJob`, `endWithoutDoc`, `purgeScan` : suppression de `figures/` et de `JOB#/BLOCKS`), `api/src/pipeline/entry.ts` (câblage des ports)
 - `api/src/scans/delete.ts` et `api/src/cours/*` (`cours.ts` `del`, marques, lecture des blocs) : suppression de `JOB#/BLOCKS`, ordre S3 puis DynamoDB (§3.2 point 5)
-- suppression d'élève et de famille : `api/src/family/students.ts`, `api/src/family/family.ts` (S3 `figures/<sid>/` avant `deleteStudentTree` / `deleteFamilyTree`)
+- suppression d'élève et de famille : `api/src/family/archive.ts` (archive de l'élève), `api/src/family/students.ts`, `api/src/family/family.ts` (S3 `figures/<sid>/` avant `deleteStudentTree` / `deleteFamilyTree`)
 - `shared/ddb/keys.ts`, `shared/items.ts`, `shared/delete-tree.ts` (+ test de comptage), `shared/names.ts` (paramètre SSM `data/figuresBucket`, avec le lot B), `docs/data-model.md` : **édités par le lot A seul, relus par le propriétaire de L1c** (règle du contrat et du modèle de données)
 - `mock/**` et `e2e/mock-api/**` : exemples et simulateur d'API des nouveaux champs (propriétaire : lot A ; le lot C les lit)
 - `golden/` et `eval/` : jeu d'essai de 10 pages avec schémas, mesure des cadres et des marquages douteux
-- Tests : contrat (400 sur `figureId` inconnu, `removed` de début de section), bornes §2.5, rappel copié, repli sans `sharp`, ordre de suppression, parent sans `figures`
+- Tests : contrat (400 sur `figureId` inconnu, `removed` de début de section), bornes §2.5, rappel copié, `sanitizeLatex` (interdits, `$` impair), cadre invalide puis page entière, `sharp` en panne puis échec et quota rendu, archive de l'élève, ordre de suppression, parent sans `figures`
 
 ### Lot R1-B : infra
 
@@ -287,6 +327,7 @@ Les droits des fonctions HTTP sont dans `infra/lib/pipeline-stack.ts` (pas dans 
 - `infra/lib/game-stack.ts` : rôle `admin` de `students-delete` et `family-admin`
 - `infra/test/*` : tests de synthèse (bucket privé et chiffré, aucun droit hors préfixe, aucun droit `figures` sur les rôles parent ou d'export, couche absente des autres fonctions)
 - script de fabrication de la couche et étape de CI associée
+- `procRole` : `bedrock:InvokeModel` sur le profil Sonnet (§3.5) ; rôle du handler d'export de l'élève : `GetObject` sur `figures/<sid>/*` ; nouvelle route `POST /me/export/archive` dans `infra/lib/api-stack.ts` (table des routes) et le rôle de `family-export-archive` ou d'un handler `me-export-archive` (propriétaire : lot A pour le code, lot B pour les droits)
 - Estimation de coût avant déploiement, à valider par le propriétaire ; toutes les ressources taguées `Project`, `Environment`, `ManagedBy`, `Owner`
 
 Droits exacts à ajouter (S3 = ressource de l'objet ; `scans` = bucket des photos, `figures` = nouveau bucket) :
@@ -308,8 +349,8 @@ Justification de la lecture `DOC#*` pour `cours-api` : la partition `DOC#<id>` n
 
 - `web/src/screens/confirm/` : `ConfirmView.tsx` (vue document), nouveau `DocView.tsx` (blocs et phrases), `FigureCard.tsx`, `sections.ts` (coupes entre blocs), `storage.ts` (retraits, figures), `confirm.css`, tests
 - `web/src/screens/Cours.tsx` (blocs, figures, marques, interrupteur), `web/src/screens/Doc.tsx` (paragraphes, rappel, figures)
-- `web/src/api.ts`, `web/src/types.ts`, `web/src/labels.ts`
-- `e2e/**` (hors `e2e/mock-api/**`, propriété du lot A) : parcours relecture (douteux, correction en place, retrait, figure gardée et refusée, repli sans image), captures PC et mobile
+- `web/src/api.ts`, `web/src/types.ts`, `web/src/labels.ts`, `web/package.json` (dépendance `katex`), nouveau `web/src/components/Math.tsx` (`splitMath`, KaTeX en MathML), bouton « Télécharger mes données » de l'élève
+- `e2e/**` (hors `e2e/mock-api/**`, propriété du lot A) : parcours relecture (douteux, correction en place, retrait, figure gardée et refusée, page entière), formules (rendu, aperçu, `\href` sans lien), captures PC et mobile
 
 ### Lot R1-D : textes légaux (après validation)
 
@@ -319,7 +360,15 @@ Justification de la lecture `DOC#*` pour `cours-api` : la partition `DOC#<id>` n
 
 1. PR de conception (celle-ci), puis fusion du contrat 1.5.0. Le contrat 1.6.0 de F10 vient après R1-A.
 2. R1-A et R1-C en parallèle ; R1-B avant le premier déploiement dev de R1-A.
-3. Mesure sur le jeu d'essai (cadres, marquages douteux, troncature, taux de repli de `sharp`) **avant** d'ouvrir le lot en production.
+3. Mesure sur le jeu d'essai (cadres, marquages douteux, troncature, taux de reprise Sonnet et de page entière) **avant** d'ouvrir le lot en production.
+
+## 12.1 Hors v1, prévu plus tard
+
+Décisions du propriétaire (P5, P6) : ces deux évolutions sont voulues mais ne font pas partie de R1.
+
+- **Ajout d'une phrase oubliée à la relecture** (P5). En v1 l'élève corrige ou retire une phrase, il n'en ajoute pas. Prévu plus tard : l'ajout suppose un identifiant de phrase nouveau (`p<page>-s<n>` sans trou), une position dans un bloc et la prise en compte par les sections ; le contrat de R1 ne l'empêche pas (les identifiants ne sont jamais renumérotés).
+- **Édition du cours après confirmation** (P6). En v1, supprimer et rescanner. Prévu plus tard : modifier le cours oblige à refaire l'extraction et la vérification des fiches liées (second plafond de coût, affirmations orphelines) ; à concevoir avec l'ajout de pages de F10.
+- Questions « légender un schéma » (#43).
 
 ## 13. Points à trancher (défaut proposé)
 
@@ -329,22 +378,24 @@ Justification de la lecture `DOC#*` pour `cours-api` : la partition `DOC#<id>` n
 | P2 | Durée des figures | Vie du cours (jusqu'à suppression du cours, de l'élève ou de la famille), pas de durée automatique |
 | P3 | Figures gardées par défaut ? | **Non** : choix explicite par figure |
 | P4 | Fiche gardée après suppression du cours : garde-t-elle ses images ? | Non, les figures partent avec le cours |
-| P5 | Ajout d'une phrase oubliée à la relecture | Hors v1 (corriger une phrase, pas en ajouter) |
-| P6 | Édition du cours après confirmation | Hors v1 (supprimer et rescanner) |
-| P7 | Rognage serveur ou dans le navigateur ; empaquetage de `sharp` | Serveur ; `sharp` en couche Lambda arm64 réservée à `transcribe`, jamais dans le paquet commun ; repli « figure décrite en texte, sans image » |
-| P8 | Si moins de 70 % des cadres sont corrects à la mesure (10 pages : contrôle de fumée, pas une mesure statistique ; viser 30 pages si possible) | Description seule (sans image) ; second appel avec un modèle plus grand seulement sur accord du propriétaire |
+| P5 | Ajout d'une phrase oubliée à la relecture | **Tranché : hors v1, prévu plus tard** (§12.1) |
+| P6 | Édition du cours après confirmation | **Tranché : hors v1, prévu plus tard** (§12.1) |
+| P7 | Rognage serveur ou dans le navigateur ; empaquetage de `sharp` ; figure en texte | **Tranché : la figure reste une image.** Serveur ; `sharp` en couche Lambda arm64 réservée à `transcribe`, jamais dans le paquet commun ; cadre faux : reprise Sonnet puis page entière ; `sharp` en panne : scan réessayé puis en échec, quota rendu (§3.4) |
+| P8 | Si moins de 70 % des cadres sont corrects à la mesure | **Tranché : un modèle plus gros est autorisé** (Sonnet, environ 0,0055 € par page à figures, §3.5) ; reprise automatique toujours active, « Sonnet d'abord » si la mesure est sous 70 % |
 | P9 | `SINGLE_CALL_PAGES` 4 ou 3 | Rester à 4, passer à 3 si plus de 10 % de replis à la mesure |
 | P10 | Relever `POLICY_VERSION` pour R1 | Oui, **avant le premier déploiement (dev compris) qui conserve une figure**, pas seulement à la mise en production ; pas dans cette PR |
 | P11 | Seuil de 40 % de phrases douteuses | 40 %, à ajuster à la mesure |
 | P12 | `ConfirmRequest.removed` défini ici | Oui, dans le contrat 1.5.0 (absent de main) |
-| P13 | Formules : texte brut ou LaTeX | Texte brut (`E = mc²`) en v1 |
-| P14 | Export de la famille : figures de l'élève dans l'archive | Non en v1 (`figureCount` seulement) ; l'élève peut les voir dans son cours |
-| P15 | Identifiants de blocs et de figures dans un cours qui s'étend (ajout de pages, F10) | Locaux au job à la lecture, **renumérotés avec un décalage à l'écriture dans le cours** : uniques à l'échelle du cours (§2.6) ; `COURS#<id>#B` réécrit sous le verrou de F10. F10 renvoie à P15 (et non P14) |
+| P13 | Formules : texte brut ou LaTeX | **Tranché : LaTeX** (§2.7) : contrôle serveur, rendu KaTeX en MathML, aucun HTML injecté hors KaTeX |
+| P14 | Export : figures de l'élève | **Tranché : l'export de l'élève contient tout, figures comprises** (`POST /me/export/archive`, §3.6) ; l'export parent garde la règle (pas de contenu de cours), voir P16 |
+| P15 | Identifiants de blocs et de figures dans un cours qui s'étend (ajout de pages, F10) | Locaux au job à la lecture, **renumérotés avec un décalage à l'écriture dans le cours** : uniques à l'échelle du cours (§2.6) ; `COURS#<id>#B` réécrit sous le verrou de F10. F10 renvoie à P15 (et non P14). **Tranché : OK** |
+| P16 | **Point ouvert** : l'export du parent contient-il le cours et les figures de l'enfant (droit d'accès d'un parent) ? | Non : règle validée conservée (§3.6) ; à trancher avec la personne compétente |
+| P17 | Rendu des formules : MathML (défaut) ou HTML de KaTeX avec `style-src` assoupli | MathML : aucun changement de la politique de sécurité ; à vérifier sur les appareils de la famille |
 
 ## 14. Ce qui n'a pas été mesuré
 
 - Précision des cadres de figures de Haiku, taux de lecture douteuse bien calibré, taille réelle des sorties Markdown : tout est estimé. Aucun appel de modèle n'a été fait pour cette conception.
-- Le coût du rognage, la taille de la couche `sharp` et le taux de repli « sans image » ne sont pas mesurés.
+- Le coût du rognage, la taille de la couche `sharp`, le taux de reprise Sonnet, le surcoût de jetons du LaTeX et le rendu MathML sur les appareils de la famille ne sont pas mesurés.
 - Les droits IAM du §12 sont lus dans `pipeline-stack.ts` et `game-stack.ts` de main, rien n'a été synthétisé (`cdk synth` non lancé).
 - `npm run mock:check` (serveur Prism) n'a pas été lancé sur les nouveaux exemples.
 - Les textes légaux sont des brouillons non relus par un juriste.

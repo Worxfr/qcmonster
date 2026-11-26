@@ -3,7 +3,7 @@ info:
   title: QCMonster API
   version: 1.5.0
   description: |
-    Contrat d'API QCMonster (contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -1298,7 +1298,7 @@ components:
       properties:
         doubt: { type: boolean, description: "Facultatif (v1.5), reponse seulement (`Transcription`), ignore dans `ConfirmRequest.corrections` et absent de `Cours`. true: la lecture de cette phrase est douteuse (ecriture illisible, mot incertain); l'ecran de relecture la signale. C'est une confiance de LECTURE donnee par le modele: ce n'est PAS un resultat de verification des faits (qui n'existe qu'apres la confirmation, voir `Cours.marks`). Absent = pas de doute signale." }
         id: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "`p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin." }
-        text: { type: string, maxLength: 2000 }
+        text: { type: string, maxLength: 2000, description: "Texte de la phrase. Depuis la v1.5 il peut contenir du LaTeX: une formule dans une phrase est entouree de `$...$` (`\\$` pour un dollar litteral); dans un bloc `formule`, le texte est le LaTeX sans delimiteurs. Le serveur controle le LaTeX (longueur, accolades, commandes interdites comme href, url, input, def) et laisse en texte simple ce qui ne passe pas; le site l'affiche en MathML via KaTeX (trust: false)." }
         pages:
           type: array
           minItems: 1
@@ -1311,7 +1311,7 @@ components:
       description: "Bloc de mise en forme du cours (v1.5), au-dessus des phrases: les phrases (`Sentence`) restent l'unite des corrections, des coupes en sections, des retraits et des affirmations verifiees; un bloc ne fait que les REGROUPER dans l'ordre du document. Un bloc peut s'etendre sur deux pages (phrase recollee, ou paragraphe qui continue)."
       properties:
         id: { type: string, pattern: '^b[0-9]+$', description: "b1, b2... dans l'ordre du document" }
-        kind: { type: string, enum: [titre, paragraphe, liste, formule, figure], description: "titre: une phrase; paragraphe: une ou plusieurs phrases; liste: une phrase par element; formule: une phrase (texte brut, pas de LaTeX); figure: aucune phrase, voir `figureId`" }
+        kind: { type: string, enum: [titre, paragraphe, liste, formule, figure], description: "titre: une phrase; paragraphe: une ou plusieurs phrases; liste: une phrase par element; formule: une phrase dont le texte est du LaTeX SANS delimiteurs (ex. `E = mc^{2}`); figure: aucune phrase, voir `figureId`" }
         level: { type: integer, minimum: 1, maximum: 3, description: "Titre seulement: 1 = titre du cours, 2 = partie, 3 = sous-partie" }
         ordered: { type: boolean, description: "Liste seulement: numerotee (true) ou a puces (defaut false)" }
         sentenceIds: { type: array, maxItems: 200, items: { type: string, pattern: '^p[0-9]+-s[0-9]+$' }, description: "Phrases du bloc, dans l'ordre. Absent pour une figure." }
@@ -1327,16 +1327,16 @@ components:
         h: { type: number, minimum: 0, maximum: 1 }
     Figure:
       type: object
-      required: [figureId, page, kind, alt]
-      description: "Schema, graphique, tableau, carte ou photo du cours (v1.5). `alt` (description courte ecrite par le modele) est toujours present: c'est le texte alternatif, et le repli quand le recadrage n'a pas pu etre fait (pas de `url`). La figure et son `alt` ne sont JAMAIS des affirmations: ils ne sont ni verifies ni utilises pour les questions."
+      required: [figureId, page, kind, alt, url]
+      description: "Schema, graphique, tableau, carte ou photo du cours (v1.5). Une figure est TOUJOURS une image (`url`): jamais de figure en texte seul. `alt` (description courte ecrite par le modele) est le texte alternatif pour l'accessibilite, pas un substitut de l'image. Si le cadre propose est faux et ne se corrige pas, l'image est la page entiere (`box` absent). La figure et son `alt` ne sont JAMAIS des affirmations: ils ne sont ni verifies ni utilises pour les questions."
       properties:
         figureId: { type: string, pattern: '^f[0-9]+$' }
         page: { type: integer, minimum: 1, maximum: 10 }
         kind: { type: string, enum: [schema, graphique, tableau, carte, photo, autre] }
         alt: { type: string, minLength: 1, maxLength: 300 }
         caption: { type: string, maxLength: 200, description: "Legende ecrite sous la figure sur la page, recopiee, si elle existe" }
-        box: { $ref: '#/components/schemas/FigureBox' }
-        url: { type: string, format: uri, description: "Image recadree (JPEG, 1200 px au plus), URL pre-signee de 5 minutes re-signee a chaque lecture. Absente si le recadrage a echoue ou n'est pas conserve." }
+        box: { allOf: [{ $ref: '#/components/schemas/FigureBox' }], description: "Absent: la figure est la page entiere (cadre introuvable)" }
+        url: { type: string, format: uri, description: "Image recadree (JPEG, 1200 px au plus), URL pre-signee de 5 minutes re-signee a chaque lecture." }
         urlExpireAt: { type: string, format: date-time }
     ConfirmFigure:
       type: object
@@ -1781,6 +1781,8 @@ components:
         students: { type: integer, minimum: 0 }
         tests: { type: integer, minimum: 0 }
         truncated: { type: boolean }
+        courses: { type: integer, minimum: 0, description: "Facultatif (v1.5, archive de l'eleve): nombre de cours dans l'archive" }
+        figures: { type: integer, minimum: 0, description: "Facultatif (v1.5, archive de l'eleve): nombre de figures (fichiers JPEG) dans l'archive" }
     DocProgress:
       type: object
       required: [docId, titre, matiere, pages, createdAt, tests]

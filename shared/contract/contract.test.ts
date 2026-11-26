@@ -253,10 +253,12 @@ describe('contrat v1.5 (R1): relecture en blocs, figures, fiche en paragraphes',
     expect(tr().pages[0].sentences.some((x: { doubt?: boolean }) => x.doubt)).toBe(true);
   });
   it('figures: rien de conserve sans choix explicite, alt toujours present', () => {
-    expect(schemas.Figure.required).toEqual(['figureId', 'page', 'kind', 'alt']);
+    expect(schemas.Figure.required).toEqual(['figureId', 'page', 'kind', 'alt', 'url']); // une figure est toujours une image
     expect(schemas.ConfirmFigure.required).toEqual(['figureId', 'keep']);
     expect(JSON.stringify(schemas.ConfirmRequest.properties!.figures)).toMatch(/n'est PAS conservee/);
-    expect(zodSchemas.FigureSchema.safeParse({ figureId: 'f1', page: 1, kind: 'schema', alt: '' }).success).toBe(false);
+    expect(zodSchemas.FigureSchema.safeParse({ figureId: 'f1', page: 1, kind: 'schema', alt: '', url: 'https://example.invalid/f1.jpg' }).success).toBe(false);
+    expect(zodSchemas.FigureSchema.safeParse({ figureId: 'f1', page: 1, kind: 'schema', alt: 'x' }).success).toBe(false); // pas de figure sans image
+    expect(zodSchemas.FigureSchema.safeParse({ figureId: 'f1', page: 1, kind: 'schema', alt: 'x', url: 'https://example.invalid/f1.jpg' }).success).toBe(true); // page entiere: box absent
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [], figures: Array.from({ length: 9 }, (_, i) => ({ figureId: `f${i}`, keep: true })) }).success).toBe(false);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [], figures: [{ figureId: 'f1', keep: true }], removed: ['p1-s2'] }).success).toBe(true);
   });
@@ -278,5 +280,17 @@ describe('contrat v1.5 (R1): relecture en blocs, figures, fiche en paragraphes',
     expect(zodSchemas.CoursSchema.safeParse(ex).success).toBe(true);
     expect(zodSchemas.SentenceMarkSchema.safeParse({ sentenceId: 'p1-s1', status: 'non_factuelle', docId: 'd', claimId: 'c' }).success).toBe(false);
     expect(zodSchemas.ClaimSchema.safeParse({ claimId: '1', text: 't', status: 'verifiee', aRisque: false, sources: [], sentenceId: 'p1-s1' }).success).toBe(true);
+  });
+  it('formules en LaTeX: texte de phrase, bloc formule sans delimiteurs (P13)', () => {
+    expect(JSON.stringify(schemas.Sentence.properties!.text)).toMatch(/LaTeX/);
+    expect(JSON.stringify(schemas.Block.properties!.kind)).toMatch(/LaTeX SANS delimiteurs/);
+    expect(zodSchemas.SentenceSchema.safeParse({ id: 'p1-s1', text: 'On a $E = mc^{2}$.' }).success).toBe(true);
+    expect(zodSchemas.SentenceSchema.safeParse({ id: 'p1-s1', text: 'x'.repeat(2001) }).success).toBe(false);
+  });
+  it("export de l'eleve (P14): l'archive peut annoncer cours et figures; l'export du parent reste sans contenu de cours", () => {
+    expect(zodSchemas.ExportArchiveSchema.safeParse({ url: 'https://example.invalid/a.zip', expiresAt: '2026-12-01T10:10:00Z', format: 'zip', sizeBytes: 1, students: 1, tests: 0, truncated: false, courses: 6, figures: 9 }).success).toBe(true);
+    expect(schemas.ExportArchive.required).toEqual(['url', 'expiresAt', 'format', 'sizeBytes', 'students', 'tests', 'truncated']);
+    expect(spec.paths['/family/export/archive'].post.description).toMatch(/aucun texte de cours/);
+    expect(JSON.stringify(spec.paths['/family/export'])).not.toMatch(/figures\//);
   });
 });

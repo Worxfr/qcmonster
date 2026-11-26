@@ -919,6 +919,7 @@ export interface components {
             doubt?: boolean;
             /** @description `p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin. */
             id: string;
+            /** @description Texte de la phrase. Depuis la v1.5 il peut contenir du LaTeX: une formule dans une phrase est entouree de `$...$` (`\$` pour un dollar litteral); dans un bloc `formule`, le texte est le LaTeX sans delimiteurs. Le serveur controle le LaTeX (longueur, accolades, commandes interdites comme href, url, input, def) et laisse en texte simple ce qui ne passe pas; le site l'affiche en MathML via KaTeX (trust: false). */
             text: string;
             /** @description Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent). */
             pages?: number[];
@@ -928,7 +929,7 @@ export interface components {
             /** @description b1, b2... dans l'ordre du document */
             id: string;
             /**
-             * @description titre: une phrase; paragraphe: une ou plusieurs phrases; liste: une phrase par element; formule: une phrase (texte brut, pas de LaTeX); figure: aucune phrase, voir `figureId`
+             * @description titre: une phrase; paragraphe: une ou plusieurs phrases; liste: une phrase par element; formule: une phrase dont le texte est du LaTeX SANS delimiteurs (ex. `E = mc^{2}`); figure: aucune phrase, voir `figureId`
              * @enum {string}
              */
             kind: "titre" | "paragraphe" | "liste" | "formule" | "figure";
@@ -948,7 +949,7 @@ export interface components {
             w: number;
             h: number;
         };
-        /** @description Schema, graphique, tableau, carte ou photo du cours (v1.5). `alt` (description courte ecrite par le modele) est toujours present: c'est le texte alternatif, et le repli quand le recadrage n'a pas pu etre fait (pas de `url`). La figure et son `alt` ne sont JAMAIS des affirmations: ils ne sont ni verifies ni utilises pour les questions. */
+        /** @description Schema, graphique, tableau, carte ou photo du cours (v1.5). Une figure est TOUJOURS une image (`url`): jamais de figure en texte seul. `alt` (description courte ecrite par le modele) est le texte alternatif pour l'accessibilite, pas un substitut de l'image. Si le cadre propose est faux et ne se corrige pas, l'image est la page entiere (`box` absent). La figure et son `alt` ne sont JAMAIS des affirmations: ils ne sont ni verifies ni utilises pour les questions. */
         Figure: {
             figureId: string;
             page: number;
@@ -957,12 +958,13 @@ export interface components {
             alt: string;
             /** @description Legende ecrite sous la figure sur la page, recopiee, si elle existe */
             caption?: string;
+            /** @description Absent: la figure est la page entiere (cadre introuvable) */
             box?: components["schemas"]["FigureBox"];
             /**
              * Format: uri
-             * @description Image recadree (JPEG, 1200 px au plus), URL pre-signee de 5 minutes re-signee a chaque lecture. Absente si le recadrage a echoue ou n'est pas conserve.
+             * @description Image recadree (JPEG, 1200 px au plus), URL pre-signee de 5 minutes re-signee a chaque lecture.
              */
-            url?: string;
+            url: string;
             /** Format: date-time */
             urlExpireAt?: string;
         };
@@ -1353,6 +1355,10 @@ export interface components {
             students: number;
             tests: number;
             truncated: boolean;
+            /** @description Facultatif (v1.5, archive de l'eleve): nombre de cours dans l'archive */
+            courses?: number;
+            /** @description Facultatif (v1.5, archive de l'eleve): nombre de figures (fichiers JPEG) dans l'archive */
+            figures?: number;
         };
         DocProgress: {
             docId: string;
