@@ -132,6 +132,18 @@ describe('Archive', () => {
     expect(screen.getByText(/30 tests/)).toBeInTheDocument();
   });
 
+  it('429 après une archive prête: le lien encore valable reste affiché avec le message', async () => {
+    let n = 0;
+    routes['POST /family/export/archive'] = () => (++n === 1 ? json({ url: 'https://exemple.invalid/a.zip', expiresAt: '2026-12-01T10:10:00Z', format: 'zip', sizeBytes: 1000, students: 1, tests: 3, truncated: false }) : json({ code: 'quota_epuise', message: 'brut' }, 429));
+    await open('/', 'parent');
+    const ask = await screen.findByRole('button', { name: "Préparer l'archive" });
+    await userEvent.click(ask);
+    await screen.findByRole('link', { name: /Télécharger l'archive/ });
+    await userEvent.click(ask);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/3 archives cette heure/);
+    expect(screen.getByRole('link', { name: /Télécharger l'archive/ })).toHaveAttribute('href', 'https://exemple.invalid/a.zip');
+  });
+
   it('429 quota_epuise: message clair, pas de lien', async () => {
     routes['POST /family/export/archive'] = () => json({ code: 'quota_epuise', message: 'brut' }, 429);
     await open('/', 'parent');
@@ -164,6 +176,24 @@ describe('Ré-acceptation de la politique', () => {
     await userEvent.click(screen.getByRole('button', { name: "J'accepte la nouvelle politique" }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Consentement requis');
     expect(screen.queryByText('Pages de la famille')).toBeNull();
+  });
+
+  it("permet de retirer l'accord: export, puis suppression de la famille après confirmation", async () => {
+    routes['GET /family/export'] = () => json({ familyId: 'f1', exportedAt: '2026-12-01T10:00:00Z', students: [], docs: [], reports: [] });
+    routes['DELETE /family'] = () => new Response(null, { status: 204 });
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    await open('/', 'parent');
+    await userEvent.click(await screen.findByRole('button', { name: 'Télécharger mes données' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'GET' && c.path === '/family/export')).toBe(true));
+    const del = screen.getByRole('button', { name: 'Supprimer la famille et les comptes' });
+    await userEvent.click(del); // refus de la confirmation: rien n'est supprimé
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    await userEvent.click(del);
+    await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.path === '/family')).toBe(true));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'La politique de confidentialité a changé' })).toBeNull()); // déconnecté
   });
 
   it('un élève ne voit jamais cet écran', async () => {

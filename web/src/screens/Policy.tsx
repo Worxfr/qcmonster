@@ -49,5 +49,5 @@ export function Policy() {
   );
 }
 
-/** Lien vers la politique, ouvert dans le même onglet (la page se lit sans perdre le formulaire grâce à `target`). */
+/** Lien vers la politique, ouvert dans un nouvel onglet (`target=_blank`): on la lit sans perdre le formulaire en cours. */
 export const PolicyLink = () => <a href="#/politique" target="_blank" rel="noopener">politique de confidentialité</a>;

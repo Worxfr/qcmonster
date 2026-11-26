@@ -2,7 +2,7 @@ import { api } from '../api';
 import { Mascot } from '../components/Mascot';
 import { ScoreBadge, TestList } from '../components/TestList';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
-import { fmtWhen, KIND_LABEL, modeLabel, verdict } from '../history';
+import { toneOf, fmtWhen, KIND_LABEL, modeLabel, verdict } from '../history';
 import { useLoad } from '../hooks';
 import { plural, stageLabel, subjectClass, subjectLabel } from '../labels';
 import type { ScanStage } from '../types';
@@ -36,7 +36,7 @@ export function Suivi({ sid }: { sid: string }) {
           <ol className="weeks" aria-label="Score moyen par semaine">
             {weeks.map((w) => (
               <li key={w.week}>
-                <span className="week-bar" aria-hidden="true"><span className={`week-fill tone-${w.avgScorePct >= 80 ? 'top' : w.avgScorePct >= 50 ? 'mid' : 'low'}`} style={{ height: `${Math.max(6, w.avgScorePct)}%`, opacity: 0.55 + 0.45 * (w.tests / maxTests) }} /></span>
+                <span className="week-bar" aria-hidden="true"><span className={`week-fill tone-${toneOf(w.avgScorePct)}`} style={{ height: `${Math.max(6, w.avgScorePct)}%`, opacity: 0.55 + 0.45 * (w.tests / maxTests) }} /></span>
                 <span className="week-pct" aria-hidden="true">{w.avgScorePct}%</span>
                 <span className="week-no" aria-hidden="true">S{weekNo(w.week)}</span>
                 <span className="sr-only">Semaine {weekNo(w.week)} : {w.tests} {plural(w.tests, 'test', 'tests')}, moyenne {w.avgScorePct} %, {w.activeDays} {plural(w.activeDays, 'jour actif', 'jours actifs')}</span>

@@ -101,7 +101,7 @@ test.describe('Archive et politique', () => {
     await expect(page.getByText('Ton archive est prête')).toBeVisible();
     await ask.click();
     await expect(page.getByRole('alert')).toContainText('3 archives cette heure');
-    await expect(page.getByText('Ton archive est prête')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Télécharger l'archive/ })).toBeVisible(); // le lien précédent, encore valable, reste affiché
   });
 
   test("un parent dont la politique est périmée la relit et l'accepte avant d'accéder au tableau de bord", async ({ page }) => {
@@ -118,6 +118,23 @@ test.describe('Archive et politique', () => {
     await expect(page.getByRole('heading', { name: 'Pages de la famille' })).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Pages de la famille' })).toBeVisible(); // ne redemande pas
+  });
+
+  test("sans accepter, le parent peut retirer son accord: confirmation puis suppression de la famille", async ({ page }) => {
+    await fake.reset({ role: 'parent' });
+    await fake.policyOutdated();
+    await login(page, 'parent');
+    await expect(page.getByRole('button', { name: 'Télécharger mes données' })).toBeVisible();
+    await shot(page, 'parent-politique-refus-pc');
+    page.once('dialog', (d) => void d.dismiss()); // refus de la confirmation: la famille reste
+    await page.getByRole('button', { name: 'Supprimer la famille et les comptes' }).click();
+    await expect(page.getByRole('heading', { name: 'La politique de confidentialité a changé' })).toBeVisible();
+    page.once('dialog', (d) => void d.accept());
+    await page.getByRole('button', { name: 'Supprimer la famille et les comptes' }).click();
+    await expect(page.getByRole('heading', { name: 'QCMonster' })).toBeVisible(); // retour à la connexion
+    await fake.role('parent');
+    await page.getByRole('button', { name: 'Entrer comme parent' }).click();
+    await expect(page.getByRole('heading', { name: 'Bienvenue !' })).toBeVisible(); // la famille n'existe plus
   });
 });
 
@@ -136,6 +153,11 @@ test.describe('Mobile', () => {
     await expect(page.getByRole('heading', { name: 'Tes réponses' })).toBeVisible();
     expect(await noOverflow()).toBe(true);
     await shot(page, 'eleve-detail-mobile');
+    // M3: l'anneau large garde sa taille sur mobile et son centre reste dans l'anneau
+    const ring = await page.locator('.score-l').boundingBox();
+    const inner = await page.locator('.score-l .score-in').boundingBox();
+    expect(ring && ring.width >= 90).toBe(true);
+    expect(ring && inner && inner.width < ring.width).toBe(true);
     await fake.role('parent');
     await page.goto('/');
     await page.getByRole('button', { name: 'Déconnexion' }).click();
@@ -144,5 +166,10 @@ test.describe('Mobile', () => {
     await expect(page.getByRole('heading', { name: 'Tous les tests' })).toBeVisible();
     expect(await noOverflow()).toBe(true);
     await shot(page, 'parent-suivi-mobile');
+    // M2: dans « Les fiches », le titre ne chevauche pas le score
+    const card = page.locator('.fiche-card').first();
+    const t = await card.locator('strong').first().boundingBox();
+    const sc = await card.locator('.fiche-score').boundingBox();
+    expect(t && sc && (t.y + t.height <= sc.y + 1 || t.x + t.width <= sc.x + 1)).toBe(true);
   });
 });

@@ -75,6 +75,7 @@ export const api = {
   dashboard: () => call<Dashboard>('GET', '/family/dashboard'),
   markRead: (docId: string) => call<ReadResult>('POST', `/docs/${e(docId)}/read`),
   createFamily: (b: FamilyCreateRequest) => call<Me>('POST', '/family', b),
+  deleteFamily: () => call<void>('DELETE', '/family'),
   exportFamily: () => call<unknown>('GET', '/family/export'),
   /** Route publique (sans JWT). Le jeton et le mot de passe ne sont ni journalises ni repris dans une erreur. */
   activate: (token: string, password: string) => call<void>('POST', '/activation', { token, password }, false),

@@ -219,7 +219,7 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 .test-row:hover { background: #faf5ff; border-color: #c4b5fd; }
 .test-title { display: block; overflow-wrap: anywhere; }
 .test-meta { display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: center; font-size: .92rem; color: var(--muted); margin: .15rem 0 0; }
-.test-h1 { margin: 0; overflow-wrap: anywhere; }
+.test-h1 { margin: 0; overflow-wrap: break-word; }
 .year-title { margin: .8rem 0 .5rem; color: var(--brand); font-size: 1.1rem; border-bottom: 3px solid var(--line); padding-bottom: .2rem; }
 .year-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
 .year-chip { border: 2px solid var(--brand); background: #fff; color: var(--brand); border-radius: 999px; padding: .4rem .95rem; min-height: 44px; font: inherit; font-weight: 800; cursor: pointer; }
@@ -251,4 +251,16 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
   .tabs a { font-size: .74rem; } .tabs a span { font-size: 1.25rem; }
   .test-row { padding: .55rem .6rem; gap: .6rem; } .score { width: 54px; height: 54px; } .score-in { width: 40px; height: 40px; }
   .fiche-card { flex-wrap: wrap; } .fiche-score { justify-items: start; text-align: left; }
+}
+
+/* H1-W, relecture: repli du titre de fiche, anneau large conserve sur mobile, ecran de refus */
+.fiche-card .grow { min-width: 0; overflow-wrap: anywhere; } .fiche-score { flex: none; }
+.subj-row .muted, .subj-row .subj { white-space: nowrap; }
+.refuse { margin-top: 1rem; width: 100%; text-align: left; border-color: #fdba74; }
+.refuse h2 { font-size: 1.1rem; }
+@media (max-width: 520px) {
+  .fiche-card .grow { flex: 1 1 100%; }
+  .test-h1 { font-size: 1.3rem; }
+  .subj-row .grow { order: 3; flex: 1 1 100%; }
+  .score.score-l { width: 92px; height: 92px; } .score.score-l .score-in { width: 72px; height: 72px; }
 }

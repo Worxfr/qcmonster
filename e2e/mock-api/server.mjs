@@ -269,6 +269,11 @@ const server = createServer(async (req, res) => {
   switch (`${m} ${p}`) {
     case 'GET /me/progress': return send(res, 200, progress());
     case 'GET /me/tests': return parent ? err(res, 403, 'interdit', 'Interdit') : send(res, 200, testPage(url.searchParams));
+    case 'DELETE /family':
+      if (!parent) return err(res, 403, 'interdit', 'Interdit');
+      S.family = null;
+      S.students = [];
+      return send(res, 204);
     case 'POST /family/policy':
       if (!parent) return err(res, 403, 'interdit', 'Interdit');
       if (b.consent !== true || b.policyVersion !== '2026-11-26') return err(res, 400, 'requete_invalide', 'Consentement requis');

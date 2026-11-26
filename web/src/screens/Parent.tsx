@@ -116,7 +116,7 @@ export function Parent() {
   );
 }
 
-async function downloadExport() {
+export async function downloadExport() {
   const data = await api.exportFamily();
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a');
@@ -190,8 +190,7 @@ function ArchiveCard() {
     try {
       setA(await api.exportArchive());
     } catch (e) {
-      setA(null);
-      setError(archiveError(e));
+      setError(archiveError(e)); // le lien d'une archive precedente, encore valable 10 minutes, reste affiche
     } finally {
       setBusy(false);
     }
