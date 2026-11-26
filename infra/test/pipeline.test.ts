@@ -383,8 +383,6 @@ describe('FEAT-A (lot I): assemblage', () => {
 describe('FEAT-A (lot I): exports de entry.ts', () => {
   const entry = readFileSync(new URL('../../api/src/pipeline/entry.ts', import.meta.url), 'utf8');
   const exported = new Set([...entry.matchAll(/export const (\w+)\s*=/g)].map((m) => m[1]));
-  // R1-B: exports ajoutes par le lot A (cropFigures, export de l'eleve); verifies des qu'ils existent, et ceux de A ne sont tolere absents que dans cette liste.
-  const PENDING_LOT_A = ['cropFiguresHandler', 'meExportArchiveHandler', 'studentExportBuildHandler'];
   const wanted = [...new Set([...Object.values(API_FUNCTIONS), ...Object.values(EXPORT_FUNCTIONS), ...Object.values(STEP_FUNCTIONS).map((x) => x[1])])];
   const b2Merged = ['coursHandler', 'scansListHandler', 'foldersHandler', 'docsPatchHandler'].some((n) => exported.has(n));
   it('la liste attendue contient les 12 exports de FEAT-A et du pipeline', () => {
@@ -392,7 +390,7 @@ describe('FEAT-A (lot I): exports de entry.ts', () => {
     expect(wanted.length).toBe(Object.keys(API_FUNCTIONS).length + Object.keys(EXPORT_FUNCTIONS).length + Object.keys(STEP_FUNCTIONS).length - 1); // coursHandler sert deux fonctions
   });
   it.skipIf(!b2Merged)('chaque fonction de API_FUNCTIONS et STEP_FUNCTIONS a son export dans entry.ts', () => {
-    expect(wanted.filter((n) => !exported.has(n) && !PENDING_LOT_A.includes(n))).toEqual([]);
+    expect(wanted.filter((n) => !exported.has(n))).toEqual([]);
   });
 });
 
