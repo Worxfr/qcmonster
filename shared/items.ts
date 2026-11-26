@@ -23,6 +23,8 @@ export const JobItemSchema = z.object({
   pages: z.number().int().min(1).max(10),
   coutCentimes: z.number().int().min(0).default(0),
   createdAt: z.string(),
+  /** M1 #90: `revision` = modification d'un cours confirme (jamais un scan). Absent: un scan. */
+  kind: z.enum(['revision']).optional(),
   docId: z.string().optional(),
   ttl: z.number().int(),
   // Contrat 1.3 (FEAT-A), tous facultatifs: un job cree avant 1.3 reste valide.
@@ -59,6 +61,10 @@ export const FicheItemSchema = z.object({
   sectionCount: z.number().int().min(1).max(6).optional(),
   /** Q1: taille de la banque de questions (QCM + trous). Absent sur une fiche ancienne. */
   nbQuestions: z.number().int().min(0).max(198).optional(),
+  /** M1 #90: numeros d'affirmations retires par une modification du cours (200 au plus). Ecrit par `rev-commit` seul. */
+  claimsRetired: z.array(z.number().int().min(1).max(99)).max(200).optional(),
+  /** M1 #90: nombre de modifications faites (ecrit en DERNIER par `rev-commit`). */
+  rev: z.number().int().min(0).optional(),
 });
 
 /** Dossier de l'eleve (contrat 1.3). `nomCle` = `labelKey(nom)`: unicite sans casse ni accents. Pas de liste de fiches: l'appartenance est portee par la fiche (`dossierId`). */
@@ -79,6 +85,8 @@ export const QcmItemSchema = z.object({
   choix: z.array(z.string()).length(4),
   cle: z.number().int().min(0).max(3),
   claimId: z.string(),
+  /** M1 #90: question sortie du tirage apres une modification du cours (jamais supprimee: l'historique et les points la citent). */
+  retiree: z.boolean().optional(),
 });
 
 /** Trou (ecrit par L2a). La comparaison normalise casse, accents et espaces. */
@@ -89,6 +97,8 @@ export const GapItemSchema = z.object({
   phrase: z.string(),
   attendu: z.string(),
   claimId: z.string(),
+  /** M1 #90: voir `QcmItemSchema.retiree`. */
+  retiree: z.boolean().optional(),
 });
 
 /** Affirmation (ecrite par L2a aux etapes 5 et 6; jamais modifiee ensuite). */

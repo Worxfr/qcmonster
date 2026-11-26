@@ -6,7 +6,7 @@ import { log } from '../../../shared/log/index.js';
 import { ClaimItemSchema, FicheItemSchema, GapItemSchema, QcmItemSchema, questionId } from '../../../shared/items.js';
 import { jobCapEur } from '../../../shared/names.js';
 import { cleanLabel, cleanTopic } from '../../../shared/scans.js';
-import { callModel, centsFromMicros, iso, jobKey, type Ctx } from './ctx.js';
+import { callModel, capEurOf, centsFromMicros, iso, jobKey, type Ctx } from './ctx.js';
 import { isDuplicate, minhash } from './fingerprint.js';
 import { endWithoutDoc, keptSections, rangesOf, sentencesOf, sortedTexts, transition, type PlanSection, type TextSentence } from './job.js';
 import { consumeQuotaOnce } from './quota-ops.js';
@@ -21,6 +21,8 @@ import { addVariants } from './pool-gen.js';
 import { ModelOutputError, normalize, parseModelJson, salvageTruncatedList, sliceRanges, thinEvenly, words, type SliceRange } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
+/** Modification de cours (M1 #90): part du plafond de 0,10 EUR gardee pour la generation de la fiche. */
+export const REVISION_GEN_RESERVE_CENTS = 3;
 export const MAX_CLAIMS = 60;
 export const MAX_QUESTIONS = 5;
 /** Nombre de questions (QCM, et trous) selon le nombre de faits verifies: environ une pour deux faits, de 1 a MAX_QUESTIONS. */
@@ -168,7 +170,7 @@ function parseExtractPart(raw: string): ExtractPart {
  * illisible, on garde ce qui est lu (si rien n'est lu, l'erreur est levee) et un journal sans texte donne le nombre de phrases non couvertes.
  * shortcut: au-dela de 360 phrases dans UNE section la fin n'est pas lue; a revoir si de telles sections existent (le plan de sections les coupe d'ordinaire).
  */
-async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text: string }[], lead: { id: string; text: string }[] = []): Promise<{ titre: string; matiere: string; claims: RawClaim[] }> {
+export async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text: string }[], lead: { id: string; text: string }[] = []): Promise<{ titre: string; matiere: string; claims: RawClaim[] }> {
   const total = sentences.length;
   const at = new Map(sentences.map((s, n) => [s.id, n]));
   const all = sliceRanges(sentences.map((s) => s.text.length));
@@ -178,7 +180,7 @@ async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text
   let stopReason: string | undefined = uncovered > 0 ? 'size' : undefined;
   const maxCalls = queue.length * 3 + 6;
   const job0 = await ctx.db.get(jobKey(i.sid, i.jobId));
-  const stopAtEur = jobCapEur((job0?.pages as number | undefined) ?? 1) - GEN_RESERVE_CENTS / 100;
+  const stopAtEur = capEurOf(job0) - (job0?.kind === 'revision' ? REVISION_GEN_RESERVE_CENTS : GEN_RESERVE_CENTS) / 100;
   const claims: RawClaim[] = [];
   let titre = '';
   let matiere = '';
@@ -398,7 +400,7 @@ export function claimStatus(claim: Item, verdict: Item | undefined): 'verifiee' 
   return claim.type === 'non_factuelle' ? 'non_factuelle' : 'non_verifiable';
 }
 
-async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, EligibleClaim>, forSummary: Map<string, EligibleClaim & { verifiee: boolean }>) {
+export async function makeQuestions(ctx: Ctx, i: WfInput, eligible: Map<string, EligibleClaim>, forSummary: Map<string, EligibleClaim & { verifiee: boolean }>) {
   const cap = questionCap(eligible.size);
   const qcm: GenQcm[] = [];
   const gaps: GenGap[] = [];

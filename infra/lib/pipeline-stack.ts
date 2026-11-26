@@ -14,8 +14,10 @@ import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { buildSync } from 'esbuild';
 import type { Construct } from 'constructs';
 import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
+import { reviseStatements } from './revise-access.js';
+import { REVISE_INPUT_KEYS } from '../../shared/revise-access.js';
 import { CONFIRM_TIMEOUT_S, MACHINE_TIMEOUT_MIN_S, MAX_SECTIONS, machineTimeoutNeededS } from '../../shared/scans.js';
-import { COPIES_PREFIX, fn, FIGURES_BUCKET_PARAM, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
+import { COPIES_PREFIX, fn, FIGURES_BUCKET_PARAM, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, reviseRoleName, reviseStartRoleName, reviseStateMachineName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
 
 export interface PipelineStackProps extends StackProps {
   envName: Env;
@@ -105,6 +107,10 @@ export const API_FUNCTIONS = {
   'cours-api': 'coursHandler',
   // Meme export `coursHandler`, autre fonction: seule la route DELETE /cours/{coursId} y passe, avec le seul role qui peut supprimer (GET reste en lecture seule).
   'cours-delete': 'coursHandler',
+  // M1 #90: modifier un cours confirme. `revise-create` est ferme tant que REVISE_ENABLED n'est pas `true` (contexte CDK `-c revise=true`).
+  'revise-create': 'reviseCreateHandler',
+  'revise-get': 'reviseGetHandler',
+  'revise-cancel': 'reviseCancelHandler',
 } as const;
 /** Export de l'eleve (R1, design 3.6): la fonction de la route et la fonction de construction (asynchrone, 15 min). Exports de entry.ts: lot A. */
 export const EXPORT_FUNCTIONS = { 'me-export-archive': 'meExportArchiveHandler', 'student-export-build': 'studentExportBuildHandler' } as const;
@@ -127,7 +133,21 @@ export const STEP_FUNCTIONS = {
   generate: ['generate', 'generateHandler'],
   finalize: ['finalize', 'finalizeHandler'],
   fail: ['pipeline-fail', 'failHandler'],
+  // M1 #90: etapes de la machine `revise`. `rev-extract` et `rev-generate` appellent le modele (pipeline-role, Bedrock inchange); les trois autres ont le role `revise` (sans Bedrock ni S3).
+  revPrepare: ['rev-prepare', 'revPrepareHandler'],
+  revExtract: ['rev-extract', 'revExtractHandler'],
+  revGenerate: ['rev-generate', 'revGenerateHandler'],
+  revCommit: ['rev-commit', 'revCommitHandler'],
+  revFail: ['rev-fail', 'revFailHandler'],
 } as const;
+
+/** Delais par tache de la machine `revise` (secondes). `verify` reprend celui de la machine de scan (meme fonction). */
+export const REVISE_TASK_TIMEOUT_S = { prepare: 60, extract: 180, verify: 960, generate: 240, commit: 120, fail: 120 } as const;
+/** Fiches touchees au plus (shared/scans.ts REVISION_MAX_DOCS): le chemin le plus long, plus une marge. Ce delai n'est qu'un FILET: l'echec passe par le `Catch` de chaque tache. */
+export function reviseMachineTimeoutS(docs = 3): number {
+  const T = REVISE_TASK_TIMEOUT_S;
+  return T.prepare + docs * (T.extract + T.verify + T.generate) + T.commit + T.fail + 900;
+}
 
 /**
  * Pipeline de lecture des cours (L2a, design-v2 4.1): fonctions des routes, etapes, machine d'etats, regle EventBridge des photos.
@@ -178,6 +198,11 @@ export class PipelineStack extends Stack {
     const exportApiRole = mkRole('pipeline-api-export-role');
     const exportRole = mkRole('pipeline-export-role');
     const procRole = mkRole('pipeline-role');
+    // M1 #90: deux roles NOUVEAUX, sans Bedrock ni S3, hors `processingRoleNames`. Droits derives de shared/revise-access.ts. `revise-start` (routes) n'ecrit dans AUCUNE partition DOC#.
+    const reviseStartRole = new iam.Role(this, 'ReviseStartRole', { roleName: reviseStartRoleName(envName), assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') });
+    const reviseRole = new iam.Role(this, 'ReviseRole', { roleName: reviseRoleName(envName), assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com') });
+    const reviseSmArn = this.formatArn({ service: 'states', resource: 'stateMachine', resourceName: reviseStateMachineName(envName), arnFormat: ArnFormat.COLON_RESOURCE_NAME });
+    for (const [r, key] of [[reviseStartRole, 'reviseStart'], [reviseRole, 'revise']] as const) for (const st of reviseStatements(key, { env: envName, tableArn, machineArn: reviseSmArn })) r.addToPolicy(st);
     const ddb = (actions: string[]) => new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`] });
     const rw = ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:BatchWriteItem'];
     // Les fonctions HTTP ne touchent que ces partitions (famille, eleve, fiche, job): `dynamodb:LeadingKeys` ecarte COST#, INVITE#, ACTIVATION#, PASSAGE#...
@@ -340,7 +365,7 @@ export class PipelineStack extends Stack {
       QCM_STATE_MACHINE_ARN: smArn,
       QCM_BEDROCK: ctxBedrock === 'real' ? 'real' : 'mock',
     };
-    const mk = (name: string, exportName: string, role: iam.Role, o: { memory?: number; timeout?: Duration; layers?: lambda.ILayerVersion[] } = {}) => {
+    const mk = (name: string, exportName: string, role: iam.Role, o: { memory?: number; timeout?: Duration; layers?: lambda.ILayerVersion[]; env?: Record<string, string> } = {}) => {
       const logGroup = new logs.LogGroup(this, `Logs-${name}`, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
       logGroup.grantWrite(role);
       return new lambda.Function(this, `Fn-${name}`, {
@@ -352,7 +377,7 @@ export class PipelineStack extends Stack {
         role,
         memorySize: o.memory ?? 256,
         timeout: o.timeout ?? Duration.seconds(15),
-        environment: baseEnv,
+        environment: { ...baseEnv, ...o.env },
         layers: o.layers,
         logGroup,
       });
@@ -367,10 +392,11 @@ export class PipelineStack extends Stack {
       'folders-api': foldersRole,
       'cours-api': coursReadRole,
       'cours-delete': coursRole,
+      'revise-create': reviseStartRole, 'revise-cancel': reviseStartRole, 'revise-get': coursReadRole,
     };
     // Delais propres: dossiers et suppression de cours (lots de 25, reprenable par un second DELETE) 30 s.
-    const apiTimeout: Partial<Record<keyof typeof API_FUNCTIONS, Duration>> = { 'folders-api': Duration.seconds(30), 'cours-api': Duration.seconds(30), 'cours-delete': Duration.seconds(30) };
-    const apiFns = (Object.entries(API_FUNCTIONS) as [keyof typeof API_FUNCTIONS, string][]).map(([name, exp]) => mk(name, exp, apiRoleOf[name], { timeout: apiTimeout[name] }));
+    const apiTimeout: Partial<Record<keyof typeof API_FUNCTIONS, Duration>> = { 'folders-api': Duration.seconds(30), 'cours-api': Duration.seconds(30), 'cours-delete': Duration.seconds(30), 'revise-create': Duration.seconds(30) };
+    const apiFns = (Object.entries(API_FUNCTIONS) as [keyof typeof API_FUNCTIONS, string][]).map(([name, exp]) => mk(name, exp, apiRoleOf[name], { timeout: apiTimeout[name], ...(name === 'revise-create' ? { env: { QCM_STATE_MACHINE_ARN: reviseSmArn, REVISE_ENABLED: String(this.node.tryGetContext('revise')) === 'true' ? 'true' : 'false' } } : {}) }));
     for (const f of apiFns) {
       f.addPermission('ApiGateway', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: this.formatArn({ service: 'execute-api', resource: apiId, resourceName: '*/*' }) });
     }
@@ -408,6 +434,11 @@ export class PipelineStack extends Stack {
       generate: mk(...S.generate, procRole, { timeout: Duration.minutes(3) }),
       finalize: mk(...S.finalize, procRole, { timeout: Duration.seconds(60) }),
       fail: mk(...S.fail, procRole, { timeout: Duration.seconds(60) }),
+      revPrepare: mk(...S.revPrepare, reviseRole, { timeout: Duration.seconds(50) }),
+      revExtract: mk(...S.revExtract, procRole, { timeout: Duration.minutes(2) }),
+      revGenerate: mk(...S.revGenerate, procRole, { timeout: Duration.minutes(3) }),
+      revCommit: mk(...S.revCommit, reviseRole, { timeout: Duration.seconds(100) }),
+      revFail: mk(...S.revFail, reviseRole, { timeout: Duration.seconds(100) }),
     };
     // Les etapes qui reprennent la machine (attente d'envoi, de confirmation) ont besoin de SendTask*.
     procRole.addToPolicy(sendTask);
@@ -500,6 +531,29 @@ export class PipelineStack extends Stack {
       logs: { destination: smLogs, level: sfn.LogLevel.ERROR, includeExecutionData: false },
     });
 
+
+    // --- Machine `revise` (M1 #90, docs/M1-design.md 3.3): une execution par modification. Entree = identifiants SEULEMENT (REVISE_INPUT_KEYS: aucune cle ne peut etre oubliee
+    // dans les `Parameters` d'une tache, revue #100 B1). Chaque tache a son delai et son `Catch` (via le `Map` pour celles d'une fiche) vers `rev-fail`: un delai de MACHINE ne declenche aucun `Catch`.
+    const RT = REVISE_TASK_TIMEOUT_S;
+    const rIds = Object.fromEntries(Object.keys(REVISE_INPUT_KEYS).map((k) => [k, sfn.JsonPath.stringAt(`$.${k}`)]));
+    const rStep = { ...rIds, index: sfn.JsonPath.numberAt('$.index') };
+    const rcall = (id: string, f: lambda.IFunction, payload: Record<string, unknown>, resultPath: string | undefined, timeoutS: number, retry = false) => call(id, f, payload, resultPath, timeoutS, retry);
+    const rFailed = rcall('EchecModification', fns.revFail, rIds, undefined, RT.fail, true).next(new sfn.Fail(this, 'ModificationEchouee', { error: 'RevisionFailed' }));
+    const rPrepare = rcall('PreparationModification', fns.revPrepare, rIds, '$.plan', RT.prepare, true);
+    const rExtract = rcall('ExtractionModification', fns.revExtract, rStep, '$.ex', RT.extract);
+    const rVerify = rcall('VerificationModification', verifyFn, { jobId: sfn.JsonPath.stringAt('$.revisionId'), docId: sfn.JsonPath.stringAt('$.ex.docId'), budgetRestantCentimes: sfn.JsonPath.numberAt('$.ex.budgetRestantCentimes') }, '$.verify', RT.verify);
+    const rGenerate = rcall('GenerationModification', fns.revGenerate, rStep, undefined, RT.generate);
+    const rCommit = rcall('ValidationModification', fns.revCommit, rIds, undefined, RT.commit, true);
+    const perFiche = rExtract.next(new sfn.Choice(this, 'NouvellesAffirmations').when(sfn.Condition.numberGreaterThan('$.ex.claims', 0), rVerify.next(rGenerate)).otherwise(rGenerate));
+    const rFiches = new sfn.Map(this, 'Fiches-modification', { itemsPath: '$.plan.indices', maxConcurrency: 1, itemSelector: { ...rIds, index: sfn.JsonPath.objectAt('$$.Map.Item.Value') }, resultPath: sfn.JsonPath.DISCARD }).itemProcessor(perFiche);
+    for (const t of [rPrepare, rFiches, rCommit]) t.addCatch(rFailed, { errors: ['States.ALL'], resultPath: sfn.JsonPath.DISCARD }); // l'erreur n'est pas gardee: l'historique n'a aucun texte
+    new sfn.StateMachine(this, 'Revise', {
+      stateMachineName: reviseStateMachineName(envName),
+      definitionBody: sfn.DefinitionBody.fromChainable(rPrepare.next(rFiches).next(rCommit).next(new sfn.Succeed(this, 'Modification-terminee'))),
+      stateMachineType: sfn.StateMachineType.STANDARD,
+      timeout: Duration.seconds(reviseMachineTimeoutS()),
+      logs: { destination: new logs.LogGroup(this, 'ReviseLogs', { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY }), level: sfn.LogLevel.ERROR, includeExecutionData: false },
+    });
 
     // --- Photos deposees (prefixe scans/): l'evenement S3 passe par EventBridge (active par la stack Data).
     new events.Rule(this, 'ScanUploaded', {

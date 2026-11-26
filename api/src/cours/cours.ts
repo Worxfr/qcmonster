@@ -8,11 +8,13 @@ import { callerOf, fail, json, noContent, pathId, requireStudent } from '../pipe
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { coursFiguresPrefix } from '../pipeline/figures.js';
 import { coursMeta } from './meta.js';
+import { clearRevisionForDelete, isOpenRevision, revisionHolder } from '../revise/lock.js';
 import { DELETING, MSG_APPEND, reclaimLock } from '../pipeline/append.js';
 import { coursMarks, loadCoursBlocks, signFigures } from './view.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
 const BATCH = 25;
+const MSG_REVISION_BUSY = 'Une modification est en cours';
 
 async function get(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const sid = requireStudent(await callerOf(ctx, event));
@@ -26,8 +28,11 @@ async function get(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const existing = new Set((await Promise.all(ids.map(async (id) => ((await ctx.db.get(keys.doc(sid, id))) ? id : undefined)))).filter((x): x is string => x !== undefined));
   const extra = await loadCoursBlocks(ctx, sid, coursId); // absent pour un cours ancien: l'ecran affiche les phrases
   const marks = extra ? await coursMarks(ctx, sid, head) : [];
+  // M1 #90: tant qu'une modification est ouverte, un autre appareil de l'eleve voit la banniere.
+  const rev = await revisionHolder(ctx, sid, head);
   return json(200, {
     ...coursMeta(head, existing),
+    ...(rev && isOpenRevision(rev) ? { revision: { revisionId: rev.SK.slice('JOB#'.length), etat: 'en_cours' } } : {}),
     ...(extra ? { figureCount: extra.figures.length, blocks: extra.blocks, figures: await signFigures(ctx, sid, coursId, extra.figures), marks } : {}),
     texts: texts.map((t) => ({ page: Number(t.page), sentences: t.sentences ?? [] })).sort((a, b) => a.page - b.page), // tri numerique (la page 10 apres la 2)
   });
@@ -48,6 +53,9 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   // Ajout de pages (F10): pendant un ajout reellement ouvert, 409. Un verrou laisse par un ajout fini ou restaure est repris. Sinon le verrou `suppression` est pose
   // (condition: aucun autre verrou) AVANT toute suppression: aucun ajout ne peut demarrer pendant que le cours disparait. Une suppression interrompue se reprend par un second DELETE.
   if (head.appendJobId !== DELETING) {
+    // M1 #90: une modification ouverte = 409; une modification bloquee (`rev-fail` a plante) est nettoyee ICI (copie de travail supprimee, verrou libere).
+    if (!(await clearRevisionForDelete(ctx, sid, head))) fail('etat_invalide', MSG_REVISION_BUSY);
+    head = (await ctx.db.get(keys.cours(sid, coursId))) ?? fail('introuvable', 'Introuvable');
     if (!(await reclaimLock(ctx, sid, head))) fail('etat_invalide', MSG_APPEND.deleteBusy);
     const locked = await ctx.db.update(keys.cours(sid, coursId), { set: { appendJobId: DELETING }, cond: { exists: true, absent: ['appendJobId'] } });
     head = locked ?? fail('etat_invalide', MSG_APPEND.deleteBusy);

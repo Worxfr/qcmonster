@@ -86,6 +86,13 @@ export async function reclaimLock(ctx: Ctx, sid: string, head: Item): Promise<bo
   if (holder === DELETING) return false;
   const coursId = head.SK.slice('COURS#'.length);
   const job = await ctx.db.get(jobKey(sid, holder));
+  // M1 #90: une modification de cours (`kind: revision`) n'a ni `appendBase` ni droit de restauration ici (`restoreAfterFailedAppend` ne ferait RIEN puis le verrou serait libere,
+  // copie de travail laissee, et une validation en cours pourrait etre jugee orpheline). Seul `rev-fail` (ou `DELETE /cours`) la termine: le verrou n'est repris que fini ou restaure.
+  if (job?.kind === 'revision') {
+    if (!(job.state === 'termine' || (['rejete', 'echec', 'expire'].includes(job.state as string) && typeof job.restoredAt === 'string'))) return false;
+    await releaseLock(ctx, sid, coursId, holder);
+    return true;
+  }
   const final = job && ['rejete', 'echec', 'expire'].includes(job.state as string);
   if (job && !final && job.state !== 'termine') return false; // un ajout est reellement ouvert
   if (job && final && typeof job.restoredAt !== 'string') {

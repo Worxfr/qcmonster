@@ -22,10 +22,10 @@ export async function scansDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   const jobId = pathId(event, 'scanId');
   const key = jobKey(sid, jobId);
   let job = await ctx.db.get(key);
-  if (!job) return fail('introuvable', 'Introuvable');
+  if (!job || job.kind === 'revision') return fail('introuvable', 'Introuvable'); // M1 #90: jamais une modification de cours
   const alreadyGone = isCancelled(job); // supprime ou annule avant cet appel
 
-  if (OPEN.includes(job.state as JobState) && job.confirmStartedAt !== undefined) return fail('etat_invalide', 'La confirmation est en cours, réessaie dans un instant'); // ajout de pages
+  if (OPEN.includes(job.state as JobState) && job.appendTo !== undefined && job.confirmStartedAt !== undefined) return fail('etat_invalide', 'La confirmation est en cours, réessaie dans un instant'); // ajout de pages
   if (OPEN.includes(job.state as JobState)) {
     // Le premier qui change l'etat gagne la course contre une confirmation, l'expiration ou une autre suppression.
     await endWithoutDoc(ctx, sid, jobId, OPEN, 'rejete', MESSAGES.cancelled);

@@ -192,3 +192,28 @@ Aucun nouvel element, aucune table, aucun droit IAM. Un attribut facultatif:
 - Extraction, verification et questions: le chemin d'une phrase lue, sans traitement de faveur.
 - Export de l'archive de l'eleve (`student-export.ts`): le texte d'une phrase ajoutee est exporte comme les autres, le drapeau d'affichage `added` ne l'est pas.
 - Dette connue, a traiter avec #90 (relecture #101, m2): `jobs-confirm` ecrit le cours avant la transition `a_confirmer -> verification`; deux requetes differentes envoyees depuis deux onglets peuvent laisser le cours du perdant. Defaut anterieur a #89, aggrave par `added`.
+
+- Dette traitee par M1 #90 (relecture #101, m2): `jobs-confirm` RECLAME la confirmation avant d'ecrire le cours (voir plus bas, `confirmFp`).
+
+## M1 #90, partie 1: modifier un cours apres confirmation (contrat 1.11.0, `docs/M1-design.md` sections 3 a 7)
+
+Aucune table, aucun index, aucun bucket nouveau. La route de creation est fermee par `REVISE_ENABLED` (defaut `false`, contexte CDK `-c revise=true`).
+
+| Element | Cle | Attributs | Ecrit par |
+|---|---|---|---|
+| Job de modification | `STUDENT#<sid>` / `JOB#<revisionId>` | `kind: 'revision'`, `coursId`, `familyId`, `state` (valeurs de scan: `verification`, `termine`, `echec`, `rejete`), `etape`, `fiches[]` (`docId`, `workDocId`, `sectionIndex`, `claimMax`, `qcmMax`, `gapMax`, `rev`, `retired[]`, `numerosRestants`; figes par le verrou), `docIds` (fiches de travail), `reserveMicros`, `quotaMonth`, `coutMicros`, `commitStartedAt`, `committedAt`, `settledAt`, `restoredAt`, `ttl` 7 j | `revise-create`, etapes, `revise-cancel` |
+| Requete | `JOB#<revisionId>` / `CHANGES` | `corrections`, `removed`, `added`; `ttl` 7 j; supprimee a la fin | `revise-create` |
+| Copie de travail | `DOC#<revisionId>-<k>` / `CLAIM#`, `VERDICT#`, `QCM#`, `GAP#`, `FICHE` | meme forme qu'une fiche, SANS en-tete (invisible); numeros definitifs `base + rang`; `ttl` 7 j sur ce que l'etape ecrit | `rev-extract`, `verify-run`, `rev-generate`; supprimee par `rev-commit` ou `rev-fail` |
+| Verrou | `STUDENT#<sid>` / `COURS#<id>` | `appendJobId = <revisionId>` (le verrou de F10) | `revise-create`, `rev-commit`, `rev-fail`, `revise-cancel` |
+| Fiche (en-tete) | `STUDENT#<sid>` / `DOC#<docId>` | `claimsRetired` (200 au plus), `rev` (ecrit EN DERNIER) | `rev-commit` seul |
+| `QCM#`, `GAP#`, `EXO#` | `DOC#<docId>` | `retiree` | `rev-commit` seul |
+| Compteur du jour | `STUDENT#<sid>` / `REVJ#<jour>` | `n`, `c_<coursId>`; `ttl` 2 j | `revise-create` (transaction) |
+| Cout du mois | `STUDENT#<sid>` / `REVM#<mois>` et `FAMILY#<fid>` / `REVQ#<mois>` | `coutMicros` (reserve de 0,10 EUR puis cout reel); `ttl` 40 j | `revise-create` (reserve), `rev-commit` et `rev-fail` (reglement, une fois: `settledAt`) |
+| Job de scan | `STUDENT#<sid>` / `JOB#<jobId>` | `confirmFp` (empreinte de la requete), `confirmDocIds` | `jobs-confirm` (reclamation avant toute ecriture du cours) |
+
+- Plafonds (`shared/scans.ts`): 20 changements, 3 fiches, 1 modification par cours et par jour, 2 par eleve et par jour, 0,10 EUR par modification, 0,50 EUR par mois et par eleve, 1,50 EUR par famille. Les compteurs sont incrementes DANS la transaction de creation (job + verrou + compteurs).
+- Pas de champ `v`: le verrou (un seul ecrivain) et la condition `appendJobId` de la transaction qui ecrit le texte du cours suffisent. Cette transaction pose aussi `committedAt` (marqueur de fin de l'etape 4): le texte n'est jamais reapplique deux fois.
+- Validation (`rev-commit`): `commitStartedAt`; copie des nouveaux elements (`attribute_not_exists`); `retiree`; en-tete de la fiche; texte, blocs et `committedAt` (une transaction); `rev` en dernier; reglement du cout, nettoyage, etat `termine`, verrou libere en dernier. `rev-fail` ne conclut jamais « finie » d'apres `rev`.
+- Un job de modification n'est jamais un scan: `listScans`, `failJob`, `endWithoutDoc`, `purgeScan`, `expire`, `jobs-cancel`, `jobs-confirm` et `scans-delete` l'ignorent.
+- `deleteStudentTree` supprime aussi les partitions `DOC#<revisionId>-<k>` listees dans `docIds` du job.
+- Les lecteurs de questions (`retiree`, `claimsRetired`) sont la partie 2 (M1-C).

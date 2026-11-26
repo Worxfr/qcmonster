@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { invokeModel, type CostStore, type ModelPort } from '../../../shared/bedrock.js';
 import { toMicros } from '../../../shared/cost.js';
 import { keys } from '../../../shared/ddb/keys.js';
-import { jobCapEur, type Env } from '../../../shared/names.js';
+import { jobCapEur, REVISION_COST_CAP_EUR, type Env } from '../../../shared/names.js';
 import type { QuotaDb } from '../../../shared/quota.js';
 import type { CropPort, Db, FigureStore, Item, ScanStore, Sfn } from './ports.js';
 
@@ -17,7 +17,7 @@ export interface Ctx {
   figures: FigureStore;
   crop: CropPort;
   /** Interrupteurs d'exploitation (R1, 3.4 et 3.5): `FIGURES_ENABLED` (defaut vrai), `FIGURE_BOX_MODEL` (defaut haiku). */
-  cfg?: { figuresEnabled?: boolean; figureBoxModel?: 'haiku' | 'sonnet' };
+  cfg?: { figuresEnabled?: boolean; figureBoxModel?: 'haiku' | 'sonnet'; /** M1 #90: interrupteur de la route de creation d'une modification (variable REVISE_ENABLED, ferme par defaut). */ reviseEnabled?: boolean };
   /** ARN des profils d'application (SSM /qcm/<env>/models/*, injectes par CDK). */
   models: { haiku: string; sonnet: string };
   port: ModelPort;
@@ -65,6 +65,9 @@ export async function mapLimit<T, R>(items: T[], limit: number, f: (x: T, i: num
   return out;
 }
 
+/** Plafond de cout d'un job (euros): 0,10 pour une modification de cours (`kind: revision`), sinon proportionnel aux pages (jamais moins de 0,25). */
+export const capEurOf = (job?: Record<string, unknown> | undefined): number => (job?.kind === 'revision' ? REVISION_COST_CAP_EUR : jobCapEur((job?.pages as number | undefined) ?? 1));
+
 export const jobKey = (sid: string, jobId: string) => keys.job(sid, jobId);
 
 export const centsFromMicros = (micros: number): number => Math.ceil(micros / 10_000);
@@ -93,7 +96,7 @@ export async function callModel(
     store: ctx.costStore,
     port: ctx.port,
     jobSpentEur: spentEur,
-    jobCapEur: jobCapEur((cur?.pages as number | undefined) ?? 1), // proportionnel aux pages du job: max(0,25 ; 0,15 x pages)
+    jobCapEur: capEurOf(cur), // proportionnel aux pages du job: max(0,25 ; 0,15 x pages); 0,10 pour une modification de cours
     retryDelaysMs,
   });
   await ctx.db.update(jobKey(job.sid, job.jobId), { add: { coutMicros: toMicros(r.costEur) } });
