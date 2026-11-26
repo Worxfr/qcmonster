@@ -40,50 +40,50 @@ describe('ecriture: passage de test', () => {
     expect(p.currentTest?.sk).toMatch(/^TEST#2026-12-01T09:00:00Z#[0-9A-Z]{26}$/);
   });
 
-  it('les reponses d\'une session alimentent UN passage: lignes, rang, compteurs, annee scolaire', async () => {
+  it('les reponses d\'une session alimentent UN passage: lignes, rang (= ordre du tirage), compteurs, annee scolaire', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3 });
     await getSession(t.deps, ctx, 'doc1', '20');
+    const draw = (await prof(t)).currentTest!.draw;
+    const [a, b] = draw;
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 1), good);
+    await answer(t, ctx, a, good);
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 2), 'A'); // faux, 1er essai
+    await answer(t, ctx, b, 'A'); // faux, 1er essai
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 2), good); // juste au 2e
+    await answer(t, ctx, b, good); // juste au 2e
     const [it, ...rest] = await tests(t);
     expect(rest).toHaveLength(0);
     expect(it).toMatchObject({ docId: 'doc1', titre: 'Titre', matiere: 'svt', mode: 'qcm', anneeScolaire: '2026-2027', startedAt: '2026-12-01T09:00:00Z', total: 3, answered: 2, correct: 2, firstTry: 1, xpGained: 7 });
-    expect(it.items).toMatchObject([{ q: 'doc1:qcm:01', r: 1, ok: true, n: 1, f: true, xp: 5, c: 'B' }, { q: 'doc1:qcm:02', r: 2, ok: true, n: 2, f: false, xp: 2, c: 'B' }]);
+    expect(it.items).toMatchObject([{ q: a, r: 1, ok: true, n: 1, f: true, xp: 5, c: 'B' }, { q: b, r: 2, ok: true, n: 2, f: false, xp: 2, c: 'B' }]);
     expect((await prof(t)).anneesScolaires).toEqual(['2026-2027']);
     expect(it.ttl).toBeUndefined(); // conserve jusqu'a suppression
   });
 
-  it('une reponse SANS session ouverte cree un passage (implicite), puis les suivantes le continuent', async () => {
+  it('Q1 P10: une reponse SANS session ouverte est refusee (409): plus de passage implicite', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 4, nGap: 2 });
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 1), good);
-    t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'gap', 1), 'energie');
-    const all = await tests(t);
-    expect(all).toHaveLength(1);
-    expect(all[0]).toMatchObject({ total: 6, mode: 'mixte', answered: 2 });
-    expect(all[0].items).toMatchObject([{ r: 1, k: 'qcm' }, { r: 5, k: 'gap', ok: true }]);
+    await rejects(answer(t, ctx, qid('doc1', 'qcm', 1), good), 409);
+    expect(await tests(t)).toHaveLength(0);
   });
 
-  it('autre fiche, ou plus de 3 h sans reponse: nouveau passage; une session rouverte aussi', async () => {
+  it('Q1 P10: question hors du tirage, autre test ouvert depuis, plus de 3 h: 409; une session rouverte fait un nouveau passage', async () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3 });
     await seed(t, { docId: 'doc2', nQcm: 2 });
-    await pass(t, ctx, 'doc1', 1);
+    await getSession(t.deps, ctx, 'doc1', '20');
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc2', 'qcm', 1), good); // autre fiche, session de doc1 encore ouverte
-    expect(await tests(t)).toHaveLength(2);
+    await rejects(answer(t, ctx, qid('doc2', 'qcm', 1), good), 409); // fiche pas dans le test ouvert
+    const first = (await prof(t)).currentTest!.draw[0];
+    await answer(t, ctx, first, good);
+    expect(await tests(t)).toHaveLength(1);
     t.clk.advance(3 * 3_600_000 + 1000);
-    await answer(t, ctx, qid('doc2', 'qcm', 2), good); // 3 h plus tard
-    expect(await tests(t)).toHaveLength(3);
-    await pass(t, ctx, 'doc1', 1); // rouvre la fiche
-    expect(await tests(t)).toHaveLength(4);
+    await rejects(answer(t, ctx, (await prof(t)).currentTest!.draw[1], good), 409); // 3 h plus tard: expire
+    await getSession(t.deps, ctx, 'doc1', '20'); // rouvre
+    t.clk.advance(2000);
+    await answer(t, ctx, (await prof(t)).currentTest!.draw[0], good);
+    expect(await tests(t)).toHaveLength(2);
   });
 
   it('sans reponse, ouvrir une fiche ne laisse rien', async () => {
@@ -98,12 +98,13 @@ describe('ecriture: passage de test', () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3 });
     await getSession(t.deps, ctx, 'doc1', '20');
+    const [d1, d2] = (await prof(t)).currentTest!.draw;
     // Horloge qui avance de 1,1 s a chaque lecture: la perdante, relancee apres le conflit, n'est plus « trop rapide ».
     t.deps.now = () => new Date((t.clk.t += 1100));
-    await Promise.all([answer(t, ctx, qid('doc1', 'qcm', 1), good), answer(t, ctx, qid('doc1', 'qcm', 2), good)]);
+    await Promise.all([answer(t, ctx, d1, good), answer(t, ctx, d2, good)]);
     const all = await tests(t);
     expect(all).toHaveLength(1);
-    expect((all[0].items as { q: string }[]).map((l) => l.q).sort()).toEqual(['doc1:qcm:01', 'doc1:qcm:02']);
+    expect((all[0].items as { q: string }[]).map((l) => l.q).sort()).toEqual([d1, d2].sort());
     expect(all[0]).toMatchObject({ answered: 2, correct: 2 });
   });
 
@@ -217,20 +218,23 @@ describe('lecture: GET /me/tests/{testId}', () => {
     const t = testDeps();
     const { ctx } = await seed(t, { nQcm: 3, nGap: 1 });
     await getSession(t.deps, ctx, 'doc1', '20');
+    const draw = (await prof(t)).currentTest!.draw;
+    const [x, y, z] = [draw.find((d) => d.includes(':qcm:'))!, draw.filter((d) => d.includes(':qcm:'))[1], draw.find((d) => d.includes(':gap:'))!];
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 1), 'A'); // faux, 1er essai: pas terminee
+    await answer(t, ctx, x, 'A'); // faux, 1er essai: pas terminee
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'qcm', 2), good);
+    await answer(t, ctx, y, good);
     t.clk.advance(2000);
-    await answer(t, ctx, qid('doc1', 'gap', 1), 'faux');
+    await answer(t, ctx, z, 'faux');
     const id = (await tests(t))[0].SK.split('#').pop() as string;
     const d = await getTest(t.deps, ctx, id);
     expect(d).toMatchObject({ testId: id, total: 4, answered: 3, correct: 1, status: 'incomplet', scorePct: 25 });
-    const [q1, q2, g1] = d.questions;
-    expect(q1).toMatchObject({ rank: 1, correct: false, choice: 'A', prompt: 'Question 1 ?', choices: ['A', 'B', 'C', 'D'] });
+    const [q1, q2, g1] = [x, y, z].map((q) => d.questions.find((l) => l.questionId === q)!);
+    expect(q1).toMatchObject({ rank: draw.indexOf(x) + 1, correct: false, choice: 'A', choices: ['A', 'B', 'C', 'D'] });
+    expect(q1.prompt).toMatch(/^Question \d \?/);
     expect(q1.correctAnswer).toBeUndefined();
-    expect(q2).toMatchObject({ rank: 2, correct: true, choice: 'B', correctAnswer: 'B' });
-    expect(g1).toMatchObject({ rank: 4, kind: 'gap', correct: false, choice: 'faux', prompt: 'Le ____ 1', correctAnswer: 'Énergie' });
+    expect(q2).toMatchObject({ rank: draw.indexOf(y) + 1, correct: true, choice: 'B', correctAnswer: 'B' });
+    expect(g1).toMatchObject({ rank: draw.indexOf(z) + 1, kind: 'gap', correct: false, choice: 'faux', prompt: 'Le ____ 1', correctAnswer: 'Énergie' });
   });
 
   it('fiche supprimee: la ligne reste sans texte', async () => {

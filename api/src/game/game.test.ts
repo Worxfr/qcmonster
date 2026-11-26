@@ -56,8 +56,8 @@ describe('session-get: jamais de reponse', () => {
     expect(s.questions.map((q) => q.questionId).sort()).toEqual(['doc1:gap:01', 'doc1:gap:02', 'doc1:qcm:01', 'doc1:qcm:02', 'doc1:qcm:03']); // Q1: ordre tire au hasard
     const text = JSON.stringify(s);
     for (const secret of ['"cle"', 'attendu', 'Énergie', 'claimId', 'verdict', 'statut']) expect(text).not.toContain(secret);
-    expect(s.questions[0].choices).toEqual(['A', 'B', 'C', 'D']);
-    expect(s.questions[3].choices).toBeUndefined();
+    expect(s.questions.find((q) => q.kind === 'qcm')!.choices).toEqual(['A', 'B', 'C', 'D']);
+    expect(s.questions.find((q) => q.kind === 'gap')!.choices).toBeUndefined();
   });
   it('ignore un element invalide; 404 pour la fiche d\'un autre eleve; 403 si suspendu', async () => {
     const t = testDeps();
