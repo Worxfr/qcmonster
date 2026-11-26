@@ -16,6 +16,7 @@ Tu prends en photo une page de cours. L'application lit la page, vérifie les fa
 - **Le compte de l'élève** : un pseudo choisi par le parent, sans nom de famille (l'application y ajoute des lettres au hasard), et un mot de passe. L'application ne demande ni ne garde d'adresse e-mail pour l'élève. On garde seulement la réponse « moins de 15 ans : oui ou non ». Aucune date de naissance.
 - **Les photos de cours** : envoyées pour être analysés.
 - **Le texte du cours** lu sur la photo, corrigé par l'élève, et les **fiches** créées (QCM, textes à trous). Le **texte complet du cours est gardé dans l'espace de l'élève**, y compris les parties pour lesquelles l'élève a choisi de ne pas faire de fiche.
+- **Les schémas du cours** (nouveau, texte à valider) : quand ton cours contient un schéma, un graphique ou une carte, l'application peut en proposer un **découpage** (un morceau de ta photo) et une courte description. **Rien n'est gardé sans ton choix** : tu gardes ou tu retires chaque schéma au moment de relire ton texte. Un schéma gardé est un morceau de ta photo, sans les informations cachées de la photo (lieu, appareil). Il est lisible par toi seul, pas par ton parent.
 - **Tes résultats** : les réponses données, les points d'expérience (XP), les passages d'entraînement. Chaque passage de test est gardé (date, fiche, score, résultat et ta réponse à chaque question) pour que tu puisses revoir tes erreurs, année scolaire après année scolaire.
 - **Des données techniques** : numéro du travail d'analyse, étape, durée, coût. Jamais le contenu de tes cours.
 - **Des extraits de sites web** trouvés pour vérifier les faits de ton cours (texte de la source et son adresse).
@@ -39,11 +40,12 @@ Rien n'est utilisé pour de la publicité. Rien n'est vendu.
 |---|---|
 | Fiches | Jusqu'à suppression par le parent ou l'élève |
 | Cours complet (texte lu et corrigé, sans la photo) | Jusqu'à ce que l'élève le supprime, ou que le compte de l'élève soit supprimé |
+| Schémas gardés du cours (morceaux de la photo, avec leur description) | Comme le cours complet : jusqu'à ce que l'élève supprime le cours, ou que le compte de l'élève soit supprimé. Supprimer le cours supprime ses schémas, même si les fiches sont gardées. Les morceaux que tu n'as pas gardés sont supprimés avec la photo |
 | Points d'expérience (XP), niveau, série et badges | Jusqu'à suppression du compte ou de l'élève |
 | Historique des tests (date, fiche, score, résultat et réponse donnée à chaque question), classé par année scolaire (de septembre à août) | **Jusqu'à suppression** : il n'y a pas de durée automatique. Il est effacé tout de suite si la fiche, l'élève ou la famille est supprimé. Le parent peut le supprimer à tout moment en supprimant le compte de l'élève |
 | Travaux d'analyse et copie de travail du texte lu sur les photos (suivi d'un scan en cours) | 7 jours, plus un délai technique d'au plus 2 jours (le cours complet gardé dans l'espace de l'élève est une autre copie, voir ci-dessus) |
 | Extraits de sites web trouvés pour vérifier les faits | 30 jours, plus un délai technique d'au plus 2 jours |
-| Photos envoyées | Supprimées dès que tu as confirmé le texte lu (tu as 12 heures pour le faire, sinon le scan est annulé et la photo supprimée), et au plus tard dans les 2 jours. Si le compte de l'élève est supprimé, ses photos encore présentes sont effacées au même moment |
+| Photos envoyées | Supprimées (avec les découpages de schémas non gardés) dès que tu as confirmé le texte lu (tu as 12 heures pour le faire, sinon le scan est annulé et la photo supprimée), et au plus tard dans les 2 jours. Si le compte de l'élève est supprimé, ses photos encore présentes sont effacées au même moment |
 | Journaux techniques | 14 jours en principe (sans contenu de cours) |
 | Historique technique du traitement chez AWS | 90 jours (numéros de travaux et étapes, jamais le texte de tes cours) |
 
