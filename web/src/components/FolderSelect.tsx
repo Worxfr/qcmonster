@@ -18,7 +18,7 @@ export function useFolders(): { folders: Folder[]; add: (f: Folder) => void } {
 }
 
 /** Liste de dossiers avec « Nouveau dossier… » (cree le dossier tout de suite). La liste vient du parent. */
-export function FolderSelect({ value, onChange, label, folders, onCreated, none = 'Aucun dossier' }: { value: string; onChange: (id: string) => void; label: string; folders: Folder[]; onCreated: (f: Folder) => void; none?: string }) {
+export function FolderSelect({ value, onChange, label, folders, onCreated, none = 'Aucun dossier', allowNone = true, disabled = false }: { value: string; onChange: (id: string) => void; label: string; folders: Folder[]; onCreated: (f: Folder) => void; none?: string; allowNone?: boolean; disabled?: boolean }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -38,18 +38,21 @@ export function FolderSelect({ value, onChange, label, folders, onCreated, none 
   return (
     <div className="folder-select">
       <label>{label}
-        <select value={creating ? NEW : value} onChange={(e) => (e.target.value === NEW ? setCreating(true) : (setCreating(false), onChange(e.target.value)))}>
-          <option value="">{none}</option>
+        <select disabled={disabled} value={creating ? NEW : value} onChange={(e) => (e.target.value === NEW ? setCreating(true) : (setCreating(false), onChange(e.target.value)))}>
+          {(allowNone || value === '') && <option value="">{none}</option>}
           {folders.map((f) => <option key={f.folderId} value={f.folderId}>{f.name}</option>)}
           <option value={NEW}>＋ Nouveau dossier…</option>
         </select>
       </label>
       {creating && (
-        <div className="btn-row" style={{ marginTop: '.4rem' }}>
-          <input aria-label="Nom du nouveau dossier" value={name} maxLength={60} placeholder="Nom du dossier" onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-          <button type="button" className="btn btn-small" disabled={!name.trim()} onClick={create}>Créer</button>
-          <button type="button" className="btn btn-small btn-ghost" onClick={() => setCreating(false)}>Annuler</button>
-        </div>
+        <>
+          <div className="btn-row" style={{ marginTop: '.4rem' }}>
+            <input aria-label="Nom du nouveau dossier" value={name} maxLength={60} placeholder="Nom du dossier" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (name.trim()) void create(); } }} style={{ flex: 1, minWidth: 0 }} />
+            <button type="button" className="btn btn-small" disabled={!name.trim()} onClick={create}>Créer</button>
+            <button type="button" className="btn btn-small btn-ghost" onClick={() => setCreating(false)}>Annuler</button>
+          </div>
+          <p className="muted" style={{ margin: '.3rem 0 0' }}>Le dossier n'existe qu'après « Créer ».</p>
+        </>
       )}
       {err && <p role="alert" className="error">{err}</p>}
     </div>

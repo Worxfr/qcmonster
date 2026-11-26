@@ -58,6 +58,19 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   const [flash, setFlash] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const { folders, add: addFolder } = useFolders(); // un seul chargement pour toutes les fiches
+  // Le dossier choisi en envoyant le scan: la liste des scans le donne (le serveur le garde, il ne peut pas etre retire ici).
+  const [jobFolder, setJobFolder] = useState('');
+  // shortcut: on ne cherche que parmi les 50 premiers scans a relire (le job n'expose pas son dossier); au-dela, rien n'est prérempli ni perdu (le serveur garde le dossier du scan), mais « Aucun dossier » s'affiche a tort. A lever quand `folderId` sera sur le job ou la transcription.
+  useEffect(() => {
+    let live = true;
+    api.listScans({ status: 'a_confirmer', limit: 50 }).then((r) => {
+      const f = r.items.find((i) => i.scanId === id)?.folderId;
+      if (!live || !f) return;
+      setJobFolder(f);
+      setSecs((l) => l.map((x) => (x.folderId ? x : { ...x, folderId: f })));
+    }, () => undefined);
+    return () => { live = false; };
+  }, [id]);
   // Sur petit écran la photo est repliée: on voit les phrases sans défiler.
   const [photoOpen, setPhotoOpen] = useState(() => typeof window.matchMedia !== 'function' || window.matchMedia('(min-width: 900px)').matches);
   const rootEl = useRef<HTMLDivElement>(null);
@@ -231,7 +244,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
             <label>Titre (facultatif)
               <input value={s.title} maxLength={TITLE_MAX} placeholder="Je propose un titre si tu n'en mets pas" onChange={(e) => patch(s.from, { title: e.target.value })} />
             </label>
-            <FolderSelect label="Dossier (facultatif)" value={s.folderId} onChange={(f) => patch(s.from, { folderId: f })} folders={folders} onCreated={addFolder} />
+            <FolderSelect label="Dossier (facultatif)" allowNone={!jobFolder} value={s.folderId} onChange={(f) => patch(s.from, { folderId: f })} folders={folders} onCreated={addFolder} />
           </div>
         </details>
       </div>

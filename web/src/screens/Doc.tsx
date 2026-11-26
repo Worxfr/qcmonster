@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useApp } from '../app-context';
+import { FolderSelect, useFolders } from '../components/FolderSelect';
 import { Card, ErrorBox, Loading, Pill } from '../components/ui';
 import { safeUrl } from '../game';
 import { errMsg, useLoad } from '../hooks';
 import { go } from '../router';
+import { folderError } from './Folders';
 import type { Claim } from '../types';
 
 export function DocView({ id }: { id: string }) {
@@ -48,6 +50,7 @@ export function DocView({ id }: { id: string }) {
         <p>{doc.summary}</p>
         <button className="btn btn-big" onClick={() => go(`/quiz/${encodeURIComponent(id)}`)}>🎮 S'entraîner</button>
       </Card>
+      <FolderCard docId={id} initial={doc.folderId ?? ''} />
       <Card title="Ce que dit ta fiche">
         <p className="muted">Chaque affirmation est contrôlée avec des sources. Clique pour les lire.</p>
         <ul className="list">
@@ -67,6 +70,39 @@ export function DocView({ id }: { id: string }) {
       <ErrorBox message={error} />
       <button className="btn btn-ghost" onClick={remove}>Supprimer cette fiche</button>
     </>
+  );
+}
+
+/** Ranger la fiche dans un dossier, la changer de dossier ou la sortir du dossier (effet immediat). */
+function FolderCard({ docId, initial }: { docId: string; initial: string }) {
+  const { folders, add } = useFolders();
+  const [current, setCurrent] = useState(initial);
+  const created = useRef(new Map<string, string>()); // un dossier tout juste cree n'est pas encore dans `folders` quand on range la fiche
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function move(to: string) {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    try {
+      if (to) await api.addToFolder(to, [docId]);
+      else await api.removeFromFolder(current, docId);
+      setCurrent(to);
+      setMsg(to ? `✓ Rangée dans « ${created.current.get(to) ?? folders.find((f) => f.folderId === to)?.name ?? 'ce dossier'} ».` : '✓ Sortie du dossier.');
+    } catch (e) {
+      setErr(folderError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card title="Dossier">
+      <FolderSelect disabled={busy} label="Cette fiche est dans" value={current} onChange={(f) => void move(f)} folders={folders} onCreated={(f) => { created.current.set(f.folderId, f.name); add(f); }} none="Aucun dossier" />
+      {msg && <p role="status" className="ok">{msg}</p>}
+      {err && <p role="alert" className="error">{err}</p>}
+    </Card>
   );
 }
 

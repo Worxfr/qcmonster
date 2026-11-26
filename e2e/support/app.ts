@@ -19,6 +19,10 @@ export const fake = {
   async suggestTwo() {
     if (isMock) await post('/__test/suggest', { on: true });
   },
+  /** Dossiers et fiches déjà prêts, sans passer par un scan (mode mock seulement). */
+  async seed(data: { folders?: string[]; docs?: { title: string; subject?: string; topic?: string; folder?: string }[] }) {
+    if (isMock) await post('/__test/seed', data);
+  },
   async fail(mode: 's3' | null) {
     if (isMock) await post('/__test/fail', { mode });
   },

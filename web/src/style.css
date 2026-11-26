@@ -201,3 +201,10 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 .pick-hit .pick { margin: 0; }
 .claim .link { margin-right: 1rem; }
 .cancel-ask { scroll-margin-bottom: 6rem; }
+
+/* #74: en-tete du dossier ouvert (renommer, supprimer sans quitter la liste) */
+.folder-head { display: grid; gap: .5rem; background: #f5f3ff; border: 2px solid var(--line); border-radius: 16px; padding: .7rem .9rem; margin: .6rem 0; }
+.folder-head-title { margin: 0; }
+.folder-head-row { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; justify-content: space-between; }
+.folder-head-name { margin: 0; font-size: 1.25rem; color: var(--brand); overflow-wrap: anywhere; }
+@media (max-width: 520px) { .folder-head-row .btn-row { width: 100%; } .folder-head-row .btn { flex: 1; } }
