@@ -1,0 +1,22 @@
+name: setup
+description: Node 22 + installation des dependances (cache npm). Utilise par les jobs de ci.yml.
+inputs:
+  ignore-scripts:
+    description: "'true' pour npm ci --ignore-scripts"
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: |
+          package-lock.json
+          e2e/package-lock.json
+    - if: inputs.ignore-scripts != 'true'
+      shell: bash
+      run: npm ci
+    - if: inputs.ignore-scripts == 'true'
+      shell: bash
+      run: npm ci --ignore-scripts

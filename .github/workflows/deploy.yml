@@ -5,6 +5,13 @@ name: deploy
 on:
   push:
     branches: [main]
+    # Un push qui ne touche que la documentation ne redeploie rien. Les controles requis des PR (`checks`, `e2e`) tournent toujours
+    # sur ci.yml (sans filtre), donc la regle de protection de main n'est pas concernee. workflow_dispatch reste possible.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - LICENSE
+      - NOTICE
   workflow_dispatch:
     inputs:
       target:
@@ -16,7 +23,7 @@ permissions:
   contents: read
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: false # un deploy en cours n'est jamais annule; le suivant attend
 jobs:
   checks:
     uses: ./.github/workflows/ci.yml

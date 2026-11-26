@@ -1,25 +1,24 @@
 name: ci
+# Jobs en parallele. Les controles requis par la regle de protection de main sont `checks` (job de synthese, echoue si un des jobs
+# ci-dessous echoue ou est saute) et `e2e`. Ne pas les renommer. Pas de paths-ignore ici: ces deux controles doivent toujours se reporter.
+# Le push sur main n'est plus declenche ici: deploy.yml appelle ce workflow (workflow_call), sinon les tests tournaient deux fois.
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_call:
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Annule les runs obsoletes des PR seulement. Appele depuis deploy (main), jamais d'annulation.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  checks:
+  static:
+    name: static (contrat, lint, typecheck)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       # Non bloquant (audit M8): signale les failles hautes des dependances d'execution sans casser la PR.
       - name: npm audit (dependances d'execution)
         continue-on-error: true
@@ -30,9 +29,37 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
-      # Inclut: test des tags (4 tags sur toute ressource), aucun modelId systeme, pas de console.*, contrat, quota, PreSignUp.
+  # Inclut: test des tags (4 tags sur toute ressource), aucun modelId systeme, pas de console.*, contrat, quota, PreSignUp.
+  # La suite est coupee en 4 par vitest --shard (par fichier): les tests infra (synthese CDK) pesent le plus.
+  tests:
+    name: tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup
       - name: Tests
-        run: npm test
+        run: npx vitest run --shard=${{ matrix.shard }}/4
+  # Tests du front (vitest + jsdom, workspace web). Ils n'etaient lances nulle part en CI avant ce changement.
+  web-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup
+      - name: Tests du front
+        run: npm test -w web
+  synth:
+    name: cdk synth (dev et prod)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup
       - name: cdk synth (dev et prod)
         env:
           QCM_ALERT_EMAIL: ci@example.invalid
@@ -40,6 +67,13 @@ jobs:
           cd infra
           npx cdk synth -c env=dev --quiet
           npx cdk synth -c env=prod -c webOrigin=https://front.example.invalid --quiet
+  build-mock:
+    name: build du front et API simulee
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup
       - name: Build du front
         run: npm run build:web
       - name: API simulee repond sur chaque route
@@ -47,25 +81,42 @@ jobs:
           npm run mock > /tmp/prism.log 2>&1 &
           for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:4010/me -H 'authorization: Bearer x' && break; sleep 1; done
           npm run mock:check
-  # Tests de bout en bout en mode mock (site local + API factice, sans AWS). Job separe: il ne rallonge pas le job `checks`.
+  # Controle requis (nom inchange). Echoue si un job n'est pas en succes (echec, annulation ou saut).
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [static, tests, web-tests, synth, build-mock]
+    if: ${{ always() }}
+    steps:
+      - name: Tous les jobs de controle sont verts
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "resultats: $RESULTS"
+          for r in $RESULTS; do test "$r" = success || { echo "un job n'est pas en succes ($r)"; exit 1; }; done
+  # Tests de bout en bout en mode mock (site local + API factice, sans AWS). Job separe, en parallele des autres.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            e2e/package-lock.json
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npm ci
         working-directory: e2e
       - run: npx tsc --noEmit
         working-directory: e2e
-      - run: npx playwright install --with-deps chromium
+      # Cache des navigateurs, cle = lockfile e2e (donc version de Playwright). Sans cache: installation complete. Avec cache:
+      # seules les bibliotheques systeme (apt) sont reinstallees.
+      - id: pw-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
         working-directory: e2e
       - name: Tests de bout en bout (mock)
         run: npx playwright test
