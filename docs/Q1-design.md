@@ -217,7 +217,7 @@ Fiches **non vérifiées** : une fiche dont aucun fait n'est vérifié n'a pas d
 - l'historique garde le **titre du dossier** (nom écrit par l'élève, 200 caractères au plus, nettoyé) et plusieurs fiches par passage : une ligne dans le registre (T5b) et dans la politique (tableau des durées) ;
 - la suppression d'une fiche retire seulement ses lignes d'un passage multi-fiches (section 7).
 
-Ces deux modifications sont dans un **commit séparé `docs(legal)`** de cette PR, à valider par Alexis. **`POLICY_VERSION` n'est pas relevé** (décision de fusion à part : les parents déjà inscrits n'ont pas à ré-accepter pour un changement de ce niveau, mais c'est à Alexis d'en juger, point P13). Aucun ID de compte, aucune clé et aucun chemin local dans ce dépôt.
+Ces deux modifications sont dans un **commit séparé `docs(legal)`** de cette PR, à valider par le propriétaire. **`POLICY_VERSION` n'est pas relevé** (décision de fusion à part : les parents déjà inscrits n'ont pas à ré-accepter pour un changement de ce niveau, mais c'est au propriétaire d'en juger, point P13). Aucun ID de compte, aucune clé et aucun chemin local dans ce dépôt.
 
 ## 12. Tests
 
