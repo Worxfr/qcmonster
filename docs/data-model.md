@@ -140,7 +140,7 @@ A la relecture l'eleve decoupe le texte en **sections par sujet**; chaque sectio
 |---|---|---|---|---|
 | Blocs et figures du job | `JOB#<jobId>` | `BLOCKS` | `blocks[]` (400 au plus; absent si plus de 400), `figures[]` (`figureId`, `page`, `kind`, `alt`, `caption?`, `box?`; absence de `box` = page entiere). TTL 7 jours | `transcribe` |
 | Blocs et figures du cours | `STUDENT#<sid>` | `COURS#<coursId>#B` | `blocks[]`, `figures[]` (8 au plus, seulement celles gardees par l'eleve). Pas de TTL; pas de `doubt` | `jobs-confirm` |
-| Demande d'export de l'eleve | `STUDENT#<sid>` | `EXPORT#<exportId>` | `state` (`en_cours`, `pret`, `echec`), `key`, `sizeBytes`, `courses`, `figures`, `truncated`, `omittedCourses`, `ttl` (2 jours) | `me-export`, fonction de construction |
+| Demande d'export de l'eleve | `STUDENT#<sid>` | `EXPORT#<exportId>` | `state` (`en_cours`, `pret`, `echec`), `key`, `sizeBytes`, `courses`, `figures`, `truncated`, `omittedCourses`, `ttl` (1 jour, comme la regle d'expiration du bucket des scans) | `me-export-archive`, fonction de construction |
 
 - Le drapeau `doubt` vit dans `JOB#/TEXT#` (avant confirmation). Le cours durable n'ecrit que `id`, `text`, `pages` (schema Zod qui retire le reste).
 - Une figure conservee: S3 `figures/<sid>/<coursId>/<figureId>.jpg` (bucket `figures`, lot B). Recadrage temporaire: `scans/<sid>/<jobId>/fig/<figureId>.jpg` (part avec la photo).

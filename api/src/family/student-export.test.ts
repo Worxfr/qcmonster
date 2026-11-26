@@ -93,6 +93,14 @@ describe('demande et lecture', () => {
     e.t.clk.advance(3_700_000);
     await expect(requestExport(e.deps, studentCtx)).resolves.toMatchObject({ state: 'en_cours' });
   });
+  it('l\'etat expire apres 1 jour, comme le fichier (regle d\'expiration du bucket des scans): GET repond 404 ensuite', async () => {
+    const e = env();
+    await seed(e.t);
+    const { exportId } = await requestExport(e.deps, studentCtx);
+    expect((await e.t.store.get(keys.exportJob(SID, exportId)))!.ttl).toBe(Math.floor(e.t.clk.now().getTime() / 1000) + 86_400);
+    e.t.clk.advance(86_400_000 + 1000);
+    await expect(getExport(e.deps, studentCtx, exportId)).rejects.toMatchObject({ status: 404 });
+  });
   it('lancement impossible: la demande passe en echec et l\'erreur remonte', async () => {
     const e = env();
     await seed(e.t);

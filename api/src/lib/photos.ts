@@ -1,6 +1,7 @@
 // Suppression des photos de cours encore presentes a la suppression d'un eleve ou d'une famille (plan C8).
 // Les photos sont sous `scans/<eleveId>/<jobId>/<n>` (SCAN_EVENT_PREFIX); le cycle de vie du bucket les expire de toute facon en 1 a 2 jours.
 import { DeleteObjectsCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
+import { log } from '../../../shared/log/index.js';
 import { SCAN_EVENT_PREFIX } from '../../../shared/names.js';
 
 export interface Photos {
@@ -26,7 +27,10 @@ export function s3Photos(bucket: string, client: S3Client = new S3Client({}), fi
   return {
     async deleteFiguresForStudent(studentId) {
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(studentId)) return;
-      if (!figuresBucket) return; // R1-A deploye avant le bucket (R1-B): aucune figure n'existe encore
+      if (!figuresBucket) {
+        log({ step: 'figures-bucket-absent', status: 'rejected' }); // avertissement: R1-A deploye avant le bucket (R1-B), aucune figure n'existe encore
+        return;
+      }
       await deletePrefix(client, figuresBucket, `figures/${studentId}/`);
     },
     async deleteForStudent(studentId) {

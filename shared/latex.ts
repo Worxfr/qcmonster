@@ -110,7 +110,8 @@ export function isSafeText(text: string): boolean {
 export function sanitizeLatex(text: string): string {
   const clean = text.replace(new RegExp(CONTROL.source, 'g'), '').slice(0, MAX_TEXT);
   const seg = splitMath(clean);
-  if (seg === undefined) return dropBareDollars(clean);
+  // `$` impair: on retire les `$` bruts, puis le reste est relu et reecrit comme texte simple (forme canonique, donc stable)
+  if (seg === undefined) return (splitMath(dropBareDollars(clean)) ?? []).map((s) => escapeText('text' in s ? s.text : s.math)).join('');
   return seg.map((s) => ('text' in s ? escapeText(s.text) : isSafeFormula(s.math) ? `$${s.math}$` : escapeText(mathToText(s.math)))).join('');
 }
 

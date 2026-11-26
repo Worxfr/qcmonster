@@ -95,6 +95,16 @@ describe('lecture: blocs, figures, doute', () => {
     expect(((await k.db.get(keys.jobBlocks(i.jobId)))!.figures as { box?: unknown }[])[0].box).toBeUndefined();
   });
 
+  it('toute autre erreur de la reprise (debit, reseau): page entiere, la lecture payee n\'est pas rejouee', async () => {
+    const k = await makeCtx(script(readMd({ figures: [{ ...FIG, box: [0, 0, 1, 1] }] })));
+    const orig = k.ctx.port.converse.bind(k.ctx.port);
+    Object.defineProperty(k.ctx.port, 'converse', { value: async (req: Parameters<typeof orig>[0]) => { if (req.prompt.includes('Repere chaque figure')) throw Object.assign(new Error('debit'), { name: 'ThrottlingException' }); return orig(req); } });
+    const i = await toReview(k);
+    expect(((await k.db.get(keys.jobBlocks(i.jobId)))!.figures as { box?: unknown }[])[0].box).toBeUndefined();
+    expect(await k.db.get({ PK: `JOB#${i.jobId}`, SK: 'TEXT#1' })).toBeDefined();
+    expect(k.calls.filter((c) => c === 'transcription')).toHaveLength(1); // une seule lecture (la reprise a echoue avant de repondre)
+  });
+
   it('FIGURES_ENABLED=false: aucune figure demandee ni gardee, cropFigures sans effet', async () => {
     const k = await makeCtx(script(readMd()));
     k.ctx.cfg = { figuresEnabled: false };
@@ -216,6 +226,18 @@ describe('confirmation: figures, retrait, LaTeX', () => {
     expect(blocks.map((b) => b.kind)).toEqual(['paragraphe']); // le titre n'avait que p1-s1
     expect(blocks[0].sentenceIds).not.toContain('p1-s9');
     expect(((await k.db.get({ PK: `JOB#${i.jobId}`, SK: 'TEXT#1' }))!.sentences as { id: string }[]).map((s) => s.id)).not.toContain('p1-s1');
+  });
+
+  it('purgeScan (job deja termine, reparation d\'un nettoyage interrompu): figures/ du cours supprime meme si endWithoutDoc ne repasse pas', async () => {
+    const k = await makeCtx(script(readMd()));
+    const i = await toReview(k);
+    await confirm(k, i.jobId, { figures: [{ figureId: 'f1', keep: true }] });
+    expect(k.figures.objects.size).toBe(1);
+    await k.db.update(jobKey('s1', i.jobId), { set: { state: 'echec' } }); // fin deja decidee: seul `purgeScan` nettoie
+    await failJob(k.ctx, { ...i, error: { Error: 'Error' } });
+    expect(k.figures.objects.size).toBe(0);
+    expect(await k.db.get(keys.cours('s1', i.jobId))).toBeUndefined();
+    expect(await k.db.get(keys.coursBlocks('s1', i.jobId))).toBeUndefined();
   });
 
   it('doute eteint par la correction et jamais garde dans le cours', async () => {

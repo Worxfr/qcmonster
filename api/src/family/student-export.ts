@@ -14,7 +14,8 @@ import { coursMeta } from '../cours/meta.js';
 export const MAX_FIGURE_BYTES = 150 * 1024 * 1024;
 /** 3 demandes par heure et par eleve (429 `quota_epuise`). */
 export const MAX_EXPORTS_PER_HOUR = 3;
-const EXPORT_TTL_S = 2 * 86_400;
+/** 1 jour, comme la regle d'expiration du bucket des scans (`expire-1-day`): l'etat ne survit pas au fichier. */
+const EXPORT_TTL_S = 86_400;
 export const studentExportKey = (sid: string, exportId: string): string => `exports/${sid}/${exportId}.zip`;
 
 export interface FigureReader {

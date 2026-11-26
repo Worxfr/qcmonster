@@ -7,7 +7,7 @@ import { validBox, type FigureMeta } from './blocks.js';
 import { callModel, jobKey, mapLimit, type Ctx } from './ctx.js';
 import { scansPrefix } from './job.js';
 import type { CropPort, FigureStore } from './ports.js';
-import { ModelOutputError, parseModelJson } from './text.js';
+import { parseModelJson } from './text.js';
 import { SYSTEM_JSON } from './prompts.js';
 
 /** Cle S3 du recadrage temporaire (dans le prefixe de la photo: il part avec elle). */
@@ -47,8 +47,10 @@ export async function resolveBoxes(ctx: Ctx, i: { sid: string; jobId: string }, 
       boxes = parseModelJson(raw, BoxOut).figures.map((f) => f.box);
       log({ jobId: i.jobId, step: 'figure-crop', status: 'ok', fallback: 'retry' });
     } catch (e) {
+      // TOUTE erreur de la reprise (plafond du job, sortie illisible, limitation de debit, reseau) donne la page entiere: relancer l'etape
+      // `transcribe` rejouerait la lecture et le classement deja payes, pour un simple cadre.
       if (e instanceof JobBudgetExceededError) state.budgetHit = true;
-      else if (!(e instanceof ModelOutputError)) throw e;
+      log({ jobId: i.jobId, step: 'figure-crop', status: 'error', errorCode: (e as { name?: string })?.name });
     }
   }
   return figs.map((f, k) => {
@@ -139,7 +141,7 @@ export const figuresConfig = (env: Record<string, string | undefined>): { enable
 /** Bucket des figures absent: aucune figure n'existe, donc rien a lire, copier ni supprimer. */
 export const disabledFigureStore = (): FigureStore => ({
   async copyFromScans() {
-    throw new Error('figures desactivees');
+    return false; // aucune figure n'a pu etre rognee: rien a copier
   },
   async presignGet() {
     throw new Error('figures desactivees');

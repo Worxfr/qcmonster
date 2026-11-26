@@ -613,7 +613,7 @@ export interface paths {
          * L'eleve demande l'archive de TOUTES ses donnees, figures comprises (contract-v1.5.1, R1; handler me-export)
          * @description Reserve a l'eleve (un parent recoit 403: l'export du parent ne contient aucun contenu de cours). Pas de corps. La construction est **asynchrone**: la reponse est `202` avec un `exportId`, puis `GET /me/export/archive/{exportId}` donne l'etat et, quand l'archive est prete, un lien signe de 10 minutes.
          *     Contenu du zip: `export.json` (profil, dossiers, cours avec texte, blocs et sections, fiches avec affirmations, sources, resume, paragraphes et rappel), `tests/<studentId>.jsonl` (historique des tests AVEC les reponses donnees) et `figures/<coursId>/<figureId>.jpg`. Le zip est ecrit en flux et ne depasse pas 150 Mo de figures: au-dela, les cours les plus anciens perdent leurs images (le texte reste complet), `truncated` vaut vrai et `omittedCourses` donne leur nombre.
-         *     Limite: 3 demandes par heure et par eleve (429 `quota_epuise`). Le fichier est supprime au plus tard 2 jours apres, et avec l'eleve.
+         *     Limite: 3 demandes par heure et par eleve (429 `quota_epuise`). La demande et son lien expirent apres 1 jour (`GET` renvoie alors 404); le fichier est supprime par la regle d'expiration du stockage (1 a 2 jours) et avec l'eleve.
          */
         post: operations["createMyExportArchive"];
         delete?: never;

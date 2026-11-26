@@ -77,3 +77,32 @@ describe('antislash et dollar (alerte CodeQL: echappement incomplet)', () => {
     for (const t of ['a\\b', 'a \\\\$x$ b', 'chemin C:\\dir', '$\\def\\a{}$ \\\\']) expect(sanitizeLatex(sanitizeLatex(t)), t).toBe(sanitizeLatex(t));
   });
 });
+
+describe('sortie toujours sure (alerte CodeQL, relecture de la PR #94)', () => {
+  const HOSTILE = [
+    '$\\href{a}{b} \\$a$ $\\href{c}{d} \\$b$',
+    '$\\def\\x{\\$}$ $\\input{f}$',
+    'a \\\\$ b $\\url{x}$ \\$',
+    '$$ $ \\ \\\\ \\$ $',
+    '$\\htmlData{a=b}{c} \\$ $\\href{x}{y}$',
+    'x'.repeat(1999) + '$\\href{a}{b}$',
+  ];
+  it.each(HOSTILE)('isSafeText(sanitizeLatex(x)) et sortie stable: %s', (x) => {
+    const out = sanitizeLatex(x);
+    expect(isSafeText(out)).toBe(true);
+    expect(sanitizeLatex(out)).toBe(out);
+    // aucune formule restante ne contient une commande interdite, aucun `$` brut seul
+    for (const s of splitMath(out) ?? []) if ('math' in s) expect(isSafeFormula(s.math)).toBe(true);
+  });
+  it('propriete sur 3000 entrees tirees d\'un alphabet hostile (graine fixe)', () => {
+    const alphabet = ['$', '\\', '\\$', '\\\\', '{', '}', 'a', ' ', '\\href', '\\def', '\\input', 'x^2', '='];
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let n = 0; n < 3000; n++) {
+      const x = Array.from({ length: 1 + Math.floor(rnd() * 14) }, () => alphabet[Math.floor(rnd() * alphabet.length)]).join('');
+      const out = sanitizeLatex(x);
+      expect(isSafeText(out), JSON.stringify(x)).toBe(true);
+      expect(sanitizeLatex(out), JSON.stringify(x)).toBe(out);
+    }
+  });
+});
