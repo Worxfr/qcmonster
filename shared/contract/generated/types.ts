@@ -807,6 +807,8 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             pages: number;
+            /** @description Facultatif (v1.5): nombre de figures conservees. Les images ne sont jamais dans l'export parent. */
+            figureCount?: number;
             sections: {
                 fromSentenceId: string;
                 subject: components["schemas"]["Subject"];
@@ -829,6 +831,12 @@ export interface components {
                 page: number;
                 sentences: components["schemas"]["Sentence"][];
             }[];
+            /** @description Facultatif (v1.5): mise en forme conservee. Absent pour un cours ancien: l'ecran affiche les phrases. */
+            blocks?: components["schemas"]["Block"][];
+            /** @description Facultatif (v1.5): figures conservees, avec `url` pre-signee de 5 minutes (eleve seulement). Supprimees avec le cours. */
+            figures?: components["schemas"]["Figure"][];
+            /** @description Facultatif (v1.5): resultat de la verification des sources, phrase par phrase, calcule a la lecture depuis les fiches liees (vide tant que la verification n'est pas finie; les fiches supprimees n'y figurent plus). */
+            marks?: components["schemas"]["SentenceMark"][];
         };
         Folder: {
             folderId: string;
@@ -907,11 +915,87 @@ export interface components {
             pagesRemaining: number;
         };
         Sentence: {
+            /** @description Facultatif (v1.5), reponse seulement (`Transcription`), ignore dans `ConfirmRequest.corrections` et absent de `Cours`. true: la lecture de cette phrase est douteuse (ecriture illisible, mot incertain); l'ecran de relecture la signale. C'est une confiance de LECTURE donnee par le modele: ce n'est PAS un resultat de verification des faits (qui n'existe qu'apres la confirmation, voir `Cours.marks`). Absent = pas de doute signale. */
+            doubt?: boolean;
             /** @description `p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin. */
             id: string;
             text: string;
             /** @description Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent). */
             pages?: number[];
+        };
+        /** @description Bloc de mise en forme du cours (v1.5), au-dessus des phrases: les phrases (`Sentence`) restent l'unite des corrections, des coupes en sections, des retraits et des affirmations verifiees; un bloc ne fait que les REGROUPER dans l'ordre du document. Un bloc peut s'etendre sur deux pages (phrase recollee, ou paragraphe qui continue). */
+        Block: {
+            /** @description b1, b2... dans l'ordre du document */
+            id: string;
+            /**
+             * @description titre: une phrase; paragraphe: une ou plusieurs phrases; liste: une phrase par element; formule: une phrase (texte brut, pas de LaTeX); figure: aucune phrase, voir `figureId`
+             * @enum {string}
+             */
+            kind: "titre" | "paragraphe" | "liste" | "formule" | "figure";
+            /** @description Titre seulement: 1 = titre du cours, 2 = partie, 3 = sous-partie */
+            level?: number;
+            /** @description Liste seulement: numerotee (true) ou a puces (defaut false) */
+            ordered?: boolean;
+            /** @description Phrases du bloc, dans l'ordre. Absent pour une figure. */
+            sentenceIds?: string[];
+            /** @description Figure seulement */
+            figureId?: string;
+        };
+        /** @description Cadre de la figure sur la page, en fractions de la largeur et de la hauteur (0 a 1), origine en haut a gauche */
+        FigureBox: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+        };
+        /** @description Schema, graphique, tableau, carte ou photo du cours (v1.5). `alt` (description courte ecrite par le modele) est toujours present: c'est le texte alternatif, et le repli quand le recadrage n'a pas pu etre fait (pas de `url`). La figure et son `alt` ne sont JAMAIS des affirmations: ils ne sont ni verifies ni utilises pour les questions. */
+        Figure: {
+            figureId: string;
+            page: number;
+            /** @enum {string} */
+            kind: "schema" | "graphique" | "tableau" | "carte" | "photo" | "autre";
+            alt: string;
+            /** @description Legende ecrite sous la figure sur la page, recopiee, si elle existe */
+            caption?: string;
+            box?: components["schemas"]["FigureBox"];
+            /**
+             * Format: uri
+             * @description Image recadree (JPEG, 1200 px au plus), URL pre-signee de 5 minutes re-signee a chaque lecture. Absente si le recadrage a echoue ou n'est pas conserve.
+             */
+            url?: string;
+            /** Format: date-time */
+            urlExpireAt?: string;
+        };
+        ConfirmFigure: {
+            figureId: string;
+            /** @description true: le recadrage est conserve avec le cours. false: il est supprime avec la photo. */
+            keep: boolean;
+            /** @description Texte alternatif corrige par l'eleve */
+            alt?: string;
+        };
+        /** @description Resultat de verification le plus severe parmi les affirmations tirees de cette phrase (erreur > non_verifiable > verifiee). Une phrase sans affirmation factuelle n'a pas de marque. */
+        SentenceMark: {
+            sentenceId: string;
+            /** @enum {string} */
+            status: "verifiee" | "erreur" | "non_verifiable";
+            docId: string;
+            claimId: string;
+        };
+        FicheParagraph: {
+            /** @description Intertitre facultatif */
+            heading?: string;
+            text: string;
+            /** @description Affirmations (`Doc.claims`) sur lesquelles repose le paragraphe */
+            claimIds?: string[];
+        };
+        RecallItem: {
+            /** @enum {string} */
+            kind: "date" | "formule" | "definition" | "nombre";
+            text: string;
+            /** @description Affirmation d'ou vient l'element: il reprend ses dates, nombres et formules mot pour mot (controle par le serveur) */
+            claimId: string;
+            /** @description true: l'affirmation est `verifiee`. false: elle est `non_verifiable` (reprise du cours, signalee comme telle). Une affirmation en `erreur` n'est jamais reprise. */
+            verified: boolean;
         };
         /** @description Le scan est lu comme UN document (v1.3): pages lues dans l'ordre, avec le contexte des pages voisines; `docType`, `suggestedSubject` et `suggestedTopic` sont decides une seule fois sur l'ensemble; les phrases coupees entre deux pages sont recollees (`Sentence.pages`). `pages` est trie par numero de page croissant (numerique, jamais lexical) et contient une entree par page, meme sans phrase. */
         Transcription: {
@@ -933,6 +1017,10 @@ export interface components {
             photoUrls: string[];
             /** Format: date-time */
             photoUrlsExpireAt: string;
+            /** @description Facultatif (v1.5): mise en forme du document, dans l'ordre. Absent (job ancien): l'ecran retombe sur la liste de phrases de `pages`. Chaque phrase de `pages` est dans exactement un bloc. */
+            blocks?: components["schemas"]["Block"][];
+            /** @description Facultatif (v1.5): figures proposees par la lecture, 8 au plus par scan; l'eleve les confirme avec `ConfirmRequest.figures`. Les `url` de recadrage sont re-signees a chaque appel et expirent avec la photo. */
+            figures?: components["schemas"]["Figure"][];
         };
         ConfirmRequest: {
             corrections: components["schemas"]["Sentence"][];
@@ -943,6 +1031,10 @@ export interface components {
             topic?: components["schemas"]["Topic"];
             /** @description Dossier de l'eleve (404 s'il n'existe pas); remplace celui de la creation */
             folderId?: string;
+            /** @description Facultatif (v1.5): choix de l'eleve pour chaque figure proposee. Une figure absente de la liste n'est PAS conservee (par defaut, rien n'est garde). Un `figureId` inconnu: 400 `requete_invalide`. */
+            figures?: components["schemas"]["ConfirmFigure"][];
+            /** @description Facultatif (v1.5): phrases retirees du cours par l'eleve (bruit, remarque personnelle). Elles ne sont pas gardees dans le cours, ni extraites, ni verifiees. Une phrase retiree ne peut pas etre le `fromSentenceId` d'une section; une phrase inconnue: 400. Le seuil de 40 mots s'applique apres retrait. */
+            removed?: string[];
         };
         DocSummary: {
             docId: string;
@@ -974,11 +1066,20 @@ export interface components {
             /** @enum {string} */
             status: "verifiee" | "erreur" | "non_verifiable" | "non_factuelle";
             aRisque: boolean;
+            /** @description Facultatif (v1.5): phrase du cours d'ou vient l'affirmation (celle de `Cours.texts` et `Cours.marks`). Absent pour une fiche ancienne ou si le cours a ete supprime. */
+            sentenceId?: string;
             sources: components["schemas"]["Source"][];
         };
         Doc: components["schemas"]["DocSummary"] & {
+            /** @description Texte continu de la fiche. Depuis la v1.5 il reprend `body` (paragraphes separes par une ligne vide, sans le rappel): un client 1.4 continue de fonctionner. */
             summary: string;
             claims: components["schemas"]["Claim"][];
+            /** @description Facultatif (v1.5): la fiche en plusieurs paragraphes. Absent pour une fiche ancienne (un seul bloc `summary`). */
+            body?: components["schemas"]["FicheParagraph"][];
+            /** @description Facultatif (v1.5): rappel final des elements importants (dates, formules, definitions, nombres). Vide ou absent s'il n'y en a pas. */
+            recall?: components["schemas"]["RecallItem"][];
+            /** @description Facultatif (v1.5): figures du cours utiles a la fiche, avec `url` pre-signee. Absentes si le cours a ete supprime (les figures partent avec lui). Eleve seulement. */
+            figures?: components["schemas"]["Figure"][];
         };
         ReportRequest: {
             claimId?: string;
@@ -1726,6 +1827,7 @@ export interface operations {
                      *             },
                      *             {
                      *               "id": "p1-s2",
+                     *               "doubt": true,
                      *               "text": "Les plantes vertes utilisent la lumiere du soleil pour fabriquer leur matiere a partir du gaz carbonique de l'air.",
                      *               "pages": [
                      *                 1,
@@ -1746,6 +1848,45 @@ export interface operations {
                      *       ],
                      *       "suggestedSubject": "svt",
                      *       "suggestedTopic": "La photosynthese",
+                     *       "blocks": [
+                     *         {
+                     *           "id": "b1",
+                     *           "kind": "titre",
+                     *           "level": 1,
+                     *           "sentenceIds": [
+                     *             "p1-s1"
+                     *           ]
+                     *         },
+                     *         {
+                     *           "id": "b2",
+                     *           "kind": "paragraphe",
+                     *           "sentenceIds": [
+                     *             "p1-s2",
+                     *             "p2-s2"
+                     *           ]
+                     *         },
+                     *         {
+                     *           "id": "b3",
+                     *           "kind": "figure",
+                     *           "figureId": "f1"
+                     *         }
+                     *       ],
+                     *       "figures": [
+                     *         {
+                     *           "figureId": "f1",
+                     *           "page": 2,
+                     *           "kind": "schema",
+                     *           "alt": "Schema d'une feuille avec les entrees de lumiere et de gaz carbonique",
+                     *           "caption": "Fig. 1 La feuille",
+                     *           "box": {
+                     *             "x": 0.1,
+                     *             "y": 0.4,
+                     *             "w": 0.8,
+                     *             "h": 0.35
+                     *           },
+                     *           "url": "https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/fig/f1.jpg?X-Amz-Signature=example"
+                     *         }
+                     *       ],
                      *       "photoUrls": [
                      *         "https://qcm-dev-scans.s3.eu-west-3.amazonaws.com/scans/x/0?X-Amz-Signature=example"
                      *       ],
@@ -1773,6 +1914,15 @@ export interface operations {
                 /**
                  * @example {
                  *       "corrections": [],
+                 *       "figures": [
+                 *         {
+                 *           "figureId": "f1",
+                 *           "keep": true
+                 *         }
+                 *       ],
+                 *       "removed": [
+                 *         "p2-s9"
+                 *       ],
                  *       "sections": [
                  *         {
                  *           "fromSentenceId": "p1-s1",
@@ -1914,12 +2064,30 @@ export interface operations {
                      *       "subject": "svt",
                      *       "createdAt": "2026-12-01T10:03:00Z",
                      *       "summary": "Les plantes fabriquent leur matiere avec la lumiere.",
+                     *       "body": [
+                     *         {
+                     *           "heading": "Le principe",
+                     *           "text": "Les plantes fabriquent leur matiere avec la lumiere.",
+                     *           "claimIds": [
+                     *             "01"
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "recall": [
+                     *         {
+                     *           "kind": "definition",
+                     *           "text": "La photosynthese produit du dioxygene.",
+                     *           "claimId": "01",
+                     *           "verified": true
+                     *         }
+                     *       ],
                      *       "claims": [
                      *         {
                      *           "claimId": "01",
                      *           "text": "La photosynthese produit du dioxygene.",
                      *           "status": "verifiee",
                      *           "aRisque": false,
+                     *           "sentenceId": "p1-s1",
                      *           "sources": [
                      *             {
                      *               "passageId": "4f2a9c",
@@ -2434,6 +2602,46 @@ export interface operations {
                      *           "fromSentenceId": "p2-s1",
                      *           "subject": "histoire_geo",
                      *           "status": "ignoree"
+                     *         }
+                     *       ],
+                     *       "figureCount": 1,
+                     *       "blocks": [
+                     *         {
+                     *           "id": "b1",
+                     *           "kind": "paragraphe",
+                     *           "sentenceIds": [
+                     *             "p1-s1"
+                     *           ]
+                     *         },
+                     *         {
+                     *           "id": "b2",
+                     *           "kind": "figure",
+                     *           "figureId": "f1"
+                     *         },
+                     *         {
+                     *           "id": "b3",
+                     *           "kind": "paragraphe",
+                     *           "sentenceIds": [
+                     *             "p2-s1"
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "figures": [
+                     *         {
+                     *           "figureId": "f1",
+                     *           "page": 1,
+                     *           "kind": "schema",
+                     *           "alt": "Schema de la photosynthese",
+                     *           "url": "https://qcm-dev-figures.s3.eu-west-3.amazonaws.com/figures/x/f1.jpg?X-Amz-Signature=example",
+                     *           "urlExpireAt": "2026-12-01T10:10:00Z"
+                     *         }
+                     *       ],
+                     *       "marks": [
+                     *         {
+                     *           "sentenceId": "p1-s1",
+                     *           "status": "verifiee",
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "claimId": "01"
                      *         }
                      *       ]
                      *     }
