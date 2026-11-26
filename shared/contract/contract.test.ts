@@ -404,6 +404,8 @@ describe('contrat v1.6 (F10): ajout de pages a un cours', () => {
     expect(zodSchemas.ShareCreateRequestSchema.safeParse({ ...base, questionIds: base.questionIds.slice(1) }).success).toBe(false);
     expect(zodSchemas.ShareCreateRequestSchema.safeParse({ ...base, ttlDays: 2 }).success).toBe(false);
     expect(zodSchemas.ShareCreateRequestSchema.safeParse({ ...base, title: 'ab' }).success).toBe(false);
+    expect(spec.components.schemas.ShareToken.pattern).toBe('^[A-Za-z0-9_-]{22}$');
+    expect(spec.components.schemas.ShareCreateRequest.properties.ttlDays.enum).toEqual([1, 7, 30]);
     // erreurs, `sharing` facultatif, export sans jeton ni question
     expect(spec.components.schemas.Error.properties.code.enum).toEqual(expect.arrayContaining(['titre_refuse', 'questions_non_partageables', 'plafond_partages', 'lien_indisponible']));
     expect(spec.components.schemas.Student.required).not.toContain('sharing');

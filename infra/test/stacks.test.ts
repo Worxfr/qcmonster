@@ -71,6 +71,13 @@ describe('Api', () => {
     expect(routes.filter((r) => r.Properties.AuthorizationType === 'NONE').map((r) => r.Properties.RouteKey).sort()).toEqual([...PUBLIC].sort());
     for (const r of routes) expect(r.Properties.AuthorizationType).toBe(PUBLIC.includes(r.Properties.RouteKey) ? 'NONE' : 'JWT');
   });
+  it('routes publiques du partage (S1): limite propre a chaque route, et squelette tant que le lot S1-A n\'a pas fourni le handler', () => {
+    const open = ROUTES.find((r) => r.route === 'POST /shares/open')!;
+    const report = ROUTES.find((r) => r.route === 'POST /shares/report')!;
+    expect([open.throttle, report.throttle]).toEqual([{ rate: 3, burst: 6 }, { rate: 1, burst: 3 }]);
+    expect([open.public, report.public]).toEqual([true, true]);
+    for (const r of ROUTES.filter((x) => x.handler.startsWith('shares-'))) expect(r.owner ?? 'skeleton').toBe('skeleton');
+  });
   it('CORS restreint a une origine, jamais *', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', { CorsConfiguration: Match.objectLike({ AllowOrigins: ['https://front.example.invalid'] }) });
   });
