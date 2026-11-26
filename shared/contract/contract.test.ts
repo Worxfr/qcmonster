@@ -287,6 +287,12 @@ describe('contrat v1.5 (R1): relecture en blocs, figures, fiche en paragraphes',
     expect(zodSchemas.SentenceSchema.safeParse({ id: 'p1-s1', text: 'On a $E = mc^{2}$.' }).success).toBe(true);
     expect(zodSchemas.SentenceSchema.safeParse({ id: 'p1-s1', text: 'x'.repeat(2001) }).success).toBe(false);
   });
+  it('LaTeX possible aussi dans Claim.text, RecallItem.text et les enonces de QCM', () => {
+    const sch = spec.components.schemas as Record<string, { properties: Record<string, unknown> }>;
+    for (const [n, f] of [['Claim', 'text'], ['RecallItem', 'text'], ['Question', 'prompt'], ['Question', 'choices']] as const) {
+      expect(JSON.stringify(sch[n].properties[f])).toMatch(/LaTeX/);
+    }
+  });
   it("export de l'eleve (P14): l'archive peut annoncer cours et figures; l'export du parent reste sans contenu de cours", () => {
     expect(zodSchemas.ExportArchiveSchema.safeParse({ url: 'https://example.invalid/a.zip', expiresAt: '2026-12-01T10:10:00Z', format: 'zip', sizeBytes: 1, students: 1, tests: 0, truncated: false, courses: 6, figures: 9 }).success).toBe(true);
     expect(schemas.ExportArchive.required).toEqual(['url', 'expiresAt', 'format', 'sizeBytes', 'students', 'tests', 'truncated']);

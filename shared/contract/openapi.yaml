@@ -1366,7 +1366,7 @@ components:
       required: [kind, text, claimId, verified]
       properties:
         kind: { type: string, enum: [date, formule, definition, nombre] }
-        text: { type: string, minLength: 1, maxLength: 1000, description: "Texte de l'affirmation citee, COPIE par le serveur (le modele ne choisit que `claimId` et `kind`), jamais reecrit" }
+        text: { type: string, minLength: 1, maxLength: 1000, description: "Texte de l'affirmation citee, COPIE par le serveur (le modele ne choisit que `claimId` et `kind`), jamais reecrit. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`)." }
         claimId: { type: string, description: "Affirmation d'ou vient l'element (`Doc.claims`)" }
         verified: { type: boolean, description: "true: l'affirmation est `verifiee`. false: elle est `non_verifiable` (reprise du cours, signalee comme telle). Une affirmation en `erreur` n'est jamais reprise." }
     Transcription:
@@ -1459,7 +1459,7 @@ components:
       required: [claimId, text, status, aRisque, sources]
       properties:
         claimId: { type: string }
-        text: { type: string, maxLength: 1000 }
+        text: { type: string, maxLength: 1000, description: "Texte de l'affirmation. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`)." }
         status: { type: string, enum: [verifiee, erreur, non_verifiable, non_factuelle] }
         aRisque: { type: boolean }
         sentenceId: { type: string, pattern: '^p[0-9]+-s[0-9]+$', description: "Facultatif (v1.5): phrase du cours d'ou vient l'affirmation (celle de `Cours.texts` et `Cours.marks`). Absent pour une fiche ancienne ou si le cours a ete supprime." }
@@ -1514,8 +1514,8 @@ components:
       properties:
         questionId: { type: string }
         kind: { type: string, enum: [qcm, gap] }
-        prompt: { type: string, maxLength: 1000 }
-        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 } }
+        prompt: { type: string, maxLength: 1000, description: "Enonce. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`)." }
+        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 }, description: "Choix; ils peuvent contenir du LaTeX comme l'enonce." }
     Session:
       type: object
       required: [docId, questions]

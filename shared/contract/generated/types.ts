@@ -993,7 +993,7 @@ export interface components {
         RecallItem: {
             /** @enum {string} */
             kind: "date" | "formule" | "definition" | "nombre";
-            /** @description Texte de l'affirmation citee, COPIE par le serveur (le modele ne choisit que `claimId` et `kind`), jamais reecrit */
+            /** @description Texte de l'affirmation citee, COPIE par le serveur (le modele ne choisit que `claimId` et `kind`), jamais reecrit. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`). */
             text: string;
             /** @description Affirmation d'ou vient l'element (`Doc.claims`) */
             claimId: string;
@@ -1065,6 +1065,7 @@ export interface components {
         };
         Claim: {
             claimId: string;
+            /** @description Texte de l'affirmation. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`). */
             text: string;
             /** @enum {string} */
             status: "verifiee" | "erreur" | "non_verifiable" | "non_factuelle";
@@ -1104,7 +1105,9 @@ export interface components {
             questionId: string;
             /** @enum {string} */
             kind: "qcm" | "gap";
+            /** @description Enonce. Depuis la v1.5 le texte peut contenir du LaTeX (`$...$`), controle par le serveur et rendu par le site (voir `Sentence.text`). */
             prompt: string;
+            /** @description Choix; ils peuvent contenir du LaTeX comme l'enonce. */
             choices?: string[];
         };
         Session: {
