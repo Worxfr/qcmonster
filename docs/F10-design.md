@@ -2,7 +2,7 @@
 
 Demande du propriétaire : l'élève doit pouvoir ajouter des pages à un cours déjà scanné. Le cours reste complet, les nouvelles pages donnent des sections et des fiches par sujet, et le pipeline lit les nouvelles pages comme un seul document.
 
-Cette PR ne contient que de la conception. Elle ne touche ni `shared/contract/openapi.yaml` ni `shared/contract/generated/` : la PR #82 (R1, contrat 1.5.0) en est seule propriétaire tant qu'elle n'est pas fusionnée. Les changements de contrat proposés sont décrits en section 9 (contrat 1.6.0, à écrire après la fusion de R1). Aucun appel Claude ni AWS n'a été fait pour l'écrire.
+Cette PR ne contient que de la conception. Révision 2 : corrections de la relecture indépendante (5 bloquants, 8 corrections) et décisions du conducteur. Elle ne touche ni `shared/contract/openapi.yaml` ni `shared/contract/generated/` : la PR #82 (R1, contrat 1.5.0) en est seule propriétaire tant qu'elle n'est pas fusionnée. Les changements de contrat proposés sont décrits en section 9 (contrat 1.6.0, à écrire après la fusion de R1). Aucun appel Claude ni AWS n'a été fait pour l'écrire.
 
 Base lue : `main` à `781e9c2` (contrat 1.4.1), en particulier `api/src/pipeline/{api,steps,steps-doc,job,quota-ops,text,entry}.ts`, `api/src/cours/*`, `api/src/scans/list.ts`, `shared/{items,scans,names,delete-tree}.ts`, `docs/H1-design.md` et `docs/R1-design.md` (PR #82).
 
@@ -16,11 +16,12 @@ Base lue : `main` à `781e9c2` (contrat 1.4.1), en particulier `api/src/pipeline
 | D4 | Phrase à cheval | **Pas de recollage** avec la dernière phrase existante (elle n'est jamais réécrite). Les deux dernières phrases du cours servent de **contexte en lecture seule**, comme les tranches de F11. |
 | D5 | Relecture | L'élève ne relit que les **nouvelles pages**. Le contexte est montré grisé, non modifiable. |
 | D6 | Quota et coût | Quota **par page ajoutée**, réservé à la création, consommé une fois. Plafond de coût du job `max(0,25 ; 0,15 × pages ajoutées)` (`jobCapEur`, inchangé). |
-| D7 | Limites du cours | 30 pages et 20 sections par cours au total (nouvelles constantes). |
-| D8 | Concurrence | **Un seul ajout ouvert par cours** (verrou conditionnel sur l'en-tête du cours, libéré à tout état final). Pas d'ajout tant que le scan d'origine n'est pas terminé. |
-| D9 | Échec | **Tout ou rien pour l'ajout seulement** : le cours d'origine est restauré tel quel (texte, sections, fiches). Aujourd'hui `failJob` supprime tout le cours ; pour un ajout ce serait une perte de données (section 6). |
+| D7 | Limites du cours | 30 pages et 20 sections par cours au total (nouvelles constantes). Un ajout est borné à `20 − sectionsBefore` sections ; refus dès la création si le cours en a déjà 20. |
+| D8 | Concurrence | **Un seul ajout ouvert par cours.** Le verrou (`appendJobId` sur l'en-tête) et le job sont créés dans **une seule transaction**. Le verrou est libéré **en dernier pas** de la restauration. Pas d'ajout tant que le scan d'origine n'est pas terminé. |
+| D9 | Échec | **Tout ou rien pour l'ajout seulement** : le cours d'origine est restauré tel quel (texte, sections, fiches) à partir d'une base écrite **à la création**. Aujourd'hui `failJob` supprime tout le cours ; pour un ajout ce serait une perte de données (section 6). |
 | D10 | Historique de tests (H1) | Inchangé : les `docId` existants ne bougent pas, donc aucun passage `TEST#` n'est touché. |
-| D11 | Confidentialité | Aucune donnée nouvelle ni durée nouvelle. Mise à jour des textes du registre et de la politique dans un commit séparé, **sans relever `POLICY_VERSION`**. |
+| D12 | Liste des scans | **Un ajout = un scan.** Ses fiches forment leur propre groupe dans « Mes fiches » (même `scanId` = job de l'ajout). `sectionCount` des fiches d'origine n'est **pas** réécrit. La vue d'ensemble d'un cours est l'écran `GET /cours/{id}`. |
+| D11 | Confidentialité | Aucune donnée nouvelle ni durée nouvelle, mais un nouveau traitement du texte conservé (deux phrases renvoyées à Bedrock). Textes dans un commit séparé. **`POLICY_VERSION` : décision du propriétaire** (deux options, section 7). |
 
 ## 1. Ce qui existe (main `781e9c2`)
 
@@ -33,7 +34,10 @@ Base lue : `main` à `781e9c2` (contrat 1.4.1), en particulier `api/src/pipeline
 - **Coût** : `jobCapEur(pages)` = `max(0,25 ; 0,15 × pages)`, `GEN_RESERVE_CENTS` = 6 gardés pour la génération.
 - **Fiche** : porte `coursId`, `sectionIndex`, `sectionCount`, `pages`, `pagesConsommees` (sur la première fiche seulement).
 - **Suppression d'un cours** (`DELETE /cours/{id}?fiches=garder|supprimer`) : retire `coursId` du seul job `head.jobId`.
-- **Liste** (`GET /scans`) : groupe les jobs et fiches par `coursId`.
+- **Machine d'états** : les sections sont traitées **une à la fois** (`Map` avec `maxConcurrency: 1`, `pipeline-stack.ts`). Les écritures de l'en-tête du cours par la machine sont donc séquentielles.
+- **Reprise de `transcribe`** : l'étape est finie quand `JOB#<job> / TEXT#1` existe (écrit en dernier, `steps.ts:185` et `:221`).
+- **Bornes de schéma** : `FicheItemSchema.sectionIndex` max 5, `sectionCount` max 6 (`shared/items.ts`) ; contrat : `ScanSummary.sectionIndex` max 5, `sectionCount` max 6, `docIds` maxItems 6.
+- **Liste** (`GET /scans`, `listScans` dans `shared/scans.ts`) : groupe les fiches **par `scanId`** (le job) ; un groupe affiche au plus 6 fiches (`MAX_SECTIONS`). `coursId` n'est pas une clé de groupe. `Docs.tsx` suit ce groupement.
 - **Historique H1** : un `TEST#` par passage, relié à une fiche par `docId`, supprimé avec la fiche.
 
 ## 2. Parcours de l'élève
@@ -42,7 +46,7 @@ Base lue : `main` à `781e9c2` (contrat 1.4.1), en particulier `api/src/pipeline
 2. L'écran d'envoi existant s'ouvre avec le titre « Ajouter au cours : … ». Même sélection de photos (10 au plus par ajout), même envoi.
 3. Lecture des nouvelles pages seulement. Relecture : les deux dernières phrases du cours apparaissent grisées en haut, puis les nouvelles pages, avec les mêmes outils (corrections, coupes en sections, matière, sujet, dossier).
 4. Confirmation : le cours s'allonge (texte et sections), les nouvelles fiches sont créées, les anciennes ne bougent pas.
-5. « Mes cours » montre le cours avec toutes ses sections, dans l'ordre. Un ajout apparaît dans la liste des scans comme un scan, rattaché au même cours.
+5. L'écran du cours (`GET /cours/{id}`) montre toutes ses sections, dans l'ordre. Dans la liste « Mes fiches », un ajout apparaît comme un scan à part (un groupe de fiches avec ses propres numéros « 1 sur 2 »), sans modifier le groupe du scan d'origine.
 
 ## 3. Questions tranchées (défaut et justification)
 
@@ -93,12 +97,17 @@ Les anciennes phrases ne sont ni corrigeables ni retirables dans ce flux. Une co
 - Le plafond de coût du job est `jobCapEur(pages ajoutées)` = `max(0,25 ; 0,15 × pages ajoutées)`. Il ne compte pas les pages existantes. La réserve de génération (6 centimes) et le calcul de budget par section (`budgetLeftCents`) sont inchangés. Le contexte de deux phrases ajoute de l'ordre de 100 jetons : négligeable.
 - Le garde de coût global (`costGateFor`) s'applique à la création comme aujourd'hui (429 `budget_epuise`).
 - Exemples : 1 page ajoutée = quota 1, plafond 0,25 € ; 3 pages = quota 3, plafond 0,45 €.
+- Pire cas écrit : plafond par job ≤ 1,50 € (10 pages) ; par cours ≤ 4,50 € (30 pages × 0,15 €). Coût réel attendu : environ 0,09 € par page (p95 0,12 €, `docs/cost-guard.md`). La garde globale (`DEV_TRIAL_CAP_EUR`, 100 € en dev) et le quota mensuel de pages priment sur ces plafonds.
 
 ### 3.6 Limites d'un cours (P6)
 
 Aujourd'hui un cours a au plus 10 pages et 6 sections (schémas `CoursItemSchema`, `CoursTextItemSchema`, `coursMeta` qui tronque à 6). Un ajout dépasse ces bornes. **Défaut : 30 pages et 20 sections par cours.** Constantes `MAX_COURS_PAGES = 30` et `MAX_COURS_SECTIONS = 20` dans `shared/scans.ts`. `MAX_PAGES_PER_SCAN = 10` et `MAX_SECTIONS = 6` (par ajout) ne changent pas.
 
 Pourquoi 30 : trois scans de 10 pages ; un cours de 30 pages reste de l'ordre de quelques dizaines de Ko de texte (non mesuré, à vérifier dans le lot A) ; les lectures `COURS#` restent des `Query` de moins de 40 éléments. Au-delà, `POST /scans` avec `coursId` répond `409 cours_plein` **avant** toute réservation de page.
+
+**Sections** : `scansCreate` refuse (`409 cours_plein`) si `sectionsBefore ≥ 20`. Sinon `maxSectionsFor` est borné pour un ajout à `min(6, 2 × pages, 20 − sectionsBefore)` ; le dépassement donne le 400 « Trop de sections pour ce scan » ordinaire à la confirmation, sans écriture. Sans cette borne, `CoursItemSchema.parse` lèverait un 500 répété jusqu'à l'expiration (relecture B4.1).
+
+**Bornes de fiche et de contrat** : grâce à D12, un ajout est un scan ordinaire. Ses fiches ont `sectionIndex` de 0 à 5 et `sectionCount` au plus 6, donc `FicheItemSchema` (`max(5)`, `max(6)`), `ScanSummary.sectionIndex` (max 5), `sectionCount` (max 6) et `docIds` (maxItems 6) **ne bougent pas**. Le rang `sectionIndex` d'une fiche d'ajout est local au job. Seules les bornes du **cours** (`pages`, `sections`) montent. Le contrat 1.6.0 n'a donc pas à les modifier.
 
 ### 3.7 Cours supprimé, expiré, d'un autre élève (P7)
 
@@ -111,33 +120,43 @@ Pourquoi 30 : trois scans de 10 pages ; un cours de 30 pages reste de l'ordre de
 
 Risques réels dans le code actuel :
 1. Deux ajouts simultanés numéroteraient tous deux `N+1…` et écriraient les mêmes `COURS#<id>#T<nn>`.
-2. Un ajout pendant que le scan d'origine est encore en `verification` ou `generation` modifierait l'en-tête que `setCoursStatus` réécrit en entier (`put({...head, sections})` : dernier écrivain gagnant, une section perdue).
+2. Un ajout pendant que le scan d'origine est encore en `verification` ou `generation` : l'en-tête serait écrit par deux acteurs.
 3. Une suppression du cours pendant l'ajout laisserait des fiches orphelines.
+4. Un verrou repris trop tôt (job « absent » ou « final » dont la restauration n'est pas finie) laisserait un rejeu tardif détruire l'ajout suivant (relecture B3).
 
-**Défaut : verrou court sur l'en-tête.**
-- `POST /scans` avec `coursId` exige que le job d'origine (`head.jobId`) soit **terminé** (`termine`, ou absent car expiré). Sinon `409 etat_invalide` « Ce cours est encore en cours de création ».
-- Le verrou est `head.appendJobId`, posé par une mise à jour **conditionnelle** (`attribute_not_exists(appendJobId)`). Un second ajout reçoit `409 etat_invalide` « Un autre ajout est en cours pour ce cours ».
-- Verrou **jamais orphelin** : si `appendJobId` existe, on lit ce job ; s'il est final (`termine`, `rejete`, `echec`, `expire`) ou absent, la création reprend le verrou (condition sur l'ancienne valeur). Le verrou est aussi libéré par chaque sortie de job (`finalize`, `endWithoutDoc`, `failJob`, `expire`, annulation), de façon conditionnelle (`appendJobId = <ce job>`) donc rejouable.
-- Le verrou est posé **avant** la réservation des pages ; s'il échoue, rien n'est réservé. Si la réservation échoue après le verrou, le verrou est libéré (même schéma que le `catch` de `scansCreate`).
-- `DELETE /cours/{id}` pendant un ajout ouvert : `409 etat_invalide` « Un ajout est en cours ». Il se termine en quelques minutes (environ 100 s pour 3 pages mesurées en T4) ou expire. L'élève peut aussi annuler l'ajout avant confirmation. Choix par défaut parce qu'il évite des fiches orphelines sans nouveau cas dans la machine (P8).
+**Défaut : verrou sur l'en-tête, créé avec le job, libéré en dernier.**
+
+- **Prérequis** : le job d'origine (`head.jobId`) est `termine` ou absent (expiré). Sinon `409 etat_invalide` « Ce cours est encore en cours de création ».
+- **Création atomique** : `scansCreate` fait **une seule transaction** (`Db.transact`) : `put` du job avec `ifNotExists`, et `update` de l'en-tête avec condition « `appendJobId` absent » qui pose `appendJobId = <jobId>`. Dans la même transaction, le job reçoit `appendBase` (voir section 4), calculé à partir de l'en-tête lu juste avant ; la condition de la transaction porte aussi sur `pages` et `sections` lus (`pages = N`, nombre de sections = M), donc la base ne peut pas être périmée. Pas de fenêtre « verrou sans job » : un second `POST /scans` voit soit un verrou avec son job, soit rien.
+- **Pas d'orphelin supposé** : un verrou n'est repris que si le job porteur est `termine`, **ou** s'il est final (`rejete`, `echec`, `expire`) **et** sa restauration est faite (marqueur `restoredAt` sur le job). Le job absent (TTL de 7 jours dépassé) ne se produit que sur un job final déjà restauré : on le traite comme orphelin et la reprise est conditionnelle sur l'ancienne valeur de `appendJobId`.
+- **Réservation des pages après la transaction.** Si elle échoue (`quota_epuise`), la création lance la restauration du job (qui libère le verrou en dernier pas, section 6) et répond 429.
+- **Libération en dernier pas.** Aucun chemin ne libère le verrou avant que la restauration de ce job soit finie. Chaque écriture de restauration est conditionnée à `appendJobId = <ce job>` : un rejeu tardif, après qu'un autre job a pris le verrou, ne fait rien.
+- **`DELETE /cours/{id}`** applique la même règle : il pose une écriture conditionnelle sur l'en-tête (`appendJobId` absent, ou porteur final et restauré, auquel cas il reprend la restauration) avant de supprimer quoi que ce soit. Sinon un verrou resté posé après une libération ratée rendrait le cours **indélébile** (409 permanent). Pendant un ajout réellement ouvert : `409 etat_invalide` « Un ajout est en cours ».
+- **Durée réelle du verrou** : de l'envoi (15 minutes) jusqu'à la fin du traitement, donc **jusqu'à 12 h** si l'élève ne confirme pas (`CONFIRM_TIMEOUT_S`), puis environ 100 s pour 3 pages (mesure T4). L'élève peut **annuler l'ajout depuis la liste** (`DELETE /scans/{id}` avant confirmation, ou `POST /jobs/{id}/cancel`) : `endWithoutDoc` puis la restauration libèrent le verrou. Un rejeu réseau de `POST /scans` reçoit un 409 sans le `jobId` du premier appel : l'élève retrouve cet ajout dans la liste.
+- **Écritures de l'en-tête** : sous verrou, **un seul écrivain** (le job porteur). Les sections sont traitées une par une (`maxConcurrency: 1`). `setCoursStatus` garde donc son `get` puis l'écriture de `sections` entier (le port `Db.update` n'a pas de chemin imbriqué), mais cette écriture est **conditionnelle** sur `appendJobId = <ce job>`. Aucune extension du port : `ports.ts` n'est pas dans le lot A.
+- **Édition de texte de R1** (« édition en place » du cours) : **refusée pendant un ajout ouvert**, avec la même règle que `DELETE` (409). À reporter dans R1-A (P15).
 - Suppression d'**une fiche** du cours pendant un ajout : sans effet sur l'ajout (les `docId` du job sont distincts).
-- Écritures de l'en-tête pendant un ajout : la machine ne réécrit plus l'en-tête entier (`setCoursStatus` remplace `put({...head})`) mais fait un `update` conditionnel de `sections[<index>]`. Les index de l'ajout sont au-delà de `sectionsBefore`, donc les écrits ne se croisent jamais.
 
 ### 3.9 Rejeu idempotent (P9)
 
-- **`POST /scans` rejoué** (réseau) : comme aujourd'hui, deux appels = deux jobs. Le second échoue sur le verrou (`409`), sans réserver. C'est un gain par rapport à un scan ordinaire.
-- **`POST /jobs/{id}/confirm` rejoué** : la transition `a_confirmer → verification` reste le seul arbitre (le deuxième appel reçoit `409 etat_invalide`). Écritures du cours : l'en-tête est recalculé à partir de la base figée dans le job (`appendBase = { pagesBefore, sectionsBefore, nbPhrasesBefore }`) et non de l'en-tête courant : `sections = ancien.slice(0, sectionsBefore) + nouvelles`. Rejouer ne duplique donc jamais une section. Les `TEXT#`/`COURS#…#T<nn>` sont écrits par clés déterministes (`N+1…`).
-- **Étapes de la machine** : inchangées et déjà reprenables (`extract` efface la tentative précédente, `generate` saute une fiche existante, `quotaConsume` par marqueur, `finalize` conditionnel).
-- **`finalize` d'un ajout** : (a) met `sectionCount` à jour sur les fiches frères (mise à jour conditionnelle `attribute_exists`, valeur absolue, donc rejouable), (b) fixe `head.pages` et `head.nbPhrases` finaux, (c) libère le verrou. Chaque écriture est une affectation, jamais un incrément.
-- **Rejeu de `failJob`** : la restauration (section 6) est une affectation à partir de `appendBase`, rejouable sans effet.
+- **`POST /scans` rejoué** (réseau) : deux appels = deux tentatives ; la seconde échoue sur le verrou (`409`), sans réserver.
+- **`appendBase`** est écrit **à la création** (3.8) : `{ pagesBefore: N, sectionsBefore: M, nbPhrasesBefore }`. L'en-tête est figé par le verrou, donc la base ne change plus. Elle n'est **jamais recalculée** à la confirmation.
+- **`POST /jobs/{id}/confirm` rejoué** : la transition `a_confirmer → verification` reste l'arbitre. L'en-tête est recalculé **depuis `appendBase`** : `sections = ancien.slice(0, sectionsBefore) + nouvelles`, `pages = pagesBefore + k`. Rejouer ne duplique jamais une section, y compris après un plantage entre l'écriture du cours et la transition : le job a déjà sa base.
+- **Ordre dans `jobsConfirm`** (C3) : (1) mise à jour conditionnelle de l'en-tête (`attribute_exists` **et** `appendJobId = <ce job>`) ; (2) écriture des textes `T<N+1…>` ; (3) transition du job. Sans `attribute_exists`, un `put` après un `DELETE /cours` recréerait un en-tête sans ses textes. En cas d'échec de la condition, `409 etat_invalide`, rien d'écrit.
+- **Étapes de la machine** : inchangées et reprenables (`extract` efface la tentative précédente, `generate` saute une fiche existante, `quotaConsume` par marqueur, `finalize` conditionnel), **sauf `transcribe`** (3.2 bis).
+- **`finalize` d'un ajout** : fixe `head.pages` et `head.nbPhrases` finaux et libère le verrou, par affectations conditionnelles (`appendJobId = <ce job>`). Il ne réécrit **pas** `sectionCount` des fiches d'origine (D12). Rejouable.
+- **Restauration** : affectation depuis `appendBase`, rejouable, sûre à tout état (section 6).
+
+#### 3.2 bis Reprise de `transcribe` avec l'offset de pages (B1)
+
+Aujourd'hui `transcribe` s'arrête tôt si `TEXT#1` existe (`steps.ts:185`) et l'écrit en dernier (`steps.ts:221`). Avec l'offset, un ajout n'a plus de `TEXT#1`. Une relance relirait les photos (coût doublé) et rejouerait le compteur « 10 transcriptions par jour ». **Marqueur de reprise nommé** : l'attribut `textDone` du job (booléen, écrit **après** tous les `TEXT#`, avant le contrôle d'état final). `transcribe` teste `textDone` en premier, au lieu de `TEXT#1`, pour tous les jobs (un scan ordinaire reçoit aussi `textDone` ; un job déjà en cours au déploiement garde le test `TEXT#1` en repli). `steps.ts:185` et `:221` sont dans le lot A. Test de reprise : relancer `transcribe` d'un job `appendTo` avec textes déjà écrits ne rappelle pas le modèle et ne touche pas au compteur.
 
 ### 3.10 Fiches déjà jouées, historique des tests H1 (P10)
 
-Rien ne change pour les fiches existantes : mêmes `docId`, mêmes questions, même historique. Les nouvelles fiches commencent sans passage. Points d'attention :
-- `sectionCount` d'une fiche existante change quand des sections s'ajoutent (« 2 sur 3 » devient « 2 sur 5 »). Ce n'est que de l'affichage et l'historique H1 ne le lit pas.
+Rien ne change pour les fiches existantes : mêmes `docId`, mêmes questions, même historique, même `sectionIndex` et `sectionCount` (D12 : aucune réécriture des fiches frères). Les nouvelles fiches commencent sans passage et forment le groupe de leur propre scan.
 - `TEST#.titre` est une copie du titre de la fiche ; l'ajout ne renomme aucune fiche.
-- Supprimer l'ajout (suppression de ses fiches) supprime les passages `TEST#` de ces fiches seulement, comme `deleteDocTree` le fait déjà.
-- L'« échec de l'ajout » ne touche aucune fiche existante donc aucun `TEST#` (section 6).
+- Supprimer les fiches de l'ajout supprime les passages `TEST#` de ces fiches seulement (`deleteDocTree`).
+- Échec de l'ajout : aucune fiche existante n'est touchée. Une fiche **de l'ajout** déjà visible puis jouée peut être supprimée avec son historique si le job échoue ensuite ; c'est le comportement actuel de `failJob` pour un scan ordinaire (noté, non changé).
 
 ### 3.11 Isolation famille et élève (P11)
 
@@ -158,33 +177,34 @@ Aucun nouvel élément. Ajouts d'attributs sur des éléments existants.
 
 | Élément | Ajout | Écrivain |
 |---|---|---|
-| `JOB#` (clé `STUDENT#<sid> / JOB#<job>`) | `appendTo` (coursId), `appendBase = { pagesBefore, sectionsBefore, nbPhrasesBefore, kept }` (figée à la confirmation), `coursId = appendTo` | `scansCreate`, `jobsConfirm` |
-| `COURS#<id>` (en-tête) | `appendJobId` (verrou, absent hors ajout) ; `pages`, `nbPhrases`, `sections` allongés | `scansCreate` (verrou), `jobsConfirm`, `finalize`, restauration |
+| `JOB#` (clé `STUDENT#<sid> / JOB#<job>`) | `appendTo` (coursId), `appendBase = { pagesBefore, sectionsBefore, nbPhrasesBefore }` (**écrite à la création**, jamais recalculée), `coursId = appendTo`, `textDone`, `restoredAt` | `scansCreate` (transaction), `transcribe`, restauration |
+| `COURS#<id>` (en-tête) | `appendJobId` (verrou, absent hors ajout) ; `jobIds` (ensemble des jobs qui ont construit le cours, alimenté par `addSet` dans la transaction de création, repli `[jobId]` pour un cours ancien) ; `pages`, `nbPhrases`, `sections` allongés | `scansCreate` (verrou, `jobIds`), `jobsConfirm`, `finalize`, restauration |
 | `COURS#<id>#T<nn>` | nouvelles pages `N+1…N+k` | `jobsConfirm` |
-| `DOC#` | `sectionIndex` continue (rang parmi toutes les sections avec fiche du cours), `sectionCount` mis à jour sur les frères, `coursId` | `generate`, `finalize` |
+| `DOC#` | `coursId`, `sectionIndex` et `sectionCount` **locaux au job de l'ajout** (comme un scan ordinaire, bornes inchangées) | `generate` |
 | `JOB#…/TEXT#` | numéros de page globaux (offset appliqué) ; `continuesId` éventuel | `transcribe` |
 
-Bornes à élargir dans `shared/items.ts` : `CoursItemSchema.pages` max 30, `.sections` max 20 ; `CoursTextItemSchema.page` max 30, `pages` des phrases max 30 ; le motif `T[0-9]{2}` suffit jusqu'à 99. `coursMeta` : `slice(0, 20)` et `pages` max 30. `shared/scans.ts` : `MAX_COURS_PAGES`, `MAX_COURS_SECTIONS`. Le calcul `statusOfJob` et `listScans` bornent aujourd'hui les pages à 10 (`MAX_PAGES_PER_SCAN`) : inchangé, car il porte sur les pages du **job**, pas du cours.
+Bornes à élargir dans `shared/items.ts` : `CoursItemSchema.pages` max 30, `.sections` max 20, `jobIds` ; `CoursTextItemSchema.page` max 30, `pages` des phrases max 30 ; le motif `T[0-9]{2}` suffit jusqu'à 99. `coursMeta` : `slice(0, 20)` et `pages` max 30. `shared/scans.ts` : `MAX_COURS_PAGES`, `MAX_COURS_SECTIONS` et `maxSectionsFor` borné pour un ajout (3.6). **Inchangées** : `FicheItemSchema.sectionIndex` (max 5) et `sectionCount` (max 6), `MAX_SECTIONS`, `MAX_PAGES_PER_SCAN`, `statusOfJob`, `listScans` (portent sur le **job**, pas sur le cours).
 
-`data-model.md` est mis à jour par le propriétaire du fichier (voir lots).
+Un seul propriétaire de `docs/data-model.md` : le lot F10-A (mise à jour avec ses attributs).
 
 ## 5. Pipeline : points précis à changer
 
-1. **`scansCreate`** : si `coursId` est présent : valider le format ; lire `COURS#` sous `sid` (404) ; refuser si `head.pages + pages > MAX_COURS_PAGES` (409 `cours_plein`) ; vérifier le job d'origine terminé ; poser le verrou ; **puis** réserver les pages. Le job reçoit `appendTo`.
-2. **`transcribe`** : lit `appendTo`, charge les deux dernières phrases du cours (`COURS#…#T` le plus haut), les passe au premier appel de lecture (texte seul), applique l'offset `N` aux pages lues avant `assemblePages`. Le garde-fou « 10 transcriptions par jour » et le seuil `MIN_WORDS` sont inchangés.
-3. **`jobsTranscription`** : ajoute `context` (texte seul). Les photos restent celles du job.
-4. **`jobsConfirm`** : si `appendTo`, écrit **seulement** les nouvelles pages et un en-tête recalculé à partir de `appendBase`, sous condition `appendJobId = <ce job>`. Pas de `put` de l'en-tête complet sans cette condition. Ne jamais appeler `deleteCoursTree` sur la course perdue (voir 6).
-5. **`sectionOf` / `extract`** : `sec.rank` reste local au job ; `generate` écrit `sectionIndex = appendBase.kept + rank` et `sectionCount = appendBase.kept + kept.length`. Le contexte des deux phrases n'est passé qu'à la première section du job.
-6. **`setCoursStatus`** : passe à une mise à jour d'un seul élément de `sections` (indice `sectionsBefore + planIndex`), au lieu d'un `put` de l'en-tête.
-7. **`finalize`** : branche `appendTo` (3.9).
-8. **`endWithoutDoc`, `failJob`, `expire`, `jobsCancel`** : libèrent le verrou ; `purgeScan` et la course perdue de `jobsConfirm` utilisent la restauration (section 6) et non `deleteCoursTree`.
-9. **`DELETE /cours`** : refuse pendant un ajout ouvert ; retire `coursId` de **tous** les jobs du cours (celui d'origine et ceux des ajouts) : l'en-tête garde la liste `jobIds` des jobs qui l'ont construit (au plus 30, un envoi d'une page au minimum). Sinon `GET /scans` renverrait un lien mort, comme le défaut B2 de T4.
+1. **`scansCreate`** : si `coursId` est présent : valider le format ; lire `COURS#` sous `sid` (404) ; refuser si `head.pages + pages > MAX_COURS_PAGES` ou `sectionsBefore ≥ MAX_COURS_SECTIONS` (409 `cours_plein`) ; vérifier le job d'origine terminé ; **une transaction** : job (avec `appendTo`, `appendBase`) + verrou et `jobIds` sur l'en-tête, conditionnée à l'état lu (3.8) ; **puis** réserver les pages (échec : restauration et 429).
+2. **`transcribe`** : lit `appendTo`, charge les deux dernières phrases du cours, les passe au premier appel de lecture (texte seul), applique l'offset `N` aux pages lues avant `assemblePages`. Marqueur de reprise `textDone` (3.9, `steps.ts:185` et `:221` dans le lot A). Le garde-fou « 10 transcriptions par jour » et `MIN_WORDS` sont inchangés.
+3. **`jobsTranscription`** : ajoute `context` (texte seul).
+4. **`jobsConfirm`** : si `appendTo`, ordre de 3.9 (en-tête conditionnel, textes, transition) ; l'en-tête est calculé depuis `appendBase`. **Jamais** `deleteCoursTree` ; la course perdue appelle la restauration.
+5. **`sectionOf` / `extract`** : `sec.rank` reste local au job, comme aujourd'hui (aucun décalage). Un paramètre **nouveau** de `extract` (même fichier, lot A) : les deux dernières phrases du cours, passées comme contexte à la première section du job seulement (le contexte de F11 vient du même texte de job ; ici il vient du cours).
+6. **`setCoursStatus`** : garde son `get` puis l'écriture de `sections` entier, mais **conditionnelle** sur `appendJobId = <ce job>` (un seul écrivain sous verrou ; sections traitées une à une). Les indices modifiés sont `sectionsBefore + planIndex`.
+7. **`finalize`** : branche `appendTo` (3.9) : `pages`, `nbPhrases`, libération du verrou.
+8. **`endWithoutDoc`, `failJob`, `expire`, `jobsCancel`, `scansDelete`** : tous appellent la restauration quand `job.appendTo` est posé (`scansDelete` rejoue le nettoyage, donc rejoue la restauration), et elle seule libère le verrou. `purgeScan` et la course perdue de `jobsConfirm` n'appellent jamais `deleteCoursTree` pour un ajout.
+9. **`DELETE /cours`** : écriture conditionnelle sur le verrou (3.8) ; retire `coursId` de **tous** les jobs de `head.jobIds` (repli `[head.jobId]`) ; supprime la copie `JOB#<job>/TEXT#` de chacun. Sinon `GET /scans` renverrait un lien mort (défaut B2 de T4).
+10. **R1 (édition en place)** : refusée pendant un ajout ouvert (3.8).
 
 La machine d'états (infra) ne change pas : son entrée est `{ jobId, sid }` et toutes les étapes lisent le job.
 
 ## 6. Échec, annulation et expiration : ne jamais supprimer l'ancien cours
 
-C'est le risque principal du projet. Aujourd'hui, trois chemins supprimaient « le cours du job » parce qu'il avait été créé par ce job :
+C'est le risque principal du projet. Aujourd'hui, trois chemins suppriment « le cours du job » parce qu'il avait été créé par ce job :
 
 - course perdue dans `jobsConfirm` (`deleteCoursTree(... jobId)`),
 - `purgeScan` (appelé par `failJob` et `extract` quand aucune affirmation n'est exploitable),
@@ -192,27 +212,38 @@ C'est le risque principal du projet. Aujourd'hui, trois chemins supprimaient « 
 
 Avec un ajout, `job.coursId` désigne le cours **existant** de l'élève. Les laisser inchangés supprimerait des semaines de travail sur une simple erreur d'extraction.
 
-**Règle** : si `job.appendTo` est présent, ces chemins appellent `restoreAfterFailedAppend(ctx, sid, job)` et jamais `deleteCoursTree`.
+**Règle** : si `job.appendTo` est présent, ces chemins appellent `restoreAfterFailedAppend(ctx, sid, job)` et jamais `deleteCoursTree`. Elle est appelée par `endWithoutDoc` (donc par `expire`, `jobsCancel`, `scansDelete`, la course perdue), `failJob` et la création après un refus de quota.
 
-`restoreAfterFailedAppend` (idempotent, par affectations) :
-1. supprime les fiches du job (`deleteDocTree` pour chaque `docId` de `job.sections`, plus les brouillons `DOC#<id>`, comme `purgeScan`) ;
-2. supprime les textes `COURS#<id>#T<nn>` pour `nn > pagesBefore` ;
-3. remet `pages`, `nbPhrases` et `sections` de l'en-tête à `appendBase` (`sections.slice(0, sectionsBefore)`), et retire `appendJobId` si c'est ce job ;
-4. remet `sectionCount` des fiches frères à `appendBase.kept` si une mise à jour les avait déjà modifiées.
+`restoreAfterFailedAppend` est **idempotente et sûre à tout état** :
+- **Condition d'ensemble** : chaque écriture exige `appendJobId = <ce job>` sur l'en-tête (ou l'absence de verrou quand le job est déjà restauré). Si un autre job détient le verrou, elle ne fait **rien**. Un rejeu tardif ne touche donc jamais l'ajout suivant.
+- Avant la confirmation (le cours n'a rien reçu), les étapes 1 à 3 ne trouvent rien à faire et seule l'étape 6 agit.
 
-Le quota est rendu par `endWithoutDoc` comme aujourd'hui. Si l'ajout est annulé ou expire **avant** la confirmation, rien n'a été écrit dans le cours : seul le verrou est libéré. Test obligatoire : après chaque chemin d'échec, le cours d'origine est identique octet pour octet (en-tête, textes, fiches).
+Étapes, dans cet ordre :
+1. supprimer les fiches du job (`deleteDocTree` pour chaque `docId` de `job.sections`) et les restes `DOC#<id>` (brouillons, comme `purgeScan`) ;
+2. supprimer les textes `COURS#<id>#T<nn>` avec `nn > pagesBefore` ;
+3. remettre `pages`, `nbPhrases` et `sections` de l'en-tête à `appendBase` (`sections.slice(0, sectionsBefore)`) ;
+4. supprimer la copie de travail `JOB#<job>/TEXT#` (C2), comme le fait aujourd'hui `deleteCoursTree(..., { jobId })` ; supprimer aussi les figures du job (R1, préfixe de ce job) ;
+5. poser `restoredAt` sur le job ;
+6. **en dernier** : retirer `appendJobId` (condition : égal à ce job).
+
+Sans `appendBase` (job qui n'a pas pu être créé), elle ne fait rien. Le quota est rendu par `endWithoutDoc` comme aujourd'hui. Il n'y a pas de réécriture de `sectionCount` à annuler (D12). Si l'ajout est annulé ou expire avant la confirmation, seules les étapes 4 à 6 ont un effet.
+
+Tests obligatoires : après **chaque** chemin d'échec, le cours d'origine est identique (en-tête, textes, fiches) ; plantage entre l'écriture de l'en-tête et la transition de `jobsConfirm` ; restauration rejouée après qu'un second ajout a pris le verrou (aucun effet) ; `DELETE /cours` avec verrou porté par un job final non restauré (reprend la restauration, puis supprime).
 
 Cas « aucune section avec fiche » (`MSG.noClaims`) : le job est rejeté, l'ajout est restauré, les pages sont rendues.
 
 ## 7. Confidentialité (commit séparé)
 
-Rien n'est collecté de nouveau : mêmes photos (supprimées à la confirmation), même texte conservé jusqu'à suppression par l'élève ou avec le compte, aucun accès du parent. Ce qui change : le cours peut se construire en plusieurs envois et dépasser 10 pages, donc les textes doivent le dire.
+Rien n'est collecté de nouveau : mêmes photos (supprimées à la confirmation), même texte conservé jusqu'à suppression par l'élève ou avec le compte, aucun accès du parent. Ce qui change : le cours peut se construire en plusieurs envois et dépasser 10 pages, donc les textes doivent le dire. Nouveau traitement du texte conservé : **au premier ajout, les deux dernières phrases du cours sont renvoyées à Bedrock** pour lire la suite (même sous-traitant, même finalité, pas de nouveau destinataire). Une ligne dans le registre T3.
 
 Le commit « docs(legal): F10 » (séparé du commit de conception, dans la PR de mise en œuvre du lot F10-D) :
 - `docs/legal/registre.md` (T3) : préciser que le texte du cours s'enrichit à chaque ajout, jusqu'à 30 pages, avec la même conservation ;
 - `docs/legal/politique-confidentialite.md` : une phrase « Tu peux ajouter des pages à un cours déjà scanné » et la mention que le texte ajouté suit la même règle ;
 - `docs/legal/aipd-brouillon.md` : volume maximal par élève (30 pages par cours) ; `sous-traitants.md` : aucune nouveauté (AWS déjà sous-traitant).
-- **`shared/policy.ts` n'est pas modifié : `POLICY_VERSION` reste `2026-11-26`.** La durée et la nature des données conservées ne changent pas ; le relèvement (et un nouveau consentement des familles) reste une décision du propriétaire à la mise en production (P13).
+- **`POLICY_VERSION` : DÉCISION DU PROPRIÉTAIRE (P13).** La substance ne change pas (aucune donnée nouvelle, aucune durée nouvelle, mêmes destinataires), mais le commentaire de `shared/policy.ts` demande de relever la version à chaque modification du texte, et la politique et le registre changent. Deux options :
+  - **Option A, exception explicite** : `POLICY_VERSION` reste `2026-11-26`. Le commit légal note que la modification est une clarification non substantielle. Pas de nouveau consentement.
+  - **Option B, une seule hausse commune avec R1** : R1 modifie aussi `politique-confidentialite.md`, `registre.md` et `aipd-brouillon.md`. Une seule nouvelle version est posée pour les deux, au moment de la mise en production du dernier des deux lots ; les familles consentent une fois.
+  - **Ordre des deux PR sur les mêmes textes légaux** : R1-D d'abord (elle est la première en conception), puis F10-D rebasée sur ses textes, avec un commit qui ne modifie que les lignes F10. Aucune des deux ne modifie `shared/policy.ts` sans la décision du propriétaire. Recommandation : option B, car elle évite deux demandes de consentement et deux écarts à la règle du commentaire.
 
 Contrôles : photo supprimée à la confirmation de l'ajout (`s3.deleteAll(scansPrefix)` du `jobsConfirm`, inchangé) ; l'ajout n'écrit aucune photo hors du préfixe du job ; aucun texte dans les journaux, ni dans les erreurs 4xx (messages constants).
 
@@ -222,9 +253,11 @@ Contrôles : photo supprimée à la confirmation de l'ajout (`s3.deleteAll(scans
 |---|---|
 | Perte du cours existant sur échec d'ajout | Section 6, test d'égalité du cours avant et après |
 | Ancrage des affirmations sur de mauvais identifiants | Offset appliqué avant `assemblePages` ; les anciens identifiants ne sont jamais réécrits |
-| Course sur l'en-tête (`setCoursStatus` en `put` complet) | Mise à jour d'un élément, verrou (3.8) |
-| `sectionCount` périmé sur les anciennes fiches | Mis à jour dans `finalize`, valeur absolue, rejouable |
-| Coût | Plafond par job, inchangé (`jobCapEur(pages ajoutées)`) ; 30 pages au plus par cours, donc au plus 4,50 € de plafond cumulé sur la vie d'un cours (0,15 € × 30), très au-dessus du réel (0,05 €/page mesuré en T4) |
+| Course sur l'en-tête (`setCoursStatus` en lecture puis écriture complète) | Un seul écrivain sous verrou, écriture conditionnelle sur `appendJobId` ; sections traitées une à une (`maxConcurrency: 1`) ; pas d'extension du port (3.8) |
+| `sectionCount` des fiches d'origine | Jamais réécrit (D12) : un ajout est un scan, sa liste « 1 sur 2 » est propre |
+| Verrou repris trop tôt, restauration tardive | Transaction job + verrou, libération en dernier pas, écritures conditionnées au verrou (3.8, 6) |
+| Cours bloqué à 20 sections | Refus dès la création, bornes de `maxSectionsFor` (3.6) |
+| Coût | Plafond par job, inchangé (`jobCapEur(pages ajoutées)`) ; 30 pages au plus par cours, donc au plus 4,50 € de plafond cumulé sur la vie d'un cours (0,15 € × 30), très au-dessus du réel (environ 0,09 €/page, p95 0,12 €, `docs/cost-guard.md`) ; la garde globale et le quota mensuel priment |
 | Lecture d'une fin de phrase absente | Contexte textuel limité à deux phrases ; `continuesId` informatif (3.3) |
 | Conflit avec R1 | F10 démarre après la fusion de R1-A (mêmes fichiers `steps-doc.ts`, `text.ts`, `jobs-confirm`, `items.ts`). Les blocs R1 (`Cours.blocks`) doivent aussi s'étendre : à confirmer dans R1 (P14) |
 
@@ -236,12 +269,13 @@ Rien de requis n'est ajouté à une requête existante ; un client 1.5 reste val
 
 - **`ScanCreateRequest`** : `coursId` (string, 1 à 64, facultatif). Description : « Cours existant de l'élève auquel ajouter ces pages. Les pages sont numérotées à la suite et donnent de nouvelles sections et fiches. Inconnu ou d'un autre élève : 404. »
 - **`POST /scans`** : nouvelles réponses :
-  - `404 introuvable` (cours inconnu), `403 interdit` (parent), `409 etat_invalide` (« Ce cours est encore en cours de création » / « Un autre ajout est en cours pour ce cours »), `409 cours_plein` (nouveau code, dépassement de 30 pages), `400 requete_invalide` (format).
+  - `404 introuvable` (cours inconnu), `403 interdit` (parent), `409 etat_invalide` (« Ce cours est encore en cours de création » / « Un autre ajout est en cours pour ce cours »), `409 cours_plein` (nouveau code, dépassement de 30 pages ou cours déjà à 20 sections), `400 requete_invalide` (format).
 - **`Error.code`** : ajout de `cours_plein` (comme `dossier_nom_pris` en 1.3 : un client ancien lit le statut HTTP).
 - **`Transcription`** : `context` (tableau de `Sentence`, au plus 2, lecture seule, absent hors ajout) ; `Sentence.continuesId` (identifiant de la phrase du cours que celle-ci prolonge, absent sinon).
 - **`Job`** : `coursId` (déjà exposé par `GET /scans` côté liste) ; `appendTo` n'est **pas** exposé.
 - **`CoursMeta`** : `pages` maximum 30 (au lieu de 10), `sections` maximum 20 (au lieu de 6). `maxItems` des sections passe de 6 à 20.
-- **`DELETE /cours/{coursId}`** : `409 etat_invalide` pendant un ajout ouvert.
+- **Inchangés** (D12, un ajout = un scan) : `ScanSummary.sectionIndex` (max 5), `sectionCount` (max 6), `docIds` (maxItems 6). Le contrat 1.6.0 n'y touche pas ; le test de contrat le vérifie.
+- **`DELETE /cours/{coursId}`** : `409 etat_invalide` pendant un ajout ouvert (verrou conditionnel, reprise d'une restauration inachevée).
 - **`ConfirmRequest`** : inchangé. La règle « première section à la toute première phrase » s'entend sur les nouvelles phrases ; « au plus `min(6, 2 × pages)` » sur les pages ajoutées.
 - Les exemples (`mock/`) : un ajout `201`, un `409 cours_plein`, un `409` verrou, une transcription avec `context`.
 
@@ -257,9 +291,10 @@ Prérequis : fusion de R1-A (PR #82 et ses lots) pour les fichiers communs ; con
 
 ### Lot F10-A : API et pipeline
 
-- `shared/scans.ts` (`MAX_COURS_PAGES`, `MAX_COURS_SECTIONS`), `shared/items.ts` (bornes), `shared/ddb/keys.ts` (aucune clé nouvelle prévue), `shared/delete-tree.ts` (+ test : jobs multiples d'un cours)
-- `api/src/pipeline/api.ts` (`scansCreate`, `jobsTranscription`, `jobsConfirm`, `jobsCancel`), `api/src/pipeline/append.ts` (**nouveau** : verrou, `appendBase`, `restoreAfterFailedAppend`, contexte), `api/src/pipeline/steps.ts` (`transcribe`, `purgeScan`, `failJob`, `expire`), `api/src/pipeline/steps-doc.ts` (`setCoursStatus`, `generate`, `finalize`), `api/src/pipeline/text.ts` (offset de pages, `continuesId`), `api/src/pipeline/prompts.ts` (consigne de contexte), `api/src/pipeline/job.ts` (`endWithoutDoc` libère le verrou), `api/src/cours/cours.ts`, `api/src/cours/meta.ts`
-- Tests : `api/src/pipeline/append.test.ts` (nouveau, voir 11), compléments dans `entry.test.ts` seulement pour l'export des handlers, `docs/data-model.md`
+- `shared/scans.ts` (`MAX_COURS_PAGES`, `MAX_COURS_SECTIONS`, `maxSectionsFor` pour un ajout), `shared/items.ts` (bornes du cours, `jobIds`), `shared/ddb/keys.ts` (aucune clé nouvelle prévue), `shared/delete-tree.ts` (+ test : jobs multiples d'un cours)
+- `api/src/pipeline/api.ts` (`scansCreate`, `jobsTranscription`, `jobsConfirm`, `jobsCancel`), `api/src/pipeline/append.ts` (**nouveau** : verrou, `appendBase`, `restoreAfterFailedAppend`, contexte), `api/src/pipeline/steps.ts` (`transcribe` dont le marqueur `textDone` aux lignes 185 et 221, `purgeScan`, `failJob`, `expire`), `api/src/pipeline/steps-doc.ts` (`setCoursStatus`, `generate`, `finalize`), `api/src/pipeline/text.ts` (offset de pages, `continuesId`), `api/src/pipeline/prompts.ts` (consigne de contexte), `api/src/pipeline/job.ts` (`endWithoutDoc` appelle la restauration), `api/src/scans/delete.ts` (rejoue la restauration), `api/src/cours/cours.ts`, `api/src/cours/meta.ts`
+- Tests : `api/src/pipeline/append.test.ts` (nouveau, voir 11), compléments dans `entry.test.ts` seulement pour l'export des handlers, `docs/data-model.md` (seul propriétaire)
+- **Hors lot** : `api/src/pipeline/ports.ts` (aucune extension : écriture de `sections` entier sous verrou), `shared/scans.ts` `listScans` pour le groupement (inchangé, D12), `Docs.tsx` (groupes par `scanId`, inchangé)
 
 ### Lot F10-B : infra
 
@@ -274,7 +309,7 @@ Prérequis : fusion de R1-A (PR #82 et ses lots) pour les fichiers communs ; con
 
 ### Lot F10-D : textes légaux (après validation)
 
-- `docs/legal/registre.md`, `politique-confidentialite.md`, `aipd-brouillon.md`. `shared/policy.ts` seulement sur décision du propriétaire (P13).
+- `docs/legal/registre.md`, `politique-confidentialite.md`, `aipd-brouillon.md`, à rebaser sur R1-D (ordre en section 7). `shared/policy.ts` seulement sur décision du propriétaire (P13).
 
 ### Lot F10-E : e2e
 
@@ -282,14 +317,20 @@ Prérequis : fusion de R1-A (PR #82 et ses lots) pour les fichiers communs ; con
 
 ### Ordre
 
-1. Cette PR de conception, validation P1 à P14.
+1. Cette PR de conception, validation P1 à P15.
 2. Fusion de R1-A, puis lot F10-0.
 3. Lots F10-A et F10-C en parallèle contre le mock ; F10-B si nécessaire ; F10-D après validation ; F10-E en dernier.
 
 ## 11. Tests
 
 **API (`append.test.ts`, sans réseau, ports factices comme `pipeline.test.ts`)** :
-- ajout nominal : pages `N+1…`, sections et fiches allongées, `sectionIndex` continu, `sectionCount` mis à jour sur les frères, quota consommé une fois pour les pages ajoutées ;
+- ajout nominal : pages `N+1…`, sections du cours allongées, fiches de l'ajout avec `sectionIndex`/`sectionCount` locaux, fiches d'origine **inchangées**, quota consommé une fois pour les pages ajoutées ;
+- cours à 20 sections : refus à la création sans réservation ; cours à 18 sections et ajout de 3 sections : 400 ordinaire à la confirmation ;
+- reprise de `transcribe` avec `appendTo` : pas de second appel de modèle, compteur du jour inchangé ;
+- création : verrou et job dans une transaction (un second `POST /scans` concurrent reçoit 409, jamais deux jobs) ; refus de quota : verrou libéré en dernier ;
+- plantage entre l'écriture de l'en-tête et la transition de `jobsConfirm` : cours d'origine restauré à l'expiration ;
+- restauration rejouée après qu'un second ajout a pris le verrou : aucun effet ; `DELETE /cours` avec verrou d'un job final non restauré : reprend la restauration ;
+- édition R1 refusée pendant un ajout ;
 - cours inconnu 404 ; cours d'un autre élève 404 ; parent 403 ; format invalide 400 ; `cours_plein` 409 sans réservation ;
 - scan d'origine non terminé : 409, rien réservé ; verrou pris : 409 ; verrou orphelin (job final) repris ;
 - **égalité avant/après** du cours d'origine après : échec d'extraction, `noClaims`, course perdue, annulation, expiration, panne de `generate` ;
@@ -313,7 +354,7 @@ Prérequis : fusion de R1-A (PR #82 et ses lots) pour les fichiers communs ; con
 
 Un test réel sur dev (1 à 2 pages, coût attendu inférieur à 0,10 €) avant fusion du lot A, à lancer sur accord du propriétaire pour la dépense.
 
-## 12. Décisions à valider (P1 à P14)
+## 12. Décisions à valider (P1 à P15)
 
 | # | Question | Défaut proposé | Alternative |
 |---|---|---|---|
@@ -322,14 +363,15 @@ Un test réel sur dev (1 à 2 pages, coût attendu inférieur à 0,10 €) avant
 | P3 | Phrase à cheval avec la dernière page | **Pas de recollage**, contexte lecture seule + `continuesId` | Recoller et réécrire la dernière phrase (invalide ses affirmations) |
 | P4 | Relecture | **Nouvelles pages seulement**, contexte grisé | Relire tout le cours (coût et confusion) |
 | P5 | Quota et plafond | **Par page ajoutée**, `max(0,25 ; 0,15 × pages ajoutées)` | Plafond sur le cours entier (pénalise les gros cours) |
-| P6 | Limites du cours | **30 pages, 20 sections** | 20 pages / 12 sections (plus prudent) ou 50 / 30 |
+| P6 | Limites du cours | **30 pages, 20 sections** ; ajout borné à `20 − sectionsBefore`, refus dès la création à 20 | 20 pages / 12 sections (plus prudent) ou 50 / 30 |
 | P7 | Cours supprimé, d'un autre élève, parent | 404 / 404 / 403, avant toute réservation | — |
-| P8 | Concurrence | **Verrou par cours**, scan d'origine terminé requis, `DELETE /cours` refusé pendant l'ajout | Annuler l'ajout en cours à la suppression (plus de cas dans la machine) |
+| P8 | Concurrence | **Verrou par cours** créé avec le job (transaction), libéré en dernier pas, scan d'origine terminé requis, `DELETE /cours` refusé pendant l'ajout ; verrou jusqu'à 12 h, annulable depuis la liste | Annuler l'ajout en cours à la suppression (plus de cas dans la machine) |
 | P9 | Rejeu | Affectations depuis `appendBase`, jamais d'incréments | — |
-| P10 | Fiches déjà jouées | Inchangées, historique intact ; `sectionCount` des frères mis à jour | Ne pas mettre à jour (affichage « 2 sur 3 » périmé) |
+| P10 | Fiches déjà jouées et liste | Inchangées, historique intact ; **un ajout = un scan**, `sectionCount` des fiches d'origine non réécrit | Regrouper par cours (`listScans`, contrat, `Docs.tsx`) : plus gros, plus tard |
 | P11 | Isolation | `sid` du jeton, 404 uniforme | — |
 | P12 | Parent | Aucun texte, aucun ajout (403) | — |
-| P13 | Confidentialité | Textes en commit séparé, **`POLICY_VERSION` inchangée** | Relever la version et redemander le consentement |
-| P14 | Échec d'ajout | **Restaurer** le cours d'origine (jamais le supprimer) ; blocs, figures et marques de R1 suivent | — |
+| P13 | `POLICY_VERSION` (**décision du propriétaire**) | Recommandé : option B, une seule hausse commune avec R1 | Option A : version inchangée, exception notée dans le commit légal |
+| P14 | Échec d'ajout | **Restaurer** le cours d'origine (jamais le supprimer), depuis une base écrite à la création ; blocs, figures et marques de R1 suivent | — |
+| P15 | Édition en place de R1 pendant un ajout | **Refusée** (409), même règle que `DELETE /cours` | La laisser, avec un verrou séparé |
 
 Question ouverte hors défaut : faut-il, à terme, proposer « Ajouter à une fiche existante » (P1) et « Insérer avant la page N » (P2) ? Le défaut les laisse hors périmètre ; rien dans cette conception ne les empêche (identifiants et `docId` stables).
