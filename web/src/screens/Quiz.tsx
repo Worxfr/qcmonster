@@ -55,7 +55,8 @@ export function QuizRun({ initial, reopen, multi, back, notice }: { initial: Dra
     return (
       <Card title="Bravo !">
         <p role="status">{good} bonne{good > 1 ? 's' : ''} réponse{good > 1 ? 's' : ''} sur {done}, +{xp} XP.</p>
-        {multi && seen > 0 && <p>Tu as vu {seen} {plural(seen, 'fiche', 'fiches')}.</p>}
+        {info && <p className="notice" role="status">{info}</p>}
+                {multi && seen > 0 && <p>Tu as vu {seen} {plural(seen, 'fiche', 'fiches')}.</p>}
         {short && <p className="notice">Cette banque n'a que {available} {plural(available, 'question différente', 'questions différentes')}. Reviens quand tu auras scanné plus de pages.</p>}
         {capped && <p className="notice">Tu as gagné tous les points de cette fiche (50 sur 50). Tu peux continuer pour t'entraîner.</p>}
         <div className="btn-row">
