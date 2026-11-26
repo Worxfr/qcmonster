@@ -13,7 +13,7 @@ export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite';
+type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId';
 interface HandlerDef {
   name: string;
   role: RoleKey;
@@ -47,6 +47,8 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'family-create', role: 'account', needs: ['USER_POOL_ID'] },
   { name: 'students-link', role: 'manage', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
   { name: 'students-update', role: 'manage', needs: ['USER_POOL_ID'] },
+  // contract-v1.8 (ID1): nouvel identifiant de connexion. Role DEDIE: ni `account` ni `manage` (l'un ecrit les attributs, l'autre deconnecte).
+  { name: 'students-login-id-post', role: 'loginId', needs: ['USER_POOL_ID'] },
   { name: 'students-delete', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET', 'FIGURES_BUCKET'] },
   { name: 'family-admin', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET', 'FIGURES_BUCKET'] },
   { name: 'activation-post', role: 'activation', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
@@ -129,6 +131,9 @@ export class GameStack extends Stack {
         new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${figuresBucket}`], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } }),
         new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${figuresBucket}/figures/*`] }),
       ],
+      // Nouvel identifiant (ID1): lit l'eleve (GetItem), ecrit son nouvel identifiant (PutItem conditionnel a la version) dans la partition de la famille SEULEMENT.
+      // Cognito: lit l'alias courant, pose le nouvel alias, revoque les jetons de rafraichissement. Rien d'autre (ni creation, ni suppression, ni mot de passe).
+      loginId: [ddb(['GetItem', 'PutItem'], FAM), cognito(['AdminGetUser', 'AdminUpdateUserAttributes', 'AdminUserGlobalSignOut'])],
       // Route publique: lit l'eleve et le jeton (hache), consomme le jeton, pose le mot de passe. Rien d'autre.
       activation: [ddb([...READ, 'PutItem', 'DeleteItem'], ['ACTIVATION#*', ...FAM]), cognito(['AdminSetUserPassword'])],
       // Codes d'invitation: PutItem sur INVITE#* seulement (code et audit). Ni lecture, ni Cognito, ni autre partition (audit securite 2).
