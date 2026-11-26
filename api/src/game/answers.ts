@@ -17,6 +17,8 @@ export interface AnswerResult {
   xpGained: number;
   /** Q1: la reponse aurait rapporte des points mais la fiche a atteint 50 XP. */
   capped?: boolean;
+  /** M1 #90: question retiree par une correction du cours pendant que le test etait ouvert: corrigee, sans point. */
+  retired?: boolean;
   badges: string[];
   progress: Progress;
 }
@@ -46,6 +48,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
   if (!parsed.success) throw notFound();
   const expected = 'cle' in parsed.data ? parsed.data.choix[parsed.data.cle] : parsed.data.attendu;
   const claimId = parsed.data.claimId;
+  const retired = parsed.data.retiree === true;
   const correct = q.kind === 'qcm' ? body.choice === expected : normalizeGap(body.choice) === normalizeGap(expected);
 
   // Une affirmation sans verdict « verifiee » (ou « non_factuelle ») empeche le bonus de serie parfaite (anti-triche 5).
@@ -78,7 +81,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
       const before = await deps.store.query(`STUDENT#${ctx.studentId}`, `ATT#${body.questionId}#`);
       const paidBefore = before.some((i) => i.SK !== attKey.SK && i.rewarded === true);
       // Plafond de 50 XP par fiche pour toute la vie de la fiche (decision du proprietaire).
-      const remaining = Math.max(0, DOC_XP_CAP - paidXp(await deps.store.query(`STUDENT#${ctx.studentId}`, `ATT#${q.docId}:`)));
+      const remaining = retired ? 0 : Math.max(0, DOC_XP_CAP - paidXp(await deps.store.query(`STUDENT#${ctx.studentId}`, `ATT#${q.docId}:`))); // retiree: aucun point, et la serie n'avance pas
 
       const wasDone = att.done;
       att.attempts += 1;
@@ -90,7 +93,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
           if (!paidBefore) {
             const normal = q.kind === 'gap' ? XP.gap : att.attempts === 1 ? XP.qcmFirst : XP.qcmSecond;
             const rowXp = Math.min(normal, remaining); // apres le plafond de fiche, avant le plafond quotidien
-            capped = rowXp < normal;
+            capped = !retired && rowXp < normal;
             if (rowXp > 0) att.rewarded = true;
             att.xp += rowXp;
             amount += rowXp;
@@ -140,6 +143,7 @@ export async function postAnswer(deps: Deps, ctx: StudentCtx, body: { questionId
     ...(result.reveal ? { correctAnswer: expected } : {}),
     xpGained: result.gained,
     ...(result.capped ? { capped: true } : {}),
+    ...(retired ? { retired: true } : {}),
     badges: result.newBadges,
     progress: await progressOf(deps, ctx.familyId, ctx.studentId, st.profile, Number(student.quotaPages), st.today),
   };

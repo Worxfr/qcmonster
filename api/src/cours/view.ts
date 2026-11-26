@@ -1,6 +1,7 @@
 // Lecture des blocs, figures et marques d'un cours (R1, contrat 1.5). Eleve seulement: les appelants refusent le parent avant d'arriver ici.
 // Isolation par le handler: les cles S3 sont construites avec le `sid` du jeton et seuls les `figureId` ecrits dans `COURS#<id>#B` de CET eleve sont signes.
 import { keys } from '../../../shared/ddb/keys.js';
+import { retiredClaims } from '../../../shared/items.js';
 import { ID_RE, type Ctx } from '../pipeline/ctx.js';
 import type { Block, FigureMeta } from '../pipeline/blocks.js';
 import { FIGURE_URL_TTL_S, figureKey } from '../pipeline/figures.js';
@@ -73,8 +74,10 @@ export async function coursMarks(ctx: Ctx, sid: string, head: Rec): Promise<{ se
   const rank = { erreur: 0, non_verifiable: 1, verifiee: 2 } as const;
   const best = new Map<string, { sentenceId: string; status: keyof typeof rank; docId: string; claimId: string }>();
   for (const docId of ids) {
-    if (!(await ctx.db.get(keys.doc(sid, docId)))) continue;
-    const part = await ctx.db.query(`DOC#${docId}`);
+    const fiche = await ctx.db.get(keys.doc(sid, docId));
+    if (!fiche) continue;
+    const gone = retiredClaims(fiche);
+    const part = (await ctx.db.query(`DOC#${docId}`)).filter((x) => !(x.SK.startsWith('CLAIM#') && gone.has(Number(x.SK.slice('CLAIM#'.length)))));
     const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
     for (const c of part.filter((x) => x.SK.startsWith('CLAIM#'))) {
       const nn = c.SK.slice('CLAIM#'.length);

@@ -184,3 +184,9 @@ export const CoursBlocksItemSchema = z.object({
   blocks: z.array(BlockSchema).max(1200),
   figures: z.array(FigureMetaSchema).max(24),
 });
+
+/** M1 #90: numeros des affirmations retirees d'une fiche par une modification du cours (la fiche reste lisible, ces affirmations n'en font plus partie). */
+export function retiredClaims(fiche: Record<string, unknown> | undefined): Set<number> {
+  const a = fiche?.claimsRetired;
+  return new Set(Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : []);
+}

@@ -51,14 +51,14 @@ export async function loadDoc(deps: Deps, sid: string, fiche: Item): Promise<Doc
   const base = { docId, docTitle: title };
   for (const i of qcms) {
     const r = QcmItemSchema.safeParse(i);
-    if (!r.success) continue;
+    if (!r.success || r.data.retiree === true) continue; // M1 #90: une question retiree n'est jamais tiree
     const d = r.data;
     candidates.push({ id: d.questionId, docId, claimId: d.claimId, kind: 'qcm', texte: d.enonce, reponse: d.choix[d.cle], ...(lastSeen.has(d.questionId) ? { lastSeen: lastSeen.get(d.questionId) } : {}) });
     views.set(d.questionId, { questionId: d.questionId, kind: 'qcm', prompt: d.enonce, choices: [...d.choix], ...base });
   }
   for (const i of gaps) {
     const r = GapItemSchema.safeParse(i);
-    if (!r.success) continue;
+    if (!r.success || r.data.retiree === true) continue;
     const d = r.data;
     candidates.push({ id: d.questionId, docId, claimId: d.claimId, kind: 'gap', texte: d.phrase, reponse: d.attendu, ...(lastSeen.has(d.questionId) ? { lastSeen: lastSeen.get(d.questionId) } : {}) });
     views.set(d.questionId, { questionId: d.questionId, kind: 'gap', prompt: d.phrase, ...base });

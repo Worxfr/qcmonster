@@ -29,6 +29,7 @@ export async function loadExo(deps: Deps, ctx: StudentCtx, ref: string): Promise
   const p = await deps.store.get(keys.exop(ctx.studentId, r.docId, r.nn));
   if (!p) throw notFound();
   const exo = p.etat === 'prete' ? await deps.store.get(keys.exo(r.docId, r.nn)) : undefined;
+  if (exo?.retiree === true) throw notFound(); // M1 #90: exercice retire apres une correction du cours: plus propose (copies et points restent)
   return { ...r, p, exo };
 }
 
@@ -50,7 +51,8 @@ export async function createExo(deps: Deps, ctx: StudentCtx, docId: string, invo
       deps.store.query(`DOC#${docId}`, 'EXO#'),
       deps.store.get(keys.copieJ(ctx.studentId, day)),
     ]);
-    const live = rows.filter((r) => etatOf(r, now) !== 'echec');
+    const retiredNn = new Set(done.filter((d) => d.retiree === true).map((d) => Number(String(d.SK).slice(-2))));
+    const live = rows.filter((r) => etatOf(r, now) !== 'echec' && !retiredNn.has(Number(String(r.SK).slice(-2))));
     if (live.some((r) => etatOf(r, now) === 'generation')) throw err409('etat_invalide', 'Un exercice est déjà en préparation');
     if (live.length >= MAX_EXO_PER_DOC) throw err409('plafond_exercices', 'Cette fiche a déjà 5 exercices');
     const genDocs = (dayIt?.genDocs ?? {}) as Record<string, number>;
@@ -91,6 +93,7 @@ export async function listExo(deps: Deps, ctx: StudentCtx, docId: string): Promi
   if (!(await deps.store.get(keys.doc(ctx.studentId, docId)))) throw notFound();
   const now = deps.now().getTime();
   const [rows, done] = await Promise.all([deps.store.query(`STUDENT#${ctx.studentId}`, `EXOP#${docId}:`), deps.store.query(`DOC#${docId}`, 'EXO#')]);
+  const retiredNn = new Set(done.filter((d) => d.retiree === true).map((d) => Number(String(d.SK).slice(-2))));
   const items = rows
     .map((p) => {
       const nn = Number(String(p.SK).slice(-2));
@@ -98,7 +101,7 @@ export async function listExo(deps: Deps, ctx: StudentCtx, docId: string): Promi
       const titre = e === 'prete' ? done.find((d) => d.SK === `EXO#${String(nn).padStart(2, '0')}`)?.titre : undefined;
       return { nn, e, r: { exoId: exoRef(docId, nn), ...(typeof titre === 'string' ? { titre } : {}), etat: e, points: XP_EXO_MAX, ...(num(p.meilleurMilli) > 0 ? { meilleurMilli: num(p.meilleurMilli) } : {}), xpPaye: num(p.xpPaye), solutionVue: p.solutionVue === true } as ExerciceResume };
     })
-    .filter((x) => x.e !== 'echec') // un echec ne se range pas parmi les exercices (il ne compte pas dans les 5)
+    .filter((x) => x.e !== 'echec' && !retiredNn.has(x.nn)) // un echec ne se range pas parmi les exercices (il ne compte pas dans les 5)
     .sort((a, b) => a.nn - b.nn)
     .map((x) => x.r);
   return { items };

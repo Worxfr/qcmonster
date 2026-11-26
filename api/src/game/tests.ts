@@ -220,6 +220,8 @@ export interface QuestionResultView {
   prompt?: string;
   choices?: string[];
   correctAnswer?: string;
+  /** M1 #90: question retiree apres une correction du cours; son texte reste lisible. */
+  retired?: boolean;
 }
 
 /** GET /me/tests/{testId}: la cle exacte se refait depuis le temps du testId, dans la partition du jeton. Autre eleve, inconnu, expire ou mal forme: 404. */
@@ -248,6 +250,7 @@ export async function getTest(deps: Deps, ctx: StudentCtx, testId: string): Prom
       const raw = await deps.store.get(qid.kind === 'qcm' ? keys.qcm(qid.docId, qid.nn) : keys.gap(qid.docId, qid.nn));
       const parsed = qid.kind === 'qcm' ? QcmItemSchema.safeParse(raw) : GapItemSchema.safeParse(raw);
       if (!parsed.success) return v;
+      if (parsed.data.retiree === true) v.retired = true;
       if ('cle' in parsed.data) {
         v.prompt = parsed.data.enonce;
         v.choices = [...parsed.data.choix];

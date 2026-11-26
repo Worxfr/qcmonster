@@ -2,6 +2,7 @@
 // POST /me/export/archive (demande), GET /me/export/archive/{exportId} (etat et lien), construction par une fonction propre (appel `Event`).
 // Isolation: la partition lue est TOUJOURS celle du jeton (`sid`), les cles S3 sont construites avec lui; le parent n'a aucune route ici.
 import { keys } from '../../../shared/ddb/keys.js';
+import { retiredClaims } from '../../../shared/items.js';
 import { figureKey } from '../pipeline/figures.js';
 import { LINK_TTL_S, type ArchiveStore } from '../lib/archive-store.js';
 import type { Deps } from '../lib/deps.js';
@@ -139,10 +140,11 @@ export async function buildStudentExport(deps: StudentExportDeps, i: { sid: stri
       const docId = d.SK.slice('DOC#'.length);
       const rows = await deps.store.query(`DOC#${docId}`);
       const verdicts = new Map(rows.filter((r) => r.SK.startsWith('VERDICT#')).map((r) => [r.SK.slice('VERDICT#'.length), r]));
+      const gone = retiredClaims(d); // M1 #90: affirmations retirees par une modification: pas dans l'archive (les tests gardent leur historique)
       docs.push({
         ...strip(d, ['empreinteMinHash', 'familyId', 'studentId']),
         docId,
-        claims: rows.filter((r) => r.SK.startsWith('CLAIM#')).map((c) => ({ claimId: c.SK.slice('CLAIM#'.length), text: c.texte, status: verdicts.get(c.SK.slice('CLAIM#'.length))?.statut ?? 'non_verifiable', sources: verdicts.get(c.SK.slice('CLAIM#'.length))?.sources ?? [] })),
+        claims: rows.filter((r) => r.SK.startsWith('CLAIM#') && !gone.has(Number(r.SK.slice('CLAIM#'.length)))).map((c) => ({ claimId: c.SK.slice('CLAIM#'.length), text: c.texte, status: verdicts.get(c.SK.slice('CLAIM#'.length))?.statut ?? 'non_verifiable', sources: verdicts.get(c.SK.slice('CLAIM#'.length))?.sources ?? [] })),
       });
     }
     const folders = part.filter((x) => x.SK.startsWith('FOLDER#')).map((f) => ({ folderId: f.SK.slice('FOLDER#'.length), name: f.nom, createdAt: f.createdAt }));
