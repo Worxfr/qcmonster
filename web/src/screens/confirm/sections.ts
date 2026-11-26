@@ -98,3 +98,23 @@ export function confirmBody(secs: Sec[]): { sections?: ConfirmSection[]; subject
     })),
   };
 }
+
+/**
+ * Sections envoyees au serveur quand des phrases sont retirees: une section ne peut pas commencer par une phrase retiree,
+ * elle commence alors a la phrase gardee suivante (la premiere section commence a la premiere phrase gardee).
+ * Une section sans aucune phrase gardee disparait.
+ */
+export function effectiveSections(secs: Sec[], all: Sentence[], removed: Set<string>): Sec[] {
+  if (!removed.size) return secs;
+  const pos = new Map(all.map((s, i) => [s.id, i]));
+  const out: Sec[] = [];
+  for (const sec of secs) {
+    let p = pos.get(sec.from) ?? 0;
+    while (p < all.length && removed.has(all[p].id)) p++;
+    if (p >= all.length) continue;
+    const next = { ...sec, from: all[p].id };
+    if (out.length && out[out.length - 1].from === next.from) out[out.length - 1] = next;
+    else out.push(next);
+  }
+  return out;
+}

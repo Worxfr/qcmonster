@@ -102,7 +102,7 @@ function Shell() {
   else if (parent) body = <Parent />;
   else if (seg === 'scan') body = <Scan />;
   else if (seg === 'job' && id) body = <JobView id={id} />;
-  else if (seg === 'doc' && id) body = <Doc id={id} />;
+  else if (seg === 'doc' && id) body = <Doc id={id} claimId={id2 || undefined} />;
   else if (seg === 'quiz' && id) body = <Quiz docId={id} />;
   else if (seg === 'jeu') body = <Game />;
   else if (seg === 'tests' && id) body = <TestDetailView id={id} />;

@@ -7,7 +7,7 @@ export type Progress = S['Progress'];
 export type Job = S['Job'];
 export type JobState = S['JobState'];
 export type Transcription = S['Transcription'];
-export type Doc = S['DocSummary'] & { summary: string; claims: S['Claim'][] };
+export type Doc = S['Doc'];
 export type DocSummary = S['DocSummary'];
 export type Claim = S['Claim'];
 export type Source = S['Source'];
@@ -48,3 +48,13 @@ export type TestQuestionStatus = S['TestQuestionStatus'];
 export type StudentProgressView = S['StudentProgressView'];
 export type ExportArchive = S['ExportArchive'];
 export type TestQuery = { schoolYear?: string; limit?: number; cursor?: string };
+// R1 (contrat 1.5): blocs, figures, marques de verification, fiche en paragraphes.
+export type Block = S['Block'];
+export type Figure = S['Figure'];
+export type FigureBox = S['FigureBox'];
+export type ConfirmFigure = S['ConfirmFigure'];
+export type SentenceMark = S['SentenceMark'];
+export type FicheParagraph = S['FicheParagraph'];
+export type RecallItem = S['RecallItem'];
+/** Export asynchrone de l'eleve (lot A, contrat 1.5.1): etat de la fabrication. */
+export type ExportState = { status: 'en_cours' | 'echec' | 'pret'; archive?: ExportArchive };
