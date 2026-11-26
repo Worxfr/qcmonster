@@ -106,7 +106,7 @@ test.describe('Parcours complet: scan, relecture, fiches, jeu, dossiers, parent,
 
   test('dossiers: créer en rangeant une fiche, ouvrir, renommer, filtrer, trier', async () => {
     await page.goto('/#/docs');
-    await page.getByRole('button', { name: 'Choisir', exact: true }).click();
+    await page.getByRole('button', { name: 'Choisir des cours', exact: true }).click();
     await page.getByRole('checkbox', { name: /Choisir .*photosynthèse/i }).check();
     await page.getByRole('button', { name: /Ranger dans un dossier/ }).click();
     await page.getByLabel('Dossier').selectOption({ label: '＋ Nouveau dossier…' });
@@ -160,7 +160,7 @@ test.describe('Parcours complet: scan, relecture, fiches, jeu, dossiers, parent,
     await expect(list.getByText('La photosynthèse').first()).toBeVisible();
     await expect(list.getByText('La Révolution française').first()).toBeVisible();
     // aucun bouton d'élève, aucun lien vers le cours complet ni vers un dossier
-    await expect(page.getByRole('button', { name: 'Choisir', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Choisir des cours', exact: true })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Cours du/ })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /Mes dossiers/ })).toHaveCount(0);
     // aucune phrase du cours dans la page (ni la phrase corrigée, ni une phrase du texte fabriqué)

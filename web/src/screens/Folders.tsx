@@ -8,7 +8,7 @@ import { go } from '../router';
 const MAX_FOLDERS = 50;
 
 /** Le front lit le CODE d'erreur, pas le texte. */
-function folderError(e: unknown): string {
+export function folderError(e: unknown): string {
   if (e instanceof ApiError && e.code === 'dossier_nom_pris') return 'Tu as déjà un dossier avec ce nom.';
   if (e instanceof ApiError && e.code === 'dossiers_limite') return `Tu as déjà ${MAX_FOLDERS} dossiers. Supprime-en un pour en créer un autre.`;
   return errMsg(e);

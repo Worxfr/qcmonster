@@ -413,7 +413,7 @@ describe('liste Mes cours', () => {
     routes['GET /scans*'] = () => json(list([scan(1), scan(2, { folderId: 'F9' })]));
     routes['POST /folders/F1/scans'] = () => new Response(null, { status: 204 });
     await open('#/docs');
-    await userEvent.click(await screen.findByRole('button', { name: 'Choisir' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Choisir des cours' }));
     await userEvent.click(screen.getByLabelText('Choisir Fiche 1'));
     await userEvent.click(screen.getByLabelText('Choisir Fiche 2'));
     expect(screen.getByText('2 choisis')).toBeInTheDocument();
@@ -479,7 +479,7 @@ describe('liste Mes cours', () => {
     routes['GET /scans*'] = (c) => json(list(c.url.includes('status=termine') ? [scan(1)] : []));
     await open('#/eleve/s1', 'parent');
     expect(await screen.findByText('Fiche 1')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Choisir' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Choisir des cours' })).toBeNull();
     expect(calls.some((c) => c.url.includes('/scans?') && c.url.includes('studentId=s1'))).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg } from '../hooks';
 import { fmtDay, plural, stageLabel, subjectClass, subjectLabel } from '../labels';
 import { go, useRoute } from '../router';
+import { folderError } from './Folders';
 import type { Folder, ScanList, ScanQuery, ScanSummary } from '../types';
 
 const SORTS = [
@@ -66,6 +67,7 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [gone, setGone] = useState(false);
   const key = JSON.stringify([params, studentId]);
 
   const load = useCallback(async (first: boolean) => {
@@ -75,6 +77,12 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
       if (first) { setMore([]); setCursor(r.nextCursor); }
       setError(null);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 404 && params.folderId && params.folderId !== 'none') {
+        // Lien ou retour arriere vers un dossier supprime: on montre tous les cours, sans erreur.
+        setGone(true);
+        setParams({ folderId: '' });
+        return;
+      }
       setError(errMsg(e));
     } finally {
       setLoading(false);
@@ -90,6 +98,8 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
   useEffect(() => {
     api.folders(studentId).then((r) => setFolders(r.items), () => undefined);
   }, [studentId]);
+
+  const reloadFolders = () => api.folders(studentId).then((r) => setFolders(r.items), () => undefined);
 
   async function loadMore() {
     if (!cursor) return;
@@ -114,14 +124,15 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
     <>
       <Card title={readOnly ? `Les cours de ${pseudo ?? 'l\'élève'}` : 'Mes cours'}>
         {readOnly && <p className="muted">Tu vois les cours en lecture seule: ni le texte, ni les photos.</p>}
-        {!readOnly && params.folderId && (
-          <p><a className="link" href="#/folders">‹ Mes dossiers</a> · <strong>{folderName(params.folderId) ?? 'Dossier'}</strong></p>
+        {gone && !params.folderId && <p className="notice" role="status">Ce dossier n'existe plus. Voici tous tes cours.</p>}
+        {!readOnly && params.folderId && params.folderId !== 'none' && folders.some((f) => f.folderId === params.folderId) && (
+          <FolderHead folder={folders.find((f) => f.folderId === params.folderId)!} onChanged={() => void reloadFolders()} onDeleted={() => { setParams({ folderId: '' }); void reloadFolders(); }} />
         )}
         <Toolbar params={params} setParams={setParams} list={list} folders={folders} filtered={filtered} />
         {!readOnly && items.some((s) => s.docId) && (
           <div className="btn-row" style={{ marginTop: '.6rem' }}>
             <button type="button" className={`btn btn-small${selecting ? '' : ' btn-ghost'}`} aria-pressed={selecting} onClick={() => { setSelecting(!selecting); setPicked(new Set()); }}>
-              {selecting ? 'Terminer' : 'Choisir'}
+              {selecting ? 'Terminer' : 'Choisir des cours'}
             </button>
             <a className="btn btn-small btn-ghost" href="#/folders">📁 Mes dossiers</a>
           </div>
@@ -144,14 +155,65 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
       )}
 
       {selecting && !readOnly && (
-        <SelectionBar chosen={chosen} folders={folders} onCreated={(f) => setFolders((l) => [...l, f])} onDone={() => { setPicked(new Set()); setSelecting(false); void load(true); api.folders(studentId).then((r) => setFolders(r.items), () => undefined); }} setError={setError} />
+        <SelectionBar chosen={chosen} all={byDoc.size} pickAll={() => setPicked(new Set(byDoc.keys()))} folders={folders} onCreated={(f) => setFolders((l) => [...l, f])} onDone={() => { setPicked(new Set()); setSelecting(false); void load(true); void reloadFolders(); }} setError={setError} />
       )}
     </>
   );
 }
 
+/** Dossier ouvert: le renommer ou le supprimer sans quitter la liste. Supprimer garde les cours (ils sortent du dossier). */
+function FolderHead({ folder, onChanged, onDeleted }: { folder: Folder; onChanged: () => void; onDeleted: () => void }) {
+  const [mode, setMode] = useState<'rename' | 'delete' | null>(null);
+  const [draft, setDraft] = useState(folder.name);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function run(fn: () => Promise<unknown>, after: () => void) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      setMode(null);
+      after();
+    } catch (e) {
+      setErr(folderError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="folder-head">
+      <p className="folder-head-title"><a className="link" href="#/folders">‹ Mes dossiers</a></p>
+      {mode === 'rename' ? (
+        <form className="btn-row" onSubmit={(e) => { e.preventDefault(); void run(() => api.renameFolder(folder.folderId, draft.trim()), onChanged); }}>
+          <input aria-label="Nouveau nom du dossier" value={draft} maxLength={60} onChange={(e) => setDraft(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <button className="btn btn-small" disabled={!draft.trim() || busy}>Enregistrer</button>
+          <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode(null)}>Annuler</button>
+        </form>
+      ) : (
+        <div className="folder-head-row">
+          <h2 className="folder-head-name"><span aria-hidden="true">📁</span> {folder.name}</h2>
+          <div className="btn-row">
+            <button type="button" className="btn btn-small btn-ghost" onClick={() => { setDraft(folder.name); setMode('rename'); }}>Renommer le dossier</button>
+            <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode('delete')}>Supprimer le dossier</button>
+          </div>
+        </div>
+      )}
+      {mode === 'delete' && (
+        <div className="selpanel">
+          <p><strong>Supprimer « {folder.name} » ?</strong> Les cours restent, ils sortent du dossier.</p>
+          <div className="btn-row">
+            <button type="button" className="btn btn-small btn-danger" disabled={busy} onClick={() => void run(() => api.deleteFolder(folder.folderId), onDeleted)}>Oui, supprimer le dossier</button>
+            <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode(null)}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {err && <p role="alert" className="error">{err}</p>}
+    </div>
+  );
+}
+
 function Toolbar({ params, setParams, list, folders, filtered }: { params: Params; setParams: (p: Partial<Params>) => void; list: ScanList | null; folders: Folder[]; filtered: boolean }) {
-  const [open, setOpen] = useState(filtered);
+  const [open, setOpen] = useState(!!(params.subject || params.topic)); // le dossier ouvert a son propre en-tête
   return (
     <div className="toolbar">
       <div className="toolbar-top">
@@ -346,7 +408,7 @@ function ScanCard({ s, selecting, picked, toggle, startSelect, readOnly, folder,
   );
 }
 
-function SelectionBar({ chosen, folders, onCreated, onDone, setError }: { chosen: ScanSummary[]; folders: Folder[]; onCreated: (f: Folder) => void; onDone: () => void; setError: (e: string | null) => void }) {
+function SelectionBar({ chosen, all, pickAll, folders, onCreated, onDone, setError }: { chosen: ScanSummary[]; all: number; pickAll: () => void; folders: Folder[]; onCreated: (f: Folder) => void; onDone: () => void; setError: (e: string | null) => void }) {
   const [panel, setPanel] = useState<'move' | 'delete' | null>(null);
   const [folderId, setFolderId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -375,7 +437,7 @@ function SelectionBar({ chosen, folders, onCreated, onDone, setError }: { chosen
 
   return (
     <div className="selbar" role="region" aria-label="Actions sur les cours choisis">
-      <p className="selcount" role="status">{n} {plural(n, 'choisi', 'choisis')}</p>
+      <p className="selcount"><span role="status">{n} {plural(n, 'choisi', 'choisis')}</span>{n < all && <> · <button type="button" className="link" onClick={pickAll}>Tout choisir ({all})</button></>}</p>
       {panel === 'move' && (
         <div className="selpanel">
           <FolderSelect value={folderId} onChange={setFolderId} label="Dossier" none="Choisis un dossier" folders={folders} onCreated={onCreated} />

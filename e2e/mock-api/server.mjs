@@ -106,6 +106,8 @@ function listScans(q) {
   const stat = q.get('status');
   if (q.get('subject')) items = items.filter((i) => (q.get('subject') === 'none' ? !i.subject : i.subject === q.get('subject')));
   if (q.get('topic')) items = items.filter((i) => i.topic && norm(i.topic) === norm(q.get('topic')));
+  const fq = q.get('folderId');
+  if (fq && fq !== 'none' && !S.folders.some((f) => f.folderId === fq)) return null; // comme l'API: un dossier inconnu repond 404
   if (q.get('folderId')) items = items.filter((i) => (q.get('folderId') === 'none' ? !i.folderId : i.folderId === q.get('folderId')));
   if (stat) items = items.filter((i) => (stat === 'en_cours' ? !['termine', 'echec'].includes(i.status.stage) : i.status.stage === stat));
   const sort = q.get('sort') ?? 'date';
@@ -124,6 +126,20 @@ function listScans(q) {
   return { items, inProgress: vis.filter((i) => !['termine', 'echec'].includes(i.status.stage)).length, toReview: vis.filter((i) => i.status.stage === 'a_confirmer').length, facets: { subjects: count('subject'), topics: count('topic') } };
 }
 
+/** Dossiers et fiches deja pretes: `{ folders: ['Maths'], docs: [{ title, subject, topic, folder: 'Maths' }] }`. */
+function seed({ folders = [], docs = [] } = {}) {
+  for (const name of folders) S.folders.push({ folderId: id('fld'), name, createdAt: iso() });
+  for (const x of docs) {
+    const jobId = id('job');
+    const j = { jobId, pages: 1, createdAt: iso(), state: 'termine', finishedAt: iso(), received: 1, bytes: 0, docIds: [] };
+    const docId = id('doc');
+    const folderId = x.folder ? S.folders.find((f) => f.name === x.folder)?.folderId : undefined;
+    S.jobs.push(j);
+    j.docIds.push(docId);
+    S.docs.push({ docId, jobId, title: x.title, subject: x.subject ?? 'svt', topic: x.topic ?? x.title, ...(folderId ? { folderId } : {}), createdAt: iso(), summary: 'Résumé de test.', claims: [] });
+  }
+}
+
 const folderOut = (f) => ({ folderId: f.folderId, name: f.name, createdAt: f.createdAt, scanCount: S.docs.filter((d) => d.folderId === f.folderId).length });
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS' };
 function send(res, status, body) {
@@ -139,6 +155,7 @@ function confirm(j, b) {
   const all = textOf(j).flatMap((p) => p.sentences);
   const fixed = {};
   for (const c of b.corrections ?? []) { if (!all.some((s) => s.id === c.id) || !c.text?.trim()) return [400, 'requete_invalide', 'Demande invalide']; fixed[c.id] = c.text; }
+  if ([b.folderId, ...(b.sections ?? []).map((x) => x.folderId)].some((f) => f && !S.folders.some((x) => x.folderId === f))) return [404, 'introuvable', 'Dossier introuvable'];
   const secs = b.sections?.length ? b.sections : [{ fromSentenceId: all[0].id, subject: b.subject ?? 'autre', topic: b.topic ?? 'Sans sujet', folderId: b.folderId }];
   if (secs.length > Math.min(6, 2 * j.pages)) return [400, 'requete_invalide', 'Trop de fiches'];
   let last = -1;
@@ -177,6 +194,7 @@ const server = createServer(async (req, res) => {
   const b = json(await readBody(req));
   if (p === '/__test/reset') { reset(b); return send(res, 200, { ok: true }); }
   if (p === '/__test/suggest') { S.suggest = b.on !== false; return send(res, 200, { ok: true }); } // la lecture propose deja 2 fiches (coupe avant la page 2)
+  if (p === '/__test/seed') { seed(b); return send(res, 200, { folders: S.folders, docs: S.docs.map((d) => d.docId) }); } // fiches deja terminees, sans passer par un scan
   if (p === '/__test/role') { S.role = b.role === 'parent' ? 'parent' : 'eleve'; return send(res, 200, { ok: true }); }
   if (p === '/__test/fail') { S.fail = b.mode ?? null; return send(res, 200, { ok: true }); }
   if (p === '/__test/state') return send(res, 200, { jobs: S.jobs.length, docs: S.docs.length, cours: S.cours.length, pagesRemaining: S.pagesLimit - used(), uploadedBytes: S.jobs.reduce((a, j) => a + j.bytes, 0) });
@@ -210,12 +228,13 @@ const server = createServer(async (req, res) => {
       const pages = Number(b.pages);
       if (!(pages >= 1 && pages <= 10) || b.contentTypes?.length !== pages || b.contentTypes.some((t) => !['image/jpeg', 'image/png'].includes(t))) return err(res, 400, 'requete_invalide', 'Demande invalide');
       if (pages > S.pagesLimit - used()) return err(res, 429, 'quota_epuise', 'Plus assez de pages ce mois-ci');
+      if (b.folderId && !S.folders.some((f) => f.folderId === b.folderId)) return err(res, 404, 'introuvable', 'Dossier introuvable');
       const jobId = id('job');
       S.jobs.push({ jobId, pages, createdAt: iso(), state: 'en_attente_envoi', received: 0, bytes: 0, folderId: b.folderId });
       const uploads = Array.from({ length: pages }, (_, i) => ({ page: i + 1, url: `${BASE}/__s3/${jobId}/${i}`, fields: { key: `scans/${jobId}/${i}`, 'Content-Type': b.contentTypes[i] } }));
       return send(res, 201, { jobId, upload: uploads[0], uploads, expiresAt: iso(Date.now() + 900e3), pagesRemaining: S.pagesLimit - used() });
     }
-    case 'GET /scans': return send(res, 200, listScans(url.searchParams));
+    case 'GET /scans': { const l = listScans(url.searchParams); return l ? send(res, 200, l) : err(res, 404, 'introuvable', 'Introuvable'); }
     case 'GET /folders': return send(res, 200, { items: S.folders.map(folderOut).sort((a, c) => a.name.localeCompare(c.name, 'fr')) });
     case 'POST /folders': {
       const name = (b.name ?? '').replace(/[<>]/g, '').trim();
