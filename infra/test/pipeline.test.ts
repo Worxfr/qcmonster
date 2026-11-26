@@ -55,13 +55,26 @@ describe('Pipeline (L2a)', () => {
         const read = actions(statements(t, /pipelineapiread/i));
         expect(read.filter((a) => (/^(dynamodb|s3):/.test(a) && writes.test(a)) || a.startsWith('states:'))).toEqual([]);
         const del = actions(statements(t, /pipelineapidelete/i));
-        expect(del.filter((a) => /^(s3|states|bedrock):/.test(a) || /PutItem|UpdateItem/.test(a))).toEqual([]);
+        expect(del.filter((a) => /^(s3|states|bedrock):/.test(a) || /PutItem/.test(a))).toEqual([]);
+        // Q1: seule ecriture en plus, UpdateItem sur STUDENT# (reecriture d'un passage multi-fiches), jamais sans condition sur la cle de partition
+        const upd = statements(t, /pipelineapidelete/i).filter((x) => [x.Action].flat().includes('dynamodb:UpdateItem'));
+        expect(upd).toHaveLength(1);
+        expect(JSON.stringify((upd[0] as unknown as { Condition: unknown }).Condition)).toContain('STUDENT#*');
         expect(actions(statements(t, /pipelineapiwrite/i))).not.toContain('dynamodb:DeleteItem');
         expect(actions(statements(t, /pipelineapiwrite/i))).not.toContain('dynamodb:BatchWriteItem');
         for (const re of [/pipelineapiread/i, /pipelineapiwrite/i, /pipelineapidelete/i]) {
           const d = statements(t, re).filter((x) => [x.Action].flat().some((a) => a.startsWith('dynamodb:')));
           expect(d.length).toBeGreaterThan(0);
           for (const st of d) expect(JSON.stringify((st as unknown as { Condition: unknown }).Condition)).toContain('dynamodb:LeadingKeys');
+        }
+      });
+      it('Q1 B1: tout role qui appelle deleteDocTree peut reecrire un passage multi-fiches (UpdateItem sur STUDENT#)', () => {
+        // docs-delete (docs.ts), cours-delete (cours.ts), scans-delete et la restauration d'un ajout (append.ts), purge d'un scan (steps.ts, role de traitement)
+        for (const re of [/^pipelineapidelete/i, /^pipelineapicoursrole/i, /^pipelineapiscansdelete/i, /^pipelinerole/i]) {
+          const upd = statements(t, re).filter((x) => [x.Action].flat().includes('dynamodb:UpdateItem'));
+          expect(upd.length, String(re)).toBeGreaterThan(0);
+          const where = JSON.stringify(upd.map((x) => (x as unknown as { Condition?: unknown; Resource: unknown }).Condition ?? x.Resource));
+          expect(where, String(re)).toMatch(/STUDENT#\*|"Fn::GetAtt"|Ref/);
         }
       });
       it('B1: scans-create peut lire le compteur COST#<env> (GetItem seul), et seul le role ecriture le peut', () => {

@@ -71,8 +71,9 @@ export function withoutDoc(it: Record<string, unknown>, docId: string): TestMuta
     // Passage complet: `total` = lignes restantes; sinon valeur approchee (le tirage n'est pas stocke dans TEST#).
     total: all.length >= total ? lines.length : Math.max(lines.length, total - removed),
   };
+  // Une seule fiche restante: le passage redevient un passage d'une fiche; l'etiquette « N fiches » est recalculee (le nom d'un dossier reste, c'est un nom, pas un nombre).
   if (ids.length === 1) out.scope = 'fiche';
-  else if (it.scope === 'fiches') out.titre = `${ids.length} fiches`;
+  if (it.scope === 'fiches') out.titre = ids.length === 1 ? '1 fiche' : `${ids.length} fiches`;
   return out;
 }
 

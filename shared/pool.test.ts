@@ -73,6 +73,14 @@ describe('drawQuestions', () => {
     expect(drawQuestions(ten, 10, seeded(8)).ids).toHaveLength(10);
     expect(drawQuestions(bank('g', 40), 20, seeded(9)).ids).toHaveLength(20);
   });
+  it('m1: les parts égales passent avant « jamais répondues » entre fiches; dans une fiche, les vues viennent après les non vues', () => {
+    const seenAll = bank('a', 6).map((c) => ({ ...c, lastSeen: '2026-11-01' }));
+    const r = drawQuestions([...seenAll, ...bank('b', 6)], 4, seeded(12));
+    expect(r.ids.filter((x) => x.startsWith('a:'))).toHaveLength(2); // la fiche vue donne quand même sa moitié
+    expect(r.ids.filter((x) => x.startsWith('b:'))).toHaveLength(2);
+    const mixed = [...bank('c', 4).map((c, i) => (i < 2 ? { ...c, lastSeen: '2026-11-01' } : c))];
+    expect(drawQuestions(mixed, 2, seeded(3)).ids.sort()).toEqual(['c:gap:04', 'c:qcm:03']); // les 2 non vues d'abord
+  });
   it('aucune question: vide et court', () => {
     expect(drawQuestions([], 10, seeded(1))).toEqual({ ids: [], available: 0, short: true });
   });

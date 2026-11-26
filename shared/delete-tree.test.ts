@@ -178,8 +178,18 @@ describe('Q1: effacement d\'un passage multi-fiches', () => {
     const db = memoryTreeDb(base());
     await deleteDocTree(db, 's1', 'd1');
     await deleteDocTree(db, 's1', 'd2');
-    expect(test(db)).toMatchObject({ scope: 'fiche', docIds: ['d3'], docId: 'd3' });
+    expect(test(db)).toMatchObject({ scope: 'fiche', docIds: ['d3'], docId: 'd3', titre: '1 fiche' });
     await deleteDocTree(db, 's1', 'd3');
+    expect(test(db)).toBeUndefined();
+  });
+  it('m3: un passage de dossier qui n\'a plus qu\'une fiche devient un passage d\'une fiche et garde le nom du dossier', async () => {
+    const db = memoryTreeDb([...base().slice(0, -1), multi({ scope: 'dossier', titre: 'Histoire', docIds: ['d1', 'd2'], items: [line('d1:qcm:01', 1, true), line('d2:qcm:01', 2, true)], total: 2, answered: 2 })]);
+    await deleteDocTree(db, 's1', 'd1');
+    expect(test(db)).toMatchObject({ scope: 'fiche', docIds: ['d2'], docId: 'd2', titre: 'Histoire', total: 1, answered: 1 });
+  });
+  it('m10 (M14): un passage a 2 fiches dont toutes les lignes viennent de la fiche supprimee disparait', async () => {
+    const db = memoryTreeDb([...base().slice(0, -1), multi({ docIds: ['d1', 'd2'], titre: '2 fiches', items: [line('d1:qcm:01', 1, true), line('d1:qcm:02', 2, false, 0)], total: 4, answered: 2 })]);
+    await deleteDocTree(db, 's1', 'd1');
     expect(test(db)).toBeUndefined();
   });
   it('passage d\'une seule fiche: supprime comme avant', async () => {

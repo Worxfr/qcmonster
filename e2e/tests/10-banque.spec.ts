@@ -68,7 +68,10 @@ test.describe('Banque de questions et entraînement multi-fiches', () => {
     await shot(page, 'choix-fiches');
     await page.getByRole('button', { name: /S'entraîner sur ces 3 fiches/ }).click();
     await expect(page.getByRole('heading', { name: "S'entraîner" })).toBeVisible();
+    await expect(page.getByRole('button', { name: '10', exact: true })).toHaveAttribute('aria-pressed', 'true'); // m5: la taille par défaut est 10
+    await shot(page, 'choix-defaut');
     await chooseSize(page, 5);
+    await expect(page.getByRole('button', { name: '5', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await shot(page, 'choix-taille');
     await page.getByRole('button', { name: /Commencer/ }).click();
     await expect(page.getByRole('heading', { name: 'Question 1 sur 5' })).toBeVisible();
@@ -218,6 +221,8 @@ test.describe('Entraînement multi-fiches sur mobile', () => {
     await hash(page, '/folders');
     await shot(page, 'm-dossiers');
     await page.getByRole('button', { name: /S'entraîner sur ce dossier/ }).click();
+    await expect(page.getByRole('heading', { name: "S'entraîner" })).toBeVisible();
+    await expect(page.getByRole('button', { name: '10', exact: true })).toHaveAttribute('aria-pressed', 'true'); // taille par défaut: 10
     await shot(page, 'm-choix');
     await chooseSize(page, 5);
     await page.getByRole('button', { name: /Commencer/ }).click();
