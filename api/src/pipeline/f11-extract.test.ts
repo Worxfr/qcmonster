@@ -1,11 +1,11 @@
 // F11: l'extraction d'une section dense passe par des tranches; l'eleve n'a jamais a redecouper. Faux modele, aucun cout.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { keys } from '../../../shared/ddb/keys.js';
 import * as api from './api.js';
 import { jobKey } from './ctx.js';
 import { guarded } from './http.js';
 import { scansPrefix } from './job.js';
-import { awaitConfirm, awaitUpload, failJob, scanCheck, scanStart, transcribe } from './steps.js';
+import { awaitConfirm, awaitUpload, failJob, MSG, scanCheck, scanStart, transcribe } from './steps.js';
 import { anchorClaims, extract } from './steps-doc.js';
 import { sliceRanges, thinEvenly } from './text.js';
 import { classifyJson, event, goodScript, JPEG, makeCtx, readJson } from './testkit.js';
@@ -133,6 +133,8 @@ describe('F11: extraction d une section dense', () => {
     await failJob(k.ctx, { ...i, error: { Error: 'ModelOutputError' } });
     const j = (await k.db.get(jobKey('s1', i.jobId)))!;
     expect(j.state).toBe('echec');
+    expect(j.message).toBe(MSG.unreadable);
+    expect(MSG.unreadable).toBe('Ce cours n’a pas pu être lu cette fois. Tes pages ne sont pas décomptées, tu peux réessayer');
     expect(j.message).not.toMatch(/deux parties|trop dense|decoup|découp/);
     expect(j.quotaState).toBe('released'); // reservation levee avant consommation (apres consommation: 'refunded', PR #62)
     expect(((await k.quota.get(keys.quota('f1', '2026-12', 's1'))) as Record<string, number>).utilise ?? 0).toBe(0);
@@ -146,5 +148,116 @@ describe('F11: extraction d une section dense', () => {
     await extract(k.ctx, i); // rejeu de l'etape
     expect(await claimsOf(k, ex.docId!)).toHaveLength((await claimsOf(k, ex.docId!)).length);
     expect((await k.db.query(`DOC#${ex.docId}`, 'CLAIM#')).length).toBeLessThanOrEqual(60);
+  });
+});
+
+/** Lignes `[id] texte` du prompt. */
+const linesOf = (p: string) => [...p.matchAll(/^\[(p\d+-s\d+)\] (.+)$/gm)].map((m) => ({ id: m[1], text: m[2] }));
+const claimJson = (id: string, text: string, src: string) => JSON.stringify({ phraseId: id, extrait: src.split(' ').slice(0, 4).join(' '), texte: text, type: 'factuelle', aRisque: false });
+const head = '{"titre":"t","matiere":"svt","affirmations":[';
+const logsOf = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('sentencesUncovered')).map((l) => JSON.parse(l) as Record<string, unknown>);
+
+describe('F11: relecture PR 68 (C1 a C4)', () => {
+  it('M1: une affirmation de la tranche 2 ancree sur une phrase de la tranche 1 (texte different) est ecartee', async () => {
+    let call = 0;
+    const model = (p: string) => (call++, head + linesOf(p).map((l) => claimJson(l.id, `Affirmation ${call} ${l.text}`, l.text)).join(',') + ']}');
+    const { k, i } = await setup(denseLines(40), model);
+    const ex = await extract(k.ctx, i);
+    const ids = await claimsOf(k, ex.docId!);
+    expect(ids).toHaveLength(40);
+    expect(new Set(ids).size).toBe(40);
+  });
+
+  it('M4: des affirmations rendues dans le desordre sont triees dans l ordre du cours', async () => {
+    const model = (p: string) => head + linesOf(p).reverse().map((l) => claimJson(l.id, `Fait ${l.text}`, l.text)).join(',') + ']}';
+    const { k, i } = await setup(denseLines(40), model);
+    const ex = await extract(k.ctx, i);
+    const nums = (await claimsOf(k, ex.docId!)).map(num);
+    expect(nums).toHaveLength(40);
+    expect([...nums].sort((a, b) => a - b)).toEqual(nums);
+  });
+
+  it('M5: reprise ou la phrase atteinte porte une affirmation: elle n est gardee qu une fois', async () => {
+    let call = 0;
+    const model = (p: string) => {
+      call++;
+      const ls = linesOf(p);
+      const mk = (l: { id: string; text: string }) => claimJson(l.id, `Fait ${call} ${l.text}`, l.text); // texte different a chaque appel: pas de dedoublonnage par texte
+      if (call === 1) return head + ls.slice(0, 5).map(mk).join(',') + ',{"phraseId":"p1-s'; // coupe apres 5 affirmations entieres
+      return head + ls.map(mk).join(',') + ']}';
+    };
+    const { k, i } = await setup(denseLines(30), model);
+    const ex = await extract(k.ctx, i);
+    const ids = await claimsOf(k, ex.docId!);
+    expect(ids).toHaveLength(30);
+    expect(new Set(ids).size).toBe(30);
+  });
+
+  it('M2: un modele qui coupe toujours sa sortie, avec un seul pas de progres, s arrete au garde-fou d appels', async () => {
+    let call = 0;
+    const model = (p: string) => {
+      call++;
+      const ls = linesOf(p);
+      const ctxN = Number(/Les (\d+) premieres phrases/.exec(p)?.[1] ?? 0);
+      return head + ls.slice(0, ctxN + 2).map((l) => claimJson(l.id, `Fait ${call} ${l.text}`, l.text)).join(',') + ',{"phraseId":"p1-s';
+    };
+    const { k, i } = await setup(denseLines(200), model);
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      const ex = await extract(k.ctx, i);
+      expect(ex.ok).toBe(true);
+      expect(k.calls.filter((c) => c === 'extraction').length).toBe(3 * 7 + 6); // tranches x 3 + 6: sans garde-fou il en faudrait environ 200
+      const l = logsOf(spy);
+      expect(l).toHaveLength(1);
+      expect(l[0]).toMatchObject({ stopReason: 'calls' });
+      expect(l[0].sentencesUncovered as number).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('C1: la boucle s arrete en euros avant la reserve de generation, les affirmations lues sont gardees', async () => {
+    const { k, i } = await setup(denseLines(200), denseModel());
+    await k.db.update(jobKey('s1', i.jobId), { set: { coutMicros: 189_900 } }); // plafond 0,25 - reserve 0,06 = 0,19
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      const ex = await extract(k.ctx, i);
+      expect(ex.ok).toBe(true);
+      expect(k.calls.filter((c) => c === 'extraction')).toHaveLength(1);
+      expect((await claimsOf(k, ex.docId!)).length).toBeGreaterThan(0);
+      const l = logsOf(spy);
+      expect(l).toHaveLength(1);
+      expect(l[0]).toMatchObject({ stopReason: 'budget', sentencesUncovered: 170, step: 'extraction' });
+      expect(JSON.stringify(l[0])).not.toMatch(/Le fait numero/); // jamais de texte de cours
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('C2: au-dela de 12 tranches la fin de la section n est pas lue, et c est journalise', async () => {
+    const { k, i } = await setup(denseLines(400), denseModel());
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      const ex = await extract(k.ctx, i);
+      expect(ex.ok).toBe(true);
+      expect(k.calls.filter((c) => c === 'extraction')).toHaveLength(12);
+      expect(logsOf(spy)[0]).toMatchObject({ stopReason: 'size', sentencesUncovered: 40 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('C3: une tranche de 4 phrases illisible est sautee et journalisee', async () => {
+    const { k, i } = await setup(denseLines(4), () => 'illisible');
+    await expect(extract(k.ctx, i)).rejects.toThrow('sortie du modele');
+    const model = denseModel();
+    const { k: k2, i: i2 } = await setup(denseLines(40), (p) => (linesOf(p)[0].id === 'p1-s29' ? 'pas du json' : model(p))); // la 2e tranche (10 phrases) puis ses moities sont illisibles
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await extract(k2.ctx, i2);
+      expect(logsOf(spy)[0]).toMatchObject({ stopReason: 'skipped' });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
