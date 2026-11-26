@@ -1,6 +1,6 @@
 # H1: historique des tests (issue #44) et vue parent (issue #45)
 
-Statut: **conception**, aucun handler ecrit. Contrat: `shared/contract/openapi.yaml` v**1.4.0** (additif). Les decisions d'Alexis sur P1 a P10 sont integrees (section 10). Les textes legaux sont dans un commit separe, a relire par Alexis.
+Statut: **conception**, aucun handler ecrit. Contrat: `shared/contract/openapi.yaml` v**1.4.0** (additif). Les decisions du proprietaire sur P1 a P10 sont integrees (section 10). Les textes legaux sont dans un commit separe, a relire par le proprietaire.
 Contexte: #42 (banque de questions et tirage) change le contenu d'un test, pas la forme de son historique (voir section 9).
 
 ## 1. Ce qui existe deja (et ce qui manque)
@@ -37,7 +37,7 @@ La transaction compte deja 4 elements; elle en aura 5 (plafond DynamoDB: 100). L
 
 ## 3. Conservation et annee scolaire (decision P1)
 
-**Conservation: jusqu'a suppression** (decision d'Alexis, responsable du traitement). Pas de TTL sur `TEST#`. Un passage disparait avec:
+**Conservation: jusqu'a suppression** (decision du proprietaire, responsable du traitement). Pas de TTL sur `TEST#`. Un passage disparait avec:
 
 | Evenement | Effet | Mecanisme |
 |---|---|---|
@@ -158,7 +158,7 @@ Tests d'acceptation a ecrire par H1-A/H1-P: parent d'une autre famille: 404 sur 
 
 L'historique stocke des `questionId` et des resultats, jamais le contenu: il suit sans changement un tirage aleatoire. `mode` est ouvert (`tirage` s'ajoutera, le contrat dit aux clients de traiter une valeur inconnue comme `autre`). Si le tirage change `total` (nombre de questions tirees), `total` est celui du tirage au moment de l'ouverture de session. Si les `questionId` d'un pool sont retires a une regeneration de fiche, `prompt` est absent dans `TestDetail` et le front affiche « question retiree ».
 
-## 10. Decisions d'Alexis (responsable du traitement)
+## 10. Decisions du proprietaire (responsable du traitement)
 
 | # | Decision | Effet dans cette conception |
 |---|---|---|
@@ -173,8 +173,8 @@ L'historique stocke des `questionId` et des resultats, jamais le contenu: il sui
 | P9 | Fusion du contrat avec H1-A | Section 8 (pile, CI verte) |
 | P10 | Export sous forme d'**archive** telechargeable, lien court et expirant, sans donnee de cours | `POST /family/export/archive` (section 6) |
 
-### Points restants (valeur par defaut proposee)
+### Questions tranchees par le proprietaire
 
-- **Q1. Reponses de l'eleve dans l'archive du parent**: **non** (defaut), pour rester coherent avec P5. Alternative: les inclure, car le titulaire de l'autorite parentale a un droit d'acces; cela contredit « lues par l'eleve seul ».
-- **Q2. Rappel annuel a la rentree** (nombre d'annees conservees et lien vers la suppression): propose pour compenser la conservation sans limite (defaut: a faire plus tard, hors de ce lot, texte deja prevu dans la politique).
-- **Q3. Version de la politique**: a relever (`POLICY_VERSION`) quand Alexis valide les textes; les parents deja inscrits devront reaccepter (defaut: relever a la fusion de H1-A, pas avant).
+- **Q1. Reponses de l'eleve dans l'archive du parent**: non.
+- **Q2. Rappel annuel a la rentree**: plus tard, hors de ce lot.
+- **Q3. Version de la politique**: `POLICY_VERSION` relevee a la fusion de H1-A (pas avant). Les parents deja inscrits devront reaccepter.
