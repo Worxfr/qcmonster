@@ -34,10 +34,62 @@ const words = (s) => s.trim().split(/\s+/).filter(Boolean).length;
 
 let S;
 function reset({ role = 'eleve', family = true, student = true, pagesLimit = 20 } = {}) {
-  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit };
+  S = { role, family: family ? { familyId: 'fam1' } : null, students: [], jobs: [], docs: [], cours: [], folders: [], xp: 0, readToday: new Set(), questions: new Map(), fail: null, pagesLimit, tests: [], policyOutdated: false, archives: 0 };
   if (family && student) S.students.push({ studentId: 'stu1', pseudo: 'Lila-7k2f', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 });
 }
 reset();
+
+// ---- H1-W: historique des tests (contrat 1.4). Passages fabriques, du plus recent au plus ancien. ----
+const H_SUBJ = [['svt', 'La photosynthèse'], ['histoire_geo', 'La Révolution française'], ['maths', 'Les fonctions affines']];
+const H_Q = [
+  { questionId: 'qcm-01', kind: 'qcm', prompt: 'Que produit la photosynthèse ?', choices: ['Du dioxygène', 'Du dioxyde de carbone', "De l'azote", "De l'eau"], answer: 'Du dioxygène' },
+  { questionId: 'qcm-02', kind: 'qcm', prompt: 'En quelle année a lieu la prise de la Bastille ?', choices: ['1789', '1793', '1804', '1815'], answer: '1789' },
+  { questionId: 'gap-01', kind: 'gap', prompt: 'La photosynthèse produit du ____.', answer: 'dioxygène' },
+];
+const schoolYearOf = (d) => { const x = new Date(d); const y = x.getUTCFullYear(); return x.getUTCMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`; };
+/** `recent` passages en 2026-2027 puis `old` en 2025-2026; un passage sur 7 est incomplet. */
+function seedHistory({ recent = 24, old = 6 } = {}) {
+  const out = [];
+  const make = (i, at) => {
+    const [matiere, titre] = H_SUBJ[i % 3];
+    const qs = H_Q.map((q, k) => {
+      const ok = (i + k) % 3 !== 0;
+      return { questionId: q.questionId, rank: k + 1, kind: q.kind, correct: ok, attempts: ok ? 1 : 2, firstTry: ok, xpGained: ok ? 5 : 0, answeredAt: iso(at + k * 20e3), choice: ok ? q.answer : q.kind === 'qcm' ? q.choices[1] : 'azote', prompt: q.prompt, ...(q.choices ? { choices: q.choices } : {}), correctAnswer: q.answer };
+    });
+    const answered = i % 7 === 2 ? 2 : 3;
+    const given = qs.slice(0, answered);
+    const correct = given.filter((q) => q.correct).length;
+    return { testId: `01JF5T3ST${String(i).padStart(17, '0')}`, docId: `doc${i % 3}`, titre, matiere, mode: 'mixte', schoolYear: schoolYearOf(at), startedAt: iso(at), endedAt: iso(at + 60e3), total: 3, answered, correct, firstTry: given.filter((q) => q.firstTry).length, scorePct: Math.round((100 * correct) / 3), xpGained: given.reduce((a, q) => a + q.xpGained, 0), status: answered === 3 ? 'complet' : 'incomplet', questions: given };
+  };
+  for (let i = 0; i < recent; i++) out.push(make(i, Date.parse('2026-11-20T17:00:00Z') - i * 86400e3));
+  for (let i = 0; i < old; i++) out.push(make(recent + i, Date.parse('2026-06-10T16:00:00Z') - i * 86400e3));
+  S.tests = out;
+}
+const summary = ({ questions: _q, ...t }) => t;
+function testPage(q) {
+  const years = [...new Set(S.tests.map((t) => t.schoolYear))];
+  let items = S.tests;
+  if (q.get('schoolYear')) items = items.filter((t) => t.schoolYear === q.get('schoolYear'));
+  const from = Number(q.get('cursor') ? Buffer.from(q.get('cursor'), 'base64url').toString() : 0);
+  const limit = Math.min(50, Number(q.get('limit') ?? 20));
+  const page = items.slice(from, from + limit).map(summary);
+  const more = from + limit < items.length;
+  return { items: page, ...(more ? { nextCursor: Buffer.from(String(from + limit)).toString('base64url') } : {}), ...(from === 0 ? { schoolYears: years } : {}) };
+}
+const parentView = ({ questions, ...t }) => ({ ...t, questions: questions.map(({ choice: _c, prompt: _p, choices: _s, correctAnswer: _a, ...r }) => r) });
+function studentProgress() {
+  const bySubj = new Map();
+  for (const t of S.tests) { const a = bySubj.get(t.matiere) ?? []; a.push(t.scorePct); bySubj.set(t.matiere, a); }
+  const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
+  const docs = S.tests.length ? H_SUBJ.map(([matiere, titre], k) => { const mine = S.tests.filter((t) => t.docId === `doc${k}`); return { docId: `doc${k}`, titre, matiere, pages: 2, createdAt: iso(), tests: mine.length, bestScorePct: Math.max(...mine.map((t) => t.scorePct)), lastScorePct: mine[0].scorePct, lastTestAt: mine[0].startedAt }; }) : [];
+  const weeks = S.tests.length ? ['2026-W44', '2026-W45', '2026-W46', '2026-W47'].map((week, i) => ({ week, tests: 2 + i, avgScorePct: [40, 60, 80, 95][i], activeDays: 2 + i })) : [];
+  return {
+    student: S.students[0], progress: progress(), docs, scans: [], weeks,
+    subjects: [...bySubj].map(([matiere, a]) => ({ matiere, tests: a.length, avgScorePct: avg(a) })),
+    schoolYears: [...new Set(S.tests.map((t) => t.schoolYear))],
+    recentTests: S.tests.slice(0, 10).map(summary),
+  };
+}
 
 const used = () => S.jobs.filter((j) => !j.refunded).reduce((a, j) => a + j.pages, 0);
 const progress = () => ({ xp: S.xp, level: S.xp >= 50 ? 1 : 0, streakDays: S.xp > 0 ? 1 : 0, freezes: 1, stage: S.xp >= 50 ? 2 : 1, pagesRemaining: S.pagesLimit - used(), pagesLimit: S.pagesLimit, resetDate: '2099-01-01', badges: [] });
@@ -196,13 +248,15 @@ const server = createServer(async (req, res) => {
   if (p === '/__test/suggest') { S.suggest = b.on !== false; return send(res, 200, { ok: true }); } // la lecture propose deja 2 fiches (coupe avant la page 2)
   if (p === '/__test/seed') { seed(b); return send(res, 200, { folders: S.folders, docs: S.docs.map((d) => d.docId) }); } // fiches deja terminees, sans passer par un scan
   if (p === '/__test/role') { S.role = b.role === 'parent' ? 'parent' : 'eleve'; return send(res, 200, { ok: true }); }
+  if (p === '/__test/history') { seedHistory(b); return send(res, 200, { tests: S.tests.length }); }
+  if (p === '/__test/policy') { S.policyOutdated = b.outdated !== false; return send(res, 200, { ok: true }); }
   if (p === '/__test/fail') { S.fail = b.mode ?? null; return send(res, 200, { ok: true }); }
   if (p === '/__test/state') return send(res, 200, { jobs: S.jobs.length, docs: S.docs.length, cours: S.cours.length, pagesRemaining: S.pagesLimit - used(), uploadedBytes: S.jobs.reduce((a, j) => a + j.bytes, 0) });
   const parent = S.role === 'parent';
   const seg = p.split('/');
   const ID = seg[2] ? decodeURIComponent(seg[2]) : '';
   if (m === 'GET' && p === '/me') {
-    if (parent) return S.family ? send(res, 200, { userId: 'u-parent', role: 'parent', familyId: S.family.familyId }) : err(res, 404, 'introuvable', 'Introuvable');
+    if (parent) return S.family ? send(res, 200, { userId: 'u-parent', role: 'parent', familyId: S.family.familyId, ...(S.policyOutdated ? { policyOutdated: true } : {}) }) : err(res, 404, 'introuvable', 'Introuvable');
     const s = S.students[0];
     return send(res, 200, { userId: 'u-eleve', role: 'eleve', familyId: 'fam1', studentId: s.studentId, pseudo: s.pseudo });
   }
@@ -214,6 +268,17 @@ const server = createServer(async (req, res) => {
   if (!S.family) return err(res, 404, 'introuvable', 'Introuvable');
   switch (`${m} ${p}`) {
     case 'GET /me/progress': return send(res, 200, progress());
+    case 'GET /me/tests': return parent ? err(res, 403, 'interdit', 'Interdit') : send(res, 200, testPage(url.searchParams));
+    case 'POST /family/policy':
+      if (!parent) return err(res, 403, 'interdit', 'Interdit');
+      if (b.consent !== true || b.policyVersion !== '2026-11-26') return err(res, 400, 'requete_invalide', 'Consentement requis');
+      S.policyOutdated = false;
+      return send(res, 204);
+    case 'POST /family/export/archive':
+      if (!parent) return err(res, 403, 'interdit', 'Interdit');
+      if (S.archives >= 3) return err(res, 429, 'quota_epuise', "Trop d'archives demandées, réessaie dans une heure");
+      S.archives += 1;
+      return send(res, 200, { url: `${BASE}/__archive/${S.archives}.zip`, expiresAt: iso(Date.now() + 600e3), format: 'zip', sizeBytes: 48211, students: S.students.length, tests: S.tests.length, truncated: false });
     case 'GET /family/dashboard': return send(res, 200, { students: S.students.map((student) => ({ student, progress: progress() })), familyPagesRemaining: 50 - used(), familyPagesLimit: 50 });
     case 'GET /family/leaderboard': return send(res, 200, { week: '2099-W01', entries: S.students.map((s) => ({ studentId: s.studentId, pseudo: s.pseudo, xp: S.xp, activeDays: S.xp ? 1 : 0 })) });
     case 'GET /family/export': return send(res, 200, { familyId: 'fam1', exportedAt: iso(), students: S.students, docs: [], reports: [] });
@@ -335,6 +400,19 @@ const server = createServer(async (req, res) => {
       else S.docs.forEach((d) => { if (d.coursId === ID) { delete d.coursId; delete d.sectionIndex; delete d.sectionCount; } });
       return send(res, 204);
     }
+  }
+  if (seg[1] === 'me' && seg[2] === 'tests' && seg[3] && m === 'GET') {
+    if (parent) return err(res, 403, 'interdit', 'Interdit');
+    const t = S.tests.find((x) => x.testId === seg[3]);
+    return t ? send(res, 200, t) : err(res, 404, 'introuvable', 'Introuvable');
+  }
+  if (seg[1] === 'students' && seg[3] && m === 'GET' && ['progress', 'tests'].includes(seg[3])) {
+    if (!parent) return err(res, 403, 'interdit', 'Interdit');
+    if (!S.students.some((x) => x.studentId === ID)) return err(res, 404, 'introuvable', 'Introuvable');
+    if (seg[3] === 'progress') return send(res, 200, studentProgress());
+    if (!seg[4]) return send(res, 200, testPage(url.searchParams));
+    const t = S.tests.find((x) => x.testId === seg[4]);
+    return t ? send(res, 200, parentView(t)) : err(res, 404, 'introuvable', 'Introuvable');
   }
   if (seg[1] === 'students') {
     const s = S.students.find((x) => x.studentId === ID);

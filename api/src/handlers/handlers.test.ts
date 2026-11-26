@@ -35,6 +35,7 @@ describe('handlers: refus avant tout appel AWS', () => {
     ['students-delete', 'DELETE /students/{sid}'],
     ['family-admin', 'GET /family/export'],
     ['family-admin', 'DELETE /family'],
+    ['family-create', 'POST /family/policy'],
     ['family-read', 'GET /family/dashboard'],
   ])('%s %s: un eleve est refuse (403)', async (name, route) => {
     expect((await (await load(name))(asStudent(route))).statusCode).toBe(403);
@@ -43,13 +44,11 @@ describe('handlers: refus avant tout appel AWS', () => {
     expect((await (await load('family-create'))(asStudent('POST /family'))).statusCode).toBe(403);
     expect((await (await load('family-read'))(ev('', 'GET /family/leaderboard'))).statusCode).toBe(403);
   });
-  it('routes inconnues: 404; GET /me d\'un parent: 200 sans appel AWS', async () => {
+  it('routes inconnues: 404', async () => {
     expect((await (await load('me-get'))(asParent('GET /autre'))).statusCode).toBe(404);
     expect((await (await load('family-read'))(asParent('GET /autre'))).statusCode).toBe(404);
     expect((await (await load('family-admin'))(asParent('GET /autre'))).statusCode).toBe(404);
-    const me = await (await load('me-get'))(asParent('GET /me'));
-    expect(me.statusCode).toBe(200);
-    expect(JSON.parse(me.body as string)).toEqual({ userId: 'sub1', role: 'parent', familyId: 'fam1' });
+    // GET /me d'un parent lit la famille (policyOutdated, H1-W): couvert sans AWS par getMe dans family.test.ts et h1-policy.test.ts.
   });
   it('jeton sans sub: 403; identifiant de chemin invalide: 400', async () => {
     const noSub = { requestContext: { authorizer: { jwt: { claims: {} } } } } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;

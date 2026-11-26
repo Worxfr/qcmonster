@@ -3,8 +3,9 @@ import { api } from '../api';
 import { Mascot } from '../components/Mascot';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
 import { badgeLabel } from '../game';
+import { archiveError } from '../history';
 import { errMsg, useLoad } from '../hooks';
-import type { Student } from '../types';
+import type { ExportArchive, Student } from '../types';
 import { POLICY_VERSION } from '../../../shared/policy';
 import { PolicyLink } from './Policy';
 
@@ -57,7 +58,10 @@ export function Parent() {
                   <h3>{s.pseudo} {s.status === 'suspendu' && <span className="pill pill-warn">Suspendu</span>}</h3>
                   <p className="muted">Niveau {p.level} · {p.xp} XP · série {p.streakDays} j</p>
                   <p>Pages restantes ce mois-ci : {p.pagesRemaining} sur {p.pagesLimit} (quota de l'élève : {s.pageQuota})</p>
-                  <p><a className="btn btn-small btn-ghost" href={`#/eleve/${encodeURIComponent(s.studentId)}`}>📚 Les cours de {s.pseudo}</a></p>
+                  <p className="btn-row">
+                    <a className="btn btn-small" href={`#/suivi/${encodeURIComponent(s.studentId)}`}>📈 Suivi de {s.pseudo}</a>
+                    <a className="btn btn-small btn-ghost" href={`#/eleve/${encodeURIComponent(s.studentId)}`}>📚 Les cours de {s.pseudo}</a>
+                  </p>
                   {(p.badges?.length ?? 0) > 0 && (
                     <ul className="badges" aria-label={`Badges de ${s.pseudo}`}>
                       {p.badges!.map((b) => <li key={b} className="got"><span aria-hidden="true">🏅</span> {badgeLabel(b)}</li>)}
@@ -97,6 +101,7 @@ export function Parent() {
         <p>Tu peux récupérer toutes les données de ta famille (comptes, fiches, résultats, signalements) dans un fichier lisible. Lis aussi la <PolicyLink />.</p>
         <button className="btn btn-small" onClick={() => void act(downloadExport)}>Télécharger les données</button>
       </Card>
+      <ArchiveCard />
       <Invite onCreated={(l) => { setLink(l); d.reload(); }} />
       {lb.data && lb.data.entries.length > 0 && (
         <Card title={`Classement · ${lb.data.week}`}>
@@ -169,6 +174,43 @@ function Invite({ onCreated }: { onCreated: (l: { pseudo: string; url: string; e
         <ErrorBox message={error} />
         <button className="btn" disabled={busy || !valid || !authority}>Créer et obtenir le lien</button>
       </form>
+    </Card>
+  );
+}
+
+/** Archive complète (zip) avec tout l'historique des tests: POST /family/export/archive, lien valable 10 minutes. */
+function ArchiveCard() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [a, setA] = useState<ExportArchive | null>(null);
+
+  async function ask() {
+    setBusy(true);
+    setError(null);
+    try {
+      setA(await api.exportArchive());
+    } catch (e) {
+      setA(null);
+      setError(archiveError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const size = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`);
+
+  return (
+    <Card title="Archive avec l'historique des tests">
+      <p>Un fichier zip avec toutes les données de ta famille et le résultat de chaque test, année après année. Le lien est valable 10 minutes. Tu peux demander 3 archives par heure.</p>
+      <button className="btn btn-small" disabled={busy} onClick={() => void ask()}>{busy ? 'Préparation…' : "Préparer l'archive"}</button>
+      <ErrorBox message={error} />
+      {a && (
+        <div className="soft archive-ready" role="status">
+          <p><strong>Ton archive est prête</strong> ({size(a.sizeBytes)}, {a.tests} test{a.tests > 1 ? 's' : ''}, {a.students} élève{a.students > 1 ? 's' : ''}).</p>
+          <p><a className="btn" href={a.url} rel="noopener noreferrer" download>⬇ Télécharger l'archive</a></p>
+          <p className="muted">Le lien expire à {new Date(a.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. Passé ce délai, prépare une nouvelle archive.</p>
+          {a.truncated && <p className="notice">L'archive est limitée aux 50 000 tests les plus récents : les années les plus anciennes n'y sont pas.</p>}
+        </div>
+      )}
     </Card>
   );
 }

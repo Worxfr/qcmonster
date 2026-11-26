@@ -16,6 +16,9 @@ import { Game } from './screens/Game';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { Parent } from './screens/Parent';
+import { PolicyAgain } from './screens/PolicyAgain';
+import { Suivi, SuiviTest } from './screens/Suivi';
+import { Tests, TestDetailView } from './screens/Tests';
 import { Policy } from './screens/Policy';
 import { Signup } from './screens/Signup';
 import { JobView } from './screens/Job';
@@ -87,16 +90,23 @@ function Shell() {
   if (!me) return <main className="page">{error ? <ErrorBox message={error} /> : <Loading />}{error && <button className="btn" onClick={signOut}>Se déconnecter</button>}</main>;
 
   const parent = me.role === 'parent';
-  const [, seg, arg] = route.split('?')[0].split('/');
+  const [, seg, arg, arg2] = route.split('?')[0].split('/');
   const id = arg ? decodeURIComponent(arg) : '';
+  const id2 = arg2 ? decodeURIComponent(arg2) : '';
   let body;
+  // Le texte de la politique a changé: le parent la relit avant tout (re-acceptation, H1-W).
+  if (parent && me.policyOutdated) return <PolicyAgain onDone={() => setMe({ ...me, policyOutdated: undefined })} />;
   if (parent && seg === 'eleve' && id) body = <ParentCourses sid={id} />;
+  else if (parent && seg === 'suivi' && id && id2) body = <SuiviTest sid={id} testId={id2} />;
+  else if (parent && seg === 'suivi' && id) body = <Suivi sid={id} />;
   else if (parent) body = <Parent />;
   else if (seg === 'scan') body = <Scan />;
   else if (seg === 'job' && id) body = <JobView id={id} />;
   else if (seg === 'doc' && id) body = <Doc id={id} />;
   else if (seg === 'quiz' && id) body = <Quiz docId={id} />;
   else if (seg === 'jeu') body = <Game />;
+  else if (seg === 'tests' && id) body = <TestDetailView id={id} />;
+  else if (seg === 'tests') body = <Tests />;
   else if (seg === 'docs') body = <Docs />;
   else if (seg === 'folders') body = <Folders />;
   else if (seg === 'cours' && id) body = <Cours id={id} />;
@@ -123,6 +133,7 @@ function Shell() {
           {tab('/', 'Accueil', '🏠', !seg || seg === 'quiz')}
           {tab('/docs', 'Cours', '📚', seg === 'docs' || seg === 'doc' || seg === 'folders' || seg === 'cours')}
           {tab('/scan', 'Scanner', '📷', seg === 'scan' || seg === 'job')}
+          {tab('/tests', 'Tests', '📝', seg === 'tests')}
           {tab('/jeu', 'Jeu', '🏆', seg === 'jeu')}
         </nav>
       )}

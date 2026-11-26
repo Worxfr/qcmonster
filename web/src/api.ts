@@ -4,6 +4,7 @@ import type {
   AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
+  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery,
 } from './types';
 
 export class ApiError extends Error {
@@ -28,6 +29,12 @@ async function call<T>(method: string, path: string, body?: unknown, auth = true
 }
 
 const e = encodeURIComponent;
+function testQs(q: TestQuery): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') p.set(k, String(v));
+  const qs = p.toString();
+  return qs ? `?${qs}` : '';
+}
 export const api = {
   me: () => call<Me>('GET', '/me'),
   progress: () => call<Progress>('GET', '/me/progress'),
@@ -73,6 +80,15 @@ export const api = {
   activate: (token: string, password: string) => call<void>('POST', '/activation', { token, password }, false),
   /** Administrateur seulement (403 sinon). Le code n'est renvoye qu'une fois. */
   createInvitation: () => call<InvitationCreated>('POST', '/admin/invitations'),
+  /** Historique des tests (H1). Eleve: les siens. Parent: ceux d'un eleve de sa famille (resultats sans texte ni reponse). */
+  myTests: (q: TestQuery = {}) => call<TestPage>('GET', `/me/tests${testQs(q)}`),
+  myTest: (testId: string) => call<TestDetail>('GET', `/me/tests/${e(testId)}`),
+  studentProgress: (sid: string) => call<StudentProgressView>('GET', `/students/${e(sid)}/progress`),
+  studentTests: (sid: string, q: TestQuery = {}) => call<TestPage>('GET', `/students/${e(sid)}/tests${testQs(q)}`),
+  studentTest: (sid: string, testId: string) => call<TestParentDetail>('GET', `/students/${e(sid)}/tests/${e(testId)}`),
+  exportArchive: () => call<ExportArchive>('POST', '/family/export/archive'),
+  /** Re-acceptation de la politique en vigueur (parent). */
+  acceptPolicy: (b: FamilyCreateRequest) => call<void>('POST', '/family/policy', b),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),
 };
 

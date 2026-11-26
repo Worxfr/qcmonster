@@ -38,3 +38,13 @@ export type ScanQuery = {
   limit?: number; cursor?: string;
 };
 export type ScanStage = S['ScanStage'];
+// H1 (contrat 1.4): historique des tests, vue parent, archive.
+export type TestSummary = S['TestSummary'];
+export type TestPage = S['TestPage'];
+export type TestDetail = S['TestDetail'];
+export type TestParentDetail = S['TestParentDetail'];
+export type TestQuestionResult = S['TestQuestionResult'];
+export type TestQuestionStatus = S['TestQuestionStatus'];
+export type StudentProgressView = S['StudentProgressView'];
+export type ExportArchive = S['ExportArchive'];
+export type TestQuery = { schoolYear?: string; limit?: number; cursor?: string };

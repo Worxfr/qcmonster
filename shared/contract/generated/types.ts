@@ -623,6 +623,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/family/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Le parent accepte la version en vigueur de la politique de confidentialite (contract-v1.4.1, handler family-create)
+         * @description Reserve au parent qui a deja une famille. Meme corps que `POST /family`: `consent` vrai et `policyVersion` egale a la version en vigueur, sinon 400 `requete_invalide` « Consentement requis ». Enregistre la date et la version dans la famille. Repondre deux fois est sans effet (204). Un eleve recoit 403.
+         */
+        post: operations["acceptPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/family": {
         parameters: {
             query?: never;
@@ -1029,6 +1049,8 @@ export interface components {
             /** @description Present pour le role eleve */
             studentId?: string;
             pseudo?: string;
+            /** @description Parent seulement (contract-v1.4.1). Vrai si la famille a donne son consentement sur une autre version de la politique que celle en vigueur: le front demande alors de la relire et de l'accepter (POST /family/policy). Absent pour un eleve. */
+            policyOutdated?: boolean;
         };
         Student: {
             studentId: string;
@@ -3331,6 +3353,37 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    acceptPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "consent": true,
+                 *       "policyVersion": "2026-11-26"
+                 *     }
+                 */
+                "application/json": components["schemas"]["FamilyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepte (policyOutdated repasse a faux) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     createFamily: {

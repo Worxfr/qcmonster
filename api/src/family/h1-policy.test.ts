@@ -6,7 +6,7 @@ import { getDashboard, getMe } from '../game/family-read.js';
 import { HttpError } from '../lib/http.js';
 import { FID, SID, parentCtx, seed, testDeps } from '../lib/testkit.js';
 import { createStudent } from './students.js';
-import { exportFamily } from './family.js';
+import { acceptPolicy, exportFamily } from './family.js';
 
 const OLD = '2026-11-25';
 
@@ -50,5 +50,52 @@ describe('Q3: POLICY_VERSION relevee', () => {
     expect((await t.store.query(`FAMILY#${FID}`, 'STUDENT#')).length).toBe(before);
     const ok = await createStudent(t.deps, parentCtx, { ...body, policyVersion: POLICY_VERSION });
     expect(await t.store.get(keys.student(FID, ok.student.studentId))).toMatchObject({ versionPolitique: POLICY_VERSION });
+  });
+});
+
+// H1-W: re-acceptation de la politique (C1 de la relecture de la PR #77, Q3 du proprietaire).
+describe('H1-W: re-acceptation de la politique', () => {
+  const parent = { sub: 'sub-par1', username: 'par1', role: 'parent' as const, familyId: FID };
+  const withConsent = (t: ReturnType<typeof testDeps>, version?: string) =>
+    t.store.commit([{ item: { ...keys.family(FID), ownerSub: 'sub-par1', consentementLe: '2026-11-25T09:00:00.000Z', ...(version ? { versionPolitique: version } : {}) }, when: 'any' }]);
+  const status = (p: Promise<unknown>) => p.then(() => 0, (x: unknown) => (x as HttpError).status);
+
+  it('GET /me signale une famille qui a consenti sur une autre version, ou sans version enregistree', async () => {
+    const t = testDeps();
+    await seed(t);
+    await withConsent(t, OLD);
+    expect(await getMe(t.deps, parent)).toMatchObject({ policyOutdated: true });
+    await withConsent(t);
+    expect(await getMe(t.deps, parent)).toMatchObject({ policyOutdated: true });
+  });
+  it('GET /me ne signale rien quand la version est a jour, ni pour un eleve', async () => {
+    const t = testDeps();
+    await seed(t);
+    await withConsent(t, POLICY_VERSION);
+    expect(await getMe(t.deps, parent)).not.toHaveProperty('policyOutdated');
+    await withConsent(t, OLD);
+    expect(await getMe(t.deps, { sub: 'sub-stu1', username: SID, role: 'eleve', familyId: FID })).not.toHaveProperty('policyOutdated');
+  });
+  it('POST /family/policy enregistre la version et la date; deux appels ne changent rien de plus', async () => {
+    const t = testDeps();
+    await seed(t);
+    await withConsent(t, OLD);
+    await acceptPolicy(t.deps, parentCtx, { consent: true, policyVersion: POLICY_VERSION });
+    const m = await t.store.get(keys.family(FID));
+    expect(m).toMatchObject({ versionPolitique: POLICY_VERSION, ownerSub: 'sub-par1' });
+    expect(m?.consentementLe).not.toBe('2026-11-25T09:00:00.000Z');
+    expect(await getMe(t.deps, parent)).not.toHaveProperty('policyOutdated');
+    const again = await t.store.get(keys.family(FID));
+    await acceptPolicy(t.deps, parentCtx, { consent: true, policyVersion: POLICY_VERSION });
+    expect(await t.store.get(keys.family(FID))).toEqual(again);
+  });
+  it('POST /family/policy refuse sans consentement ou avec une autre version (400, rien ecrit), et une famille inconnue (404)', async () => {
+    const t = testDeps();
+    await seed(t);
+    await withConsent(t, OLD);
+    expect(await status(acceptPolicy(t.deps, parentCtx, { consent: false, policyVersion: POLICY_VERSION }))).toBe(400);
+    expect(await status(acceptPolicy(t.deps, parentCtx, { consent: true, policyVersion: OLD }))).toBe(400);
+    expect((await t.store.get(keys.family(FID)))?.versionPolitique).toBe(OLD);
+    expect(await status(acceptPolicy(t.deps, { ...parentCtx, familyId: 'autre' }, { consent: true, policyVersion: POLICY_VERSION }))).toBe(404);
   });
 });
