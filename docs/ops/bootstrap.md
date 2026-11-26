@@ -39,9 +39,9 @@ aws ce list-cost-allocation-tags --status Active
 
 La cle est `project` en minuscules, valeur `qcmonster`. Ne jamais poser `Project` (majuscule): IAM compare les cles sans tenir compte de la casse, et deux ecritures differentes sur une meme ressource echouent.
 
-## 5. Configurer GitHub (depot prive `Worxfr/qcmonster`)
+## 5. Configurer GitHub (depot public `Worxfr/qcmonster`)
 
-- Environnements GitHub `dev` et `prod`: **limites a la branche `main`**, et **relecteur obligatoire sur `prod`**. Ils sont crees avec la limite a `main` par l'agent (API GitHub); a verifier dans Settings → Environments. **Limite du plan GitHub actuel**: le relecteur obligatoire sur `prod` a ete refuse par l'API (422, plan non compatible avec les relecteurs requis sur un depot prive). Tant que le plan ne le permet pas, la garde de `prod` est: lancement manuel seulement, depuis `main`, apres `dev`, et `DEPLOY_ENABLED=true`. Ajouter le relecteur des que possible (Settings → Environments → prod → Required reviewers). La trust policy du role n'accepte que les `sub` exacts `environment:dev` et `environment:prod` (plus `ref:refs/heads/main`, retire en L5): sans cette limite, toute branche pourrait declarer un environnement.
+- Environnements GitHub `dev` et `prod`: **limites a la branche `main`**, et **relecteur obligatoire sur `prod`**. Ils sont crees avec la limite a `main` par l'agent (API GitHub); a verifier dans Settings → Environments. **Depot public**: les relecteurs requis sont disponibles sur le plan gratuit pour un depot public (l'API les avait refuses tant que le depot etait prive). Les ajouter apres le passage en public (Settings → Environments → prod → Required reviewers). Tant qu'ils ne sont pas poses, la garde de `prod` est: lancement manuel seulement, depuis `main`, apres `dev`, et `DEPLOY_ENABLED=true`. La trust policy du role n'accepte que les `sub` exacts `environment:dev` et `environment:prod` (plus `ref:refs/heads/main`, retire en L5): sans cette limite, toute branche pourrait declarer un environnement.
 - **Secret de depot `AWS_ACCOUNT_ID`** (masque dans les journaux; le workflow en construit l'ARN du role; l'ID n'est jamais dans le code). Il est cree par l'agent a la creation du depot; pour le recreer, tape la valeur toi-meme:
 
   ```bash

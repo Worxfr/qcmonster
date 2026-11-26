@@ -66,7 +66,7 @@ Convention : un fait relu pendant cette révision porte la mention « lu » et s
 | Budget | Cible inférieure à 20 € par mois pour une famille, avec alerte. |
 | Usage | Une famille, ouvert plus tard. |
 | Compte AWS | <ID_COMPTE>, **à confirmer par le propriétaire**. |
-| Dépôt | Privé, `Worxfr/qcmonster`. |
+| Dépôt | Public (depuis le passage en public), `Worxfr/qcmonster`. |
 | OIDC | Rôle dédié `QCMonster-GitHubActions-Deploy`, créé par `infra-bootstrap/setup-oidc.sh` (non modifié ici). |
 | Tag `Owner` | `Worxfr`, comme dans le script de bootstrap. |
 

@@ -1,6 +1,7 @@
 {
   "name": "qcmonster-e2e",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.1.0",
   "type": "module",
   "description": "Tests de bout en bout (Playwright). Paquet separe: aucune dependance de production.",

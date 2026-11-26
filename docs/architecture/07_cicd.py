@@ -12,7 +12,7 @@ from common import aws_account, diagram, plain, region, step
 
 with diagram("07_cicd", "Parcours 7: déploiement (GitHub Actions, OIDC, CDK)") as _:
     owner = User("Propriétaire")
-    gh = Github("GitHub\n(repo privé, main)")
+    gh = Github("GitHub\n(repo public, main)")
     ga = GithubActions("GitHub Actions\nci puis deploy-dev\n(environnement dev)")
     with aws_account():
         deploy = IAMRole("Rôle de déploiement\n(OIDC, sans clé d'accès)")
@@ -34,4 +34,4 @@ with diagram("07_cicd", "Parcours 7: déploiement (GitHub Actions, OIDC, CDK)") 
     boot >> step(9, "BucketDeployment") >> site
     boot >> step(9, "invalide le cache") >> cdn
     owner >> plain("prod: lancement manuel\n(workflow_dispatch, après dev)") >> ga
-    ga >> plain("workflow « invite » (manuel):\nrôle dédié, PutItem INVITE#*", style="dotted") >> db
+    ga >> plain("script local (manuel):\ncreate-invite.ts, PutItem INVITE#*", style="dotted") >> db

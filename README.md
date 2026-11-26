@@ -33,3 +33,7 @@ cd infra && npx cdk synth -c env=dev --quiet   # QCM_ALERT_EMAIL=... pour l'adre
 - Aucun `modelId` systeme (`eu.anthropic...`): uniquement des ARN de profils d'application (test CI).
 - Journaux par `shared/log` seulement, jamais de console (test CI).
 - Changer le contrat ou le schema de donnees: PR relue par le proprietaire du lot 1.
+
+## Licence
+
+Code sous licence [Apache-2.0](LICENSE). Copyright 2026 Worxfr (voir [NOTICE](NOTICE)).

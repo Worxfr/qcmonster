@@ -100,3 +100,26 @@ describe('deploiement dev: Bedrock reel (F6)', () => {
     expect(line).toMatch(/-c bedrock=real\b/);
   });
 });
+
+describe('workflows: rien de secret dans le resume de run (depot public)', () => {
+  // Le resume ($GITHUB_STEP_SUMMARY) est lisible par tous sur un depot public et ::add-mask:: ne le protege pas.
+  // shortcut: controle par mots-cles sur le texte du workflow, pas une analyse de flux; a durcir si un workflow doit ecrire un resume.
+  const dir = join(ROOT, '.github/workflows');
+  const SENSITIVE = /secret|token|password|passwd|code d'invitation|invite|credential|AWS_ACCOUNT_ID/i;
+  it('aucun workflow n\'ecrit un secret ou un code dans GITHUB_STEP_SUMMARY', () => {
+    const bad: string[] = [];
+    for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+      const lines = readFileSync(join(dir, name), 'utf8').split('\n');
+      lines.forEach((l, i) => {
+        if (!l.includes('GITHUB_STEP_SUMMARY')) return;
+        // la ligne et les 12 precedentes (bloc echo { ... } >> $GITHUB_STEP_SUMMARY)
+        const block = lines.slice(Math.max(0, i - 12), i + 1).join('\n');
+        if (SENSITIVE.test(block)) bad.push(`${name}:${i + 1}`);
+      });
+    }
+    expect(bad).toEqual([]);
+  });
+  it('invite.yml n\'existe plus', () => {
+    expect(readdirSync(dir)).not.toContain('invite.yml');
+  });
+});
