@@ -231,7 +231,7 @@ test.describe('Relecture avec 2 fiches déjà proposées', () => {
     await sendPhotos(page, 3);
     await waitForReview(page);
     await expect(page.getByText("J'ai proposé 2 fiches")).toBeVisible();
-    await expect(page.getByRole('button', { name: /Couper ici, entre deux pages/ })).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'Fiche 2', exact: true })).toBeVisible(); // la coupe proposée suffit: l'aide n'en ajoute pas
     await reviewTwoSections(page);
     await waitForFiches(page);
     expect((await fake.state()).docs).toBe(2);

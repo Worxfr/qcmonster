@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { useApp } from '../app-context';
 import { FolderSelect, useFolders } from '../components/FolderSelect';
@@ -8,8 +8,13 @@ import { errMsg, useLoad } from '../hooks';
 import { go } from '../router';
 import { folderError } from './Folders';
 import type { Claim } from '../types';
+import { Rich } from '../components/Math';
+import { FigureView } from './confirm/FigureCard';
+import './confirm/confirm.css';
 
-export function DocView({ id }: { id: string }) {
+const RECALL = { date: 'Date', formule: 'Formule', definition: 'Définition', nombre: 'Nombre' } as const;
+
+export function DocView({ id, claimId }: { id: string; claimId?: string }) {
   const d = useLoad(() => api.doc(id), [id]);
   const { setProgress, addBadges } = useApp();
   const [error, setError] = useState<string | null>(null);
@@ -47,14 +52,38 @@ export function DocView({ id }: { id: string }) {
   return (
     <>
       <Card title={doc.title}>
-        <p>{doc.summary}</p>
+        {doc.body?.length ? (
+          <div className="fiche-body">
+            {doc.body.map((p, i) => (
+              <div key={i}>
+                {p.heading && <h3><Rich text={p.heading} /></h3>}
+                <p><Rich text={p.text} /></p>
+              </div>
+            ))}
+          </div>
+        ) : <p><Rich text={doc.summary} /></p>}
+        {doc.figures?.map((f) => <FigureView key={f.figureId} figure={f} />)}
+        {doc.recall?.length ? (
+          <section className="recall" aria-labelledby="recall-h">
+            <h3 id="recall-h">À retenir</h3>
+            <ul>
+              {doc.recall.map((r) => (
+                <li key={`${r.claimId}-${r.kind}`}>
+                  <span className="recall-kind">{RECALL[r.kind]}</span>
+                  <span><Rich text={r.text} formula={false} /></span>
+                  {!r.verified && <span className="recall-nv">non vérifié</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <button className="btn btn-big" onClick={() => go(`/quiz/${encodeURIComponent(id)}`)}>🎮 S'entraîner</button>
       </Card>
       <FolderCard docId={id} initial={doc.folderId ?? ''} />
       <Card title="Ce que dit ta fiche">
         <p className="muted">Chaque affirmation est contrôlée avec des sources. Clique pour les lire.</p>
         <ul className="list">
-          {doc.claims.map((c) => <ClaimItem key={c.claimId} docId={id} claim={c} />)}
+          {doc.claims.map((c) => <ClaimItem key={c.claimId} docId={id} claim={c} focus={c.claimId === claimId} />)}
         </ul>
       </Card>
       <Card title="Fini de lire ?">
@@ -106,8 +135,10 @@ function FolderCard({ docId, initial }: { docId: string; initial: string }) {
   );
 }
 
-function ClaimItem({ docId, claim }: { docId: string; claim: Claim }) {
-  const [open, setOpen] = useState(false);
+function ClaimItem({ docId, claim, focus }: { docId: string; claim: Claim; focus?: boolean }) {
+  const [open, setOpen] = useState(!!focus);
+  const li = useRef<HTMLLIElement>(null);
+  useEffect(() => { if (focus) li.current?.scrollIntoView?.({ block: 'center' }); }, [focus]);
   const [report, setReport] = useState(false);
   const [comment, setComment] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -126,8 +157,8 @@ function ClaimItem({ docId, claim }: { docId: string; claim: Claim }) {
   }
 
   return (
-    <li className={`claim claim-${claim.status}`}>
-      <p><Pill status={claim.status} /> {claim.text}</p>
+    <li ref={li} className={`claim claim-${claim.status}${focus ? ' focus' : ''}`}>
+      <p><Pill status={claim.status} /> <Rich text={claim.text} /></p>
       {claim.aRisque && <p className="muted">⚠️ Sujet sensible : demande aussi à ton professeur.</p>}
       {claim.sources.length > 0 && (
         <>

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { appendTo, findSentence } from './test/review';
 
 // Compte les rendus des zones de texte pour verifier que le decompte ne re-rend pas la relecture.
 const renders = vi.hoisted(() => ({ n: 0 }));
@@ -198,7 +199,7 @@ describe('découper en sections', () => {
     const bars = await screen.findAllByRole('button', { name: /^Couper ici/ });
     expect(bars).toHaveLength(2);
     await userEvent.click(bars[1]); // avant la phrase 3
-    const band2 = screen.getByRole('listitem', { name: 'Fiche 2' });
+    const band2 = screen.getByRole('group', { name: 'Fiche 2' });
     await userEvent.selectOptions(within(band2).getByLabelText('Matière'), 'histoire_geo');
     await userEvent.type(within(band2).getByLabelText('Sujet'), 'Rome');
     expect(screen.getByRole('button', { name: "C'est bon, fais 2 fiches" })).toBeEnabled();
@@ -215,9 +216,9 @@ describe('découper en sections', () => {
     await userEvent.click(screen.getByRole('button', { name: /entre deux pages/ }));
     // on passe sur la page de la nouvelle fiche et le focus suit
     expect(screen.getByRole('tab', { name: /Page 2/ })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getAllByLabelText('Matière')[0]).toHaveFocus();
+    expect(screen.getAllByLabelText('Matière')[1]).toHaveFocus();
     await userEvent.click(screen.getByRole('button', { name: /Retirer cette coupe/ }));
-    expect(screen.getByRole('button', { name: /^Couper ici/ })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /entre deux pages/ })).toHaveFocus();
     await userEvent.click(screen.getByRole('tab', { name: /Page 1/ }));
     expect(screen.getByRole('button', { name: /entre deux pages/ })).toBeInTheDocument();
   });
@@ -244,7 +245,7 @@ describe('découper en sections', () => {
     try {
       review({ pages: [{ sentences: [sn(1, 1), sn(1, 2)] }], subject: 'svt' });
       await open('#/job/J1');
-      await screen.findByLabelText('Phrase 2');
+      await findSentence(2);
       await vi.advanceTimersByTimeAsync(3000);
       const before = renders.n;
       await vi.advanceTimersByTimeAsync(8000);
@@ -259,7 +260,7 @@ describe('découper en sections', () => {
     review({ pages: [{ sentences: [sn(1, 1)] }], subject: 'svt' });
     routes['POST /jobs/J1/cancel'] = () => json({ jobId: 'J1', state: 'rejete', pages: 1, createdAt: T0, status: status('echec', { message: "Annulé par l'élève" }) });
     await open('#/job/J1');
-    await userEvent.type(await screen.findByLabelText('Phrase 1'), ' ajout');
+    await appendTo(1, ' ajout');
     expect(sessionStorage.getItem('qcm.confirm.J1')).not.toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Annuler et récupérer mes pages' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Oui, annuler le scan' }));
@@ -297,7 +298,7 @@ describe('découper en sections', () => {
     routes['GET /jobs/J1'] = () => json({ jobId: 'J1', state: 'expire', pages: 1, createdAt: T0, status: status('echec', { message: 'Pas de confirmation après 12 heures' }) });
     await open('#/job/J1');
     await screen.findByText('Délai dépassé');
-    expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull();
+    await waitFor(() => expect(sessionStorage.getItem('qcm.confirm.J1')).toBeNull());
     expect(sessionStorage.getItem('qcm.confirm.sections.J1')).toBeNull();
   });
 
@@ -309,15 +310,13 @@ describe('découper en sections', () => {
     await open('#/job/J1');
     expect(await screen.findByText("J'ai proposé 2 fiches, change-les si besoin.")).toBeInTheDocument();
     expect(screen.getByDisplayValue('Cellule')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: /Page 2/ }));
-    await userEvent.click(screen.getByLabelText('Ne pas faire de fiche pour cette partie'));
+    await userEvent.click(screen.getAllByLabelText('Ne pas faire de fiche pour cette partie')[1]);
     expect(screen.getByText('Ignorée = gardée dans ton cours complet, sans fiche.')).toBeInTheDocument();
     expect(screen.getByText(/1 fiche \(SVT\), 1 partie ignorée/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: /Page 1/ }));
-    await userEvent.click(screen.getByLabelText('Ne pas faire de fiche pour cette partie'));
+    await userEvent.click(screen.getAllByLabelText('Ne pas faire de fiche pour cette partie')[0]);
     expect(screen.getByText('Garde au moins une fiche.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /vérifie/i })).toBeDisabled();
-    await userEvent.click(screen.getByLabelText('Ne pas faire de fiche pour cette partie'));
+    await userEvent.click(screen.getAllByLabelText('Ne pas faire de fiche pour cette partie')[0]);
     await userEvent.click(screen.getByRole('button', { name: "C'est bon, vérifie !" }));
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].sections).toEqual([{ fromSentenceId: 'p1-s1', subject: 'svt', topic: 'Cellule' }, { fromSentenceId: 'p2-s1', subject: 'histoire_geo', ignore: true }]);
@@ -354,20 +353,16 @@ describe('découper en sections', () => {
     expect(cutButtons().every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   });
 
-  it('phrase sur deux pages: une seule zone de texte, étiquette, ligne de suite, page vide prolongée', async () => {
+  it('phrase sur deux pages: un seul passage, étiquette « Pages 1 à 3 », onglets pour la photo', async () => {
     review({
       pages: [{ sentences: [sn(1, 1), { id: 'p1-s2', text: `Une phrase coupée ${WORDS}`, pages: [1, 2, 3] }] }, { sentences: [] }, { sentences: [sn(3, 1)] }],
       subject: 'svt',
     });
     await open('#/job/J1');
     expect(await screen.findByText('Pages 1 à 3')).toBeInTheDocument();
-    expect(screen.getByText(/on ne la coupe pas/)).toBeInTheDocument();
-    expect(screen.getAllByRole('textbox', { name: /Phrase/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /\. Phrase \d[,.]/ })).toHaveLength(3);
     await userEvent.click(screen.getByRole('tab', { name: /Page 2/ }));
-    expect(screen.getByText('Cette page prolonge la phrase de la page 1.')).toBeInTheDocument();
-    expect(screen.getByText('La première phrase continue la page 1')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Voir la phrase' }));
-    expect(screen.getByRole('tab', { name: /Page 1/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Page 2/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('rechargement: coupes et noms gardés dans l\'onglet', async () => {

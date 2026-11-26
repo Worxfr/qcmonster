@@ -4,7 +4,7 @@ import type {
   AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
-  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery,
+  TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, ExportState,
 } from './types';
 
 export class ApiError extends Error {
@@ -57,7 +57,7 @@ export const api = {
   updateDoc: (id: string, b: { subject?: Subject; topic?: string | null }) => call<DocSummary>('PATCH', `/docs/${e(id)}`, b),
   job: (id: string) => call<Job>('GET', `/jobs/${e(id)}`),
   transcription: (id: string) => call<Transcription>('GET', `/jobs/${e(id)}/transcription`),
-  confirm: (id: string, corrections: Sentence[], extra: { sections?: ConfirmSection[]; subject?: Subject; topic?: string; folderId?: string } = {}) =>
+  confirm: (id: string, corrections: Sentence[], extra: { sections?: ConfirmSection[]; subject?: Subject; topic?: string; folderId?: string; figures?: ConfirmFigure[]; removed?: string[] } = {}) =>
     call<Job>('POST', `/jobs/${e(id)}/confirm`, { corrections, ...extra }),
   cancel: (id: string) => call<Job>('POST', `/jobs/${e(id)}/cancel`),
   deleteScan: (id: string) => call<void>('DELETE', `/scans/${e(id)}`),
@@ -88,6 +88,9 @@ export const api = {
   studentTests: (sid: string, q: TestQuery = {}) => call<TestPage>('GET', `/students/${e(sid)}/tests${testQs(q)}`),
   studentTest: (sid: string, testId: string) => call<TestParentDetail>('GET', `/students/${e(sid)}/tests/${e(testId)}`),
   exportArchive: () => call<ExportArchive>('POST', '/family/export/archive'),
+  /** Export de l'eleve (asynchrone, lot A): demande, puis lecture de l'etat jusqu'a `pret`. */
+  startMyExport: () => call<{ exportId: string }>('POST', '/me/export/archive'),
+  myExport: (exportId: string) => call<ExportState>('GET', `/me/export/archive/${e(exportId)}`),
   /** Re-acceptation de la politique en vigueur (parent). */
   acceptPolicy: (b: FamilyCreateRequest) => call<void>('POST', '/family/policy', b),
   leaderboard: () => call<Leaderboard>('GET', '/family/leaderboard'),
@@ -101,3 +104,4 @@ export async function uploadScan(upload: { url: string; fields: Record<string, s
   const res = await fetch(upload.url, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`Envoi impossible (${res.status})`);
 }
+

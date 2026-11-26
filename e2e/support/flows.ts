@@ -41,11 +41,15 @@ async function countFiches(page: Page): Promise<number> {
 export async function reviewTwoSections(page: Page): Promise<string> {
   await expect(page.getByRole('heading', { name: "Vérifie ce que j'ai lu" }), "Relecture: l'écran n'est pas affiché (appeler waitForReview avant)").toBeVisible({ timeout: STEP });
   // 1. corriger une phrase (en mock, la 2e phrase contient la faute « chloropastes »)
-  const box = page.locator('textarea.cf-text').nth(1);
+  // La phrase se corrige à sa place: on la touche, le champ apparaît, Entrée valide.
+  const sentence = page.locator('button.cf-sent').nth(1);
+  await sentence.click();
+  const box = page.locator('textarea.cf-text');
   const before = await box.inputValue();
   const after = before.includes('chloropastes') ? before.replace('chloropastes', 'chloroplastes') : `${before} (relu)`;
   await box.fill(after);
-  await expect(page.getByText('Modifiée')).toHaveCount(1);
+  await box.press('Enter');
+  await expect(page.locator('button.cf-sent.is-mod')).toHaveCount(1);
   // 2. deux fiches: celles proposées par la lecture, sinon une coupe entre la page 1 et la page 2
   let n = await countFiches(page);
   if (n < 2) {
@@ -63,7 +67,7 @@ export async function reviewTwoSections(page: Page): Promise<string> {
   for (let i = 0; i < pageCount && done.size < 2; i++) {
     if ((await tabs.count()) > 0) await tabs.nth(i).click({ timeout: STEP });
     for (const k of [1, 2]) {
-      const band = page.getByRole('listitem', { name: `Fiche ${k}`, exact: true });
+      const band = page.getByRole('group', { name: `Fiche ${k}`, exact: true });
       if (done.has(k) || (await band.count()) === 0) continue;
       await band.getByLabel('Matière').selectOption(subjects[k][0], { timeout: STEP });
       await band.getByLabel('Sujet').fill(subjects[k][1], { timeout: STEP });

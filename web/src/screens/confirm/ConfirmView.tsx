@@ -1,15 +1,20 @@
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 import { ApiError, api } from '../../api';
 import { FolderSelect, useFolders } from '../../components/FolderSelect';
 import { Card, ErrorBox, Loading } from '../../components/ui';
 import { errMsg, useLoad } from '../../hooks';
 import { SUBJECTS, SUBJECT_IDS, plural, subjectLabel } from '../../labels';
 import { go } from '../../router';
-import type { Job, Sentence, Subject } from '../../types';
+import { Rich } from '../../components/Math';
+import { correctionProblem } from '../../correction';
+import type { Block, ConfirmFigure, Job, Sentence, Subject } from '../../types';
 import { AutoGrow } from './AutoGrow';
+import { buildModel } from './blocks';
+import { DocView } from './DocView';
+import { FigureCard } from './FigureCard';
 import { PhotoViewer } from './PhotoViewer';
-import { MIN_WORDS, TITLE_MAX, TOPIC_MAX, addCut, confirmBody, initSections, maxSections, plan, removeCut, sanitize, sectionIndex, type Sec } from './sections';
-import { clearEdits, loadEdits, loadSections, saveEdits, saveSections } from './storage';
+import { MIN_WORDS, TITLE_MAX, TOPIC_MAX, addCut, confirmBody, effectiveSections, initSections, maxSections, plan, removeCut, sanitize, sectionIndex, type Sec } from './sections';
+import { clearEdits, loadEdits, loadFigs, loadIds, loadSections, saveEdits, saveFigs, saveIds, saveSections, type FigChoice } from './storage';
 import './confirm.css';
 
 /** Memorise: l'interrogation du statut ne re-rend pas la relecture pendant la frappe. */
@@ -31,7 +36,6 @@ export const ConfirmView = memo(function ConfirmView({ id, onDone }: { id: strin
 });
 
 type Tr = NonNullable<ReturnType<typeof useLoad<Awaited<ReturnType<typeof api.transcription>>>>['data']>;
-type Pg = Tr['pages'][number];
 
 /** Libelle d'une phrase sur plusieurs pages: « Suite page 3 » ou « Pages 2 à 4 ». */
 const spanLabel = (s: Sentence) => {
@@ -41,11 +45,18 @@ const spanLabel = (s: Sentence) => {
 };
 const isSplit = (s: Sentence) => (s.pages?.length ?? 0) > 1;
 
+
 function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: { id: string; tr: Tr; onDone: (j: Job, fiches?: number) => void; reloadPhotos: () => void; reloading: boolean; reloadError: string | null }) {
   const pages = tr.pages;
-  const all = useMemo(() => pages.flatMap((p) => p.sentences), [pages]);
+  const model = useMemo(() => buildModel(pages, tr.blocks, tr.figures), [pages, tr.blocks, tr.figures]);
+  const all = model.all;
   const original = useMemo(() => new Map(all.map((s) => [s.id, s.text])), [all]);
+  const known = useMemo(() => new Set(all.map((s) => s.id)), [all]);
   const [edits, setEdits] = useState<Record<string, string>>(() => loadEdits(id, original));
+  const [removed, setRemoved] = useState<Set<string>>(() => loadIds(id, 'removed', known));
+  const [okDoubt, setOkDoubt] = useState<Set<string>>(() => loadIds(id, 'ok', known));
+  const [figs, setFigs] = useState<Record<string, FigChoice>>(() => loadFigs(id, new Set(model.figures.keys())));
+  const [active, setActive] = useState<string | null>(null);
   const proposed = useRef(false);
   const [secs, setSecs] = useState<Sec[]>(() => {
     const saved = sanitize(loadSections(id), all, pages.length);
@@ -55,8 +66,8 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     return init;
   });
   const [pageIdx, setPageIdx] = useState(0);
-  const [flash, setFlash] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [focusOrder, setFocusOrder] = useState<string[]>([]);
   const { folders, add: addFolder } = useFolders(); // un seul chargement pour toutes les fiches
   // Le dossier choisi en envoyant le scan: la liste des scans le donne (le serveur le garde, il ne peut pas etre retire ici).
   const [jobFolder, setJobFolder] = useState('');
@@ -76,6 +87,7 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   const rootEl = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyFigs, setBusyFigs] = useState(false); // la sauvegarde des images est momentanement impossible (503)
   const first = useRef(true);
 
   // Hauteur réelle de la barre d'onglets (fixe): la barre d'action se pose juste au-dessus.
@@ -98,37 +110,37 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     }
     saveEdits(id, edits);
     saveSections(id, secs);
-  }, [id, edits, secs]);
+    saveIds(id, 'removed', removed);
+    saveIds(id, 'ok', okDoubt);
+    saveFigs(id, figs);
+  }, [id, edits, secs, removed, okDoubt, figs]);
 
-  // Apres une coupe ou son retrait, le bouton clique disparait: on rend le focus a un endroit logique.
+  // Apres une action dont le bouton disparait, on rend le focus a un endroit logique (le premier id present).
   useEffect(() => {
-    if (!focusId) return;
-    document.getElementById(focusId)?.focus();
+    if (!focusId && !focusOrder.length) return;
+    for (const f of [focusId, ...focusOrder]) {
+      const el = f ? document.getElementById(f) : null;
+      if (el) { el.focus(); break; }
+    }
     setFocusId(null);
-  }, [focusId, secs]);
+    setFocusOrder([]);
+  }, [focusId, focusOrder, secs, active]);
 
-  useEffect(() => {
-    if (!flash) return;
-    document.getElementById(`cf-item-${flash}`)?.scrollIntoView?.({ block: 'center' });
-    const t = setTimeout(() => setFlash(null), 2200);
-    return () => clearTimeout(t);
-  }, [flash]);
-
+  const removedHas = (s: Sentence) => removed.has(s.id);
   const textOf = (s: Sentence) => edits[s.id] ?? s.text;
-  const isChanged = (s: Sentence) => textOf(s) !== s.text;
-  const isEmpty = (s: Sentence) => textOf(s).trim() === '';
+  const isChanged = (s: Sentence) => textOf(s) !== s.text && !removedHas(s);
+  const isDoubt = (s: Sentence) => s.doubt === true && !removedHas(s) && !(s.id in edits) && !okDoubt.has(s.id);
   const changed = all.filter(isChanged).length;
-  const empty = all.filter(isEmpty).length;
-  const page = pages[Math.min(pageIdx, pages.length - 1)];
-  const idx = pages.indexOf(page);
-  const pageChanged = (p: Pg) => p.sentences.filter(isChanged).length;
+  const doubts = all.filter(isDoubt).length;
+  const kept = all.filter((s) => !removedHas(s));
   const secOf = useMemo(() => sectionIndex(secs, all), [secs, all]);
   const gIndex = useMemo(() => new Map(all.map((s, i) => [s.id, i])), [all]);
   const max = maxSections(pages.length);
-  const pl = plan(secs, all, textOf);
+  const pl = plan(secs, all, (s) => (removed.has(s.id) ? '' : textOf(s)));
   const startOf = new Set(secs.map((s) => s.from));
 
-  function edit(s: Sentence, text: string) {
+  const patch = (from: string, p: Partial<Sec>) => setSecs((l) => l.map((s) => (s.from === from ? { ...s, ...p } : s)));
+  function setText(s: Sentence, text: string) {
     setEdits((e) => {
       const next = { ...e };
       if (text === s.text) delete next[s.id];
@@ -136,41 +148,63 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
       return next;
     });
   }
-  const patch = (from: string, p: Partial<Sec>) => setSecs((l) => l.map((s) => (s.from === from ? { ...s, ...p } : s)));
+  const toggle = (set: Set<string>, sid: string, on: boolean) => {
+    const n = new Set(set);
+    if (on) n.add(sid);
+    else n.delete(sid);
+    return n;
+  };
+  const remove = (s: Sentence) => { setRemoved((r) => toggle(r, s.id, true)); setActive(null); setFocusId(`cf-s-${s.id}`); };
+  const restore = (s: Sentence) => { setRemoved((r) => toggle(r, s.id, false)); setActive(null); setFocusId(`cf-s-${s.id}`); };
+  const showPage = (page: number) => {
+    const i = pages.findIndex((p) => p.page === page);
+    if (i >= 0) setPageIdx(i);
+    document.getElementById(`cf-page-${page}`)?.scrollIntoView?.({ block: 'start' });
+  };
   const showPageOf = (sentenceId: string) => {
-    const i = pages.findIndex((p) => p.sentences.some((s) => s.id === sentenceId));
+    const p = model.pageOf.get(sentenceId);
+    const i = pages.findIndex((x) => x.page === p);
     if (i >= 0) setPageIdx(i);
   };
   function cut(before: string) {
     setSecs((l) => addCut(l, all, before));
+    setActive(null);
     showPageOf(before);
     setFocusId(`cf-sec-subject-${before}`);
   }
   function uncut(from: string) {
     setSecs((l) => removeCut(l, from));
     showPageOf(from);
-    setFocusId(`cf-cut-${from}`);
+    setFocusOrder([`cf-cut-${from}`, `cf-s-${from}`]);
   }
-  const goPage = (n: number) => {
-    const i = pages.findIndex((p) => p.page === n);
-    if (i >= 0) setPageIdx(i);
-  };
 
   const blocker =
-    !all.length ? "Il n'y a aucun texte à vérifier. Refais la photo pour continuer."
-    : empty ? `Il reste ${empty} ${plural(empty, 'phrase vide', 'phrases vides')}.`
+    !kept.length ? (all.length ? 'Tu as retiré toutes les phrases. Remets-en au moins une.' : "Il n'y a aucun texte à vérifier. Refais la photo pour continuer.")
+    : kept.some((s) => textOf(s).trim() === '') ? 'Il reste une phrase vide.'
     : pl.kept === 0 ? 'Garde au moins une fiche.'
     : pl.missingSubject ? 'Choisis la matière de chaque fiche.'
     : pl.words < MIN_WORDS ? `Il faut au moins ${MIN_WORDS} mots dans les parties gardées.`
     : null;
 
-  async function send() {
+  async function send(noImages = false) {
     if (blocker) return setError(blocker);
     setBusy(true);
     setError(null);
-    const corrections: Sentence[] = all.filter(isChanged).map((s) => ({ id: s.id, text: textOf(s) }));
+    setBusyFigs(false);
+    const corrections: Sentence[] = kept.filter(isChanged).map((s) => ({ id: s.id, text: textOf(s) }));
+    const eff = effectiveSections(secs, all, removed);
+    const figures: ConfirmFigure[] = [...model.figures.values()].map((f) => {
+      const c = figs[f.figureId];
+      const alt = c?.alt?.trim();
+      if (noImages) return { figureId: f.figureId, keep: false };
+      return { figureId: f.figureId, keep: c?.keep === true, ...(c?.keep && alt && alt !== f.alt ? { alt } : {}) };
+    });
     try {
-      const job = await api.confirm(id, corrections, confirmBody(secs));
+      const job = await api.confirm(id, corrections, {
+        ...confirmBody(eff),
+        ...(figures.length ? { figures } : {}),
+        ...(removed.size ? { removed: all.filter((s) => removed.has(s.id)).map((s) => s.id) } : {}),
+      });
       clearEdits(id);
       onDone(job, pl.kept);
     } catch (e) {
@@ -186,12 +220,23 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           /* on affiche l'erreur d'origine */
         }
       }
+      // 503 « indisponible » avec des images gardees: la copie des images a echoue, rien n'est perdu, l'etat du scan n'a pas change.
+      if (e instanceof ApiError && (e.status === 503 || e.code === 'indisponible') && keptFigs > 0 && !noImages) {
+        setBusyFigs(true);
+        setError(null);
+        setBusy(false);
+        return;
+      }
       setError(e instanceof ApiError && e.status === 404 ? `${errMsg(e)} Choisis un autre dossier.` : errMsg(e));
       setBusy(false);
     }
   }
 
-  const summary = `${all.length} ${plural(all.length, 'phrase', 'phrases')}, ${changed} ${plural(changed, 'corrigée', 'corrigées')}${secs.length > 1 ? `, ${pl.kept} ${plural(pl.kept, 'fiche', 'fiches')}` : ''}`;
+  const gone = removed.size;
+  const keptFigs = [...model.figures.keys()].filter((k) => figs[k]?.keep).length;
+  const summary = `${all.length} ${plural(all.length, 'phrase', 'phrases')}, ${changed} ${plural(changed, 'corrigée', 'corrigées')}${gone ? `, ${gone} ${plural(gone, 'retirée', 'retirées')}` : ''}${secs.length > 1 ? `, ${pl.kept} ${plural(pl.kept, 'fiche', 'fiches')}` : ''}`;
+  const idx = Math.min(pageIdx, pages.length - 1);
+  const page = pages[idx];
   const photo = tr.photoUrls[idx];
   function tabKey(e: KeyboardEvent, i: number) {
     const to = e.key === 'ArrowRight' ? (i + 1) % pages.length : e.key === 'ArrowLeft' ? (i - 1 + pages.length) % pages.length : e.key === 'Home' ? 0 : e.key === 'End' ? pages.length - 1 : -1;
@@ -200,29 +245,22 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
     setPageIdx(to);
     document.getElementById(`cf-tab-${to}`)?.focus();
   }
-  let n = 0;
-  for (let i = 0; i < idx; i++) n += pages[i].sentences.length;
 
-  // Phrases venues d'une page precedente qui se poursuivent sur celle-ci.
-  const carried = all.filter((s) => isSplit(s) && s.pages!.slice(1).includes(page.page));
-  const nextFirst = pages[idx + 1]?.sentences[0];
   const atLimit = secs.length >= max;
   const limitText = `${max} fiches au maximum pour ${pages.length} ${plural(pages.length, 'page', 'pages')}`;
+  const canCut = (s: Sentence) => !startOf.has(s.id) && (gIndex.get(s.id) ?? 0) > 0;
 
-  const cutBar = (before: Sentence, boundary = false) => {
-    if (startOf.has(before.id) || gIndex.get(before.id) === 0) return null;
-    return (
-      <li className="cf-cutrow" key={`cut-${before.id}${boundary ? '-b' : ''}`}>
-        <button type="button" id={`cf-cut-${before.id}`} className="cf-cut" disabled={atLimit} onClick={() => cut(before.id)} aria-label={`Couper ici${boundary ? ', entre deux pages' : ''}, avant la phrase ${(gIndex.get(before.id) ?? 0) + 1}`}>
-          <span aria-hidden="true">✂</span> {boundary ? 'Couper ici, entre les pages' : 'Couper ici'}
-        </button>
-        {atLimit && <span className="cf-cutlimit">{limitText}</span>}
-      </li>
-    );
-  };
+  const cutBar = (before: Sentence, boundary: boolean) => (
+    <div className="cf-cutrow">
+      <button type="button" id={`cf-cut-${before.id}`} className="cf-cut" disabled={atLimit} onClick={() => cut(before.id)} aria-label={`Couper ici${boundary ? ', entre deux pages' : ''}, avant la phrase ${(gIndex.get(before.id) ?? 0) + 1}`}>
+        <span aria-hidden="true">✂</span> {boundary ? 'Couper ici, entre les pages' : 'Couper ici'}
+      </button>
+      {atLimit && <span className="cf-cutlimit">{limitText}</span>}
+    </div>
+  );
 
   const band = (s: Sec, i: number) => (
-    <li className={`cf-band sec-${i % 6}`} key={`band-${s.from}`} aria-label={`Fiche ${i + 1}`}>
+    <div className={`cf-band sec-${i % 6}`} role="group" aria-label={`Fiche ${i + 1}`}>
       <div className="cf-bandhead">
         <span className="cf-secnum">Fiche {i + 1}</span>
         {s.subject && <span className="cf-bandsub">{subjectLabel(s.subject)}</span>}
@@ -253,8 +291,51 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         Ne pas faire de fiche pour cette partie
       </label>
       {s.ignore && <p className="cf-ignnote">Ignorée = gardée dans ton cours complet, sans fiche.</p>}
-    </li>
+    </div>
   );
+
+  const renderSentence = (s: Sentence, { block }: { block: Block }) => {
+    const n = (gIndex.get(s.id) ?? 0) + 1;
+    const si = secOf.get(s.id) ?? 0;
+    const isGone = removedHas(s);
+    const mod = isChanged(s);
+    const doubt = isDoubt(s);
+    const formula = block.kind === 'formule';
+    const span = spanLabel(s);
+    if (active === s.id) {
+      return (
+        <SentenceEditor
+          key={s.id}
+          s={s}
+          n={n}
+          text={textOf(s)}
+          formula={formula}
+          removed={isGone}
+          changed={mod}
+          canCut={canCut(s) && !atLimit}
+          onCommit={(t, refocus) => { if (t !== textOf(s)) setText(s, t); setActive(null); if (refocus) setFocusId(`cf-s-${s.id}`); }}
+          onCancel={() => { setActive(null); setFocusId(`cf-s-${s.id}`); }}
+          onRemove={() => remove(s)}
+          onRestore={() => restore(s)}
+          onReset={() => { setText(s, s.text); setActive(null); setFocusId(`cf-s-${s.id}`); }}
+          onCut={() => cut(s.id)}
+        />
+      );
+    }
+    const cls = `cf-sent sec-${si % 6}${isGone ? ' is-gone' : mod ? ' is-mod' : doubt ? ' is-doubt' : ''}${secs[si]?.ignore ? ' ign' : ''}`;
+    const state = isGone ? 'Retirée' : mod ? 'Corrigée' : doubt ? 'Lecture douteuse' : null;
+    return (
+      <span className="cf-sw">
+        <button type="button" id={`cf-s-${s.id}`} className={cls} onClick={() => setActive(s.id)}>
+          {state && <span className="cf-ico" aria-hidden="true">{isGone ? '✕' : mod ? '✎' : '?'}</span>}
+          <Rich text={textOf(s)} formula={formula} />
+          <span className="sr-only">{`. Phrase ${n}${state ? `, ${state.toLowerCase()}` : ''}${secs[si]?.ignore ? ', partie ignorée' : ''}.`}</span>
+        </button>{' '}
+        {span && <span className="cf-span">{span}</span>}{' '}
+        {doubt && <button type="button" className="cf-ok" onClick={() => setOkDoubt((o) => toggle(o, s.id, true))}>C'est bon<span className="sr-only"> pour la phrase {n}</span></button>}{' '}
+      </span>
+    );
+  };
 
   return (
     <Card title="Vérifie ce que j'ai lu">
@@ -262,10 +343,16 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
         <header className="cf-head">
           <p className="cf-summary" role="status" aria-live="polite">{summary}</p>
           <p className="cf-words">{pl.words} {plural(pl.words, 'mot gardé', 'mots gardés')}</p>
+          {doubts > 0 && <p className="cf-doubts"><span aria-hidden="true">?</span> {doubts} {plural(doubts, 'passage douteux', 'passages douteux')} à relire</p>}
+          <ul className="cf-legend" aria-label="Couleurs de la relecture">
+            <li className="lg-doubt"><span aria-hidden="true">?</span> Lecture douteuse</li>
+            <li className="lg-mod"><span aria-hidden="true">✎</span> Corrigé</li>
+            <li className="lg-gone"><span aria-hidden="true">✕</span> Retiré</li>
+          </ul>
           <details className="cf-helpbox">
             <summary>Comment ça marche ?</summary>
-            <p className="cf-help">J'ai lu ta page, mais je peux me tromper. Regarde la photo et corrige les mots qui ne vont pas. Si une phrase est juste, ne touche à rien.</p>
-            <p className="cf-help">Ton cours parle de plusieurs sujets ? Touche « Couper ici » entre deux phrases : tu auras une fiche par sujet, et ton cours complet reste gardé.</p>
+            <p className="cf-help">J'ai lu ta page, mais je peux me tromper. Touche une phrase pour la corriger à sa place, ou pour la retirer. Les passages en jaune sont ceux dont je ne suis pas sûr. Si une phrase est juste, ne touche à rien.</p>
+            <p className="cf-help">Ton cours parle de plusieurs sujets ? Touche « Couper ici » entre deux passages : tu auras une fiche par sujet, et ton cours complet reste gardé.</p>
           </details>
           {proposed.current && secs.length > 1 && <p className="notice">J'ai proposé {secs.length} fiches, change-les si besoin.</p>}
         </header>
@@ -274,13 +361,11 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           <div className="cf-pages">
             <div role="tablist" aria-label="Pages du cours" className="cf-tablist">
               {pages.map((p, i) => (
-                <button key={p.page} type="button" role="tab" id={`cf-tab-${i}`} aria-selected={i === idx} aria-controls="cf-panel" tabIndex={i === idx ? 0 : -1} className="cf-tab" onClick={() => setPageIdx(i)} onKeyDown={(e) => tabKey(e, i)}>
+                <button key={p.page} type="button" role="tab" id={`cf-tab-${i}`} aria-selected={i === idx} aria-controls="cf-panel" tabIndex={i === idx ? 0 : -1} className="cf-tab" onClick={() => showPage(p.page)} onKeyDown={(e) => tabKey(e, i)}>
                   Page {p.page}
-                  {pageChanged(p) > 0 && <><span className="cf-dot" aria-hidden="true">{pageChanged(p)}</span><span className="sr-only">, {pageChanged(p)} {plural(pageChanged(p), 'correction', 'corrections')}</span></>}
                 </button>
               ))}
             </div>
-            <p className="cf-counter">Page {idx + 1} sur {pages.length}</p>
           </div>
         )}
 
@@ -295,80 +380,38 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           </aside>
 
           <div className="cf-texts" id="cf-panel" role={pages.length > 1 ? 'tabpanel' : undefined} aria-labelledby={pages.length > 1 ? `cf-tab-${idx}` : undefined}>
-            {carried.map((s) => (
-              <p key={`carry-${s.id}`} className="cf-carry">
-                <span>La première phrase continue la page {s.pages![0]}</span>
-                <button type="button" className="cf-link" onClick={() => { goPage(s.pages![0]); setFlash(s.id); }}>Voir la phrase</button>
-              </p>
-            ))}
-            {page.sentences.length === 0 ? (
-              carried.length > 0 ? (
-                <div className="cf-empty"><p>Cette page prolonge la phrase de la page {carried[0].pages![0]}.</p></div>
-              ) : (
-                <div className="cf-empty">
-                  <p>Je n'ai rien lu sur {pages.length > 1 ? 'cette page' : 'ta photo'}. Essaie avec une photo plus nette, bien à plat et bien éclairée.</p>
-                  <button type="button" className="btn btn-ghost" onClick={() => go('/scan')}>Refaire la photo</button>
-                </div>
-              )
-            ) : (
-              <ol className="cf-list">
-                {page.sentences.map((s, i) => {
-                  const mod = isChanged(s);
-                  const blank = isEmpty(s);
-                  const si = secOf.get(s.id) ?? 0;
-                  const sec = secs[si];
-                  const label = spanLabel(s);
-                  return [
-                    // coupe possible juste avant la phrase (sur la frontiere, elle est aussi proposee en bas de la page precedente)
-                    startOf.has(s.id) ? band(secs[si], si) : cutBar(s),
-                    <li key={s.id} id={`cf-item-${s.id}`} className={`cf-item sec-${si % 6}${mod ? ' mod' : ''}${blank ? ' bad' : ''}${sec.ignore ? ' ign' : ''}${flash === s.id ? ' flash' : ''}`}>
-                      <div className="cf-itemhead">
-                        <span className="cf-num" aria-hidden="true">{n + i + 1}</span>
-                        <label htmlFor={`cf-s-${s.id}`} className="cf-label">Phrase {n + i + 1}</label>
-                        {secs.length > 1 && <span className="cf-secpill">{sec.ignore ? `Fiche ${si + 1} · ignorée` : `Fiche ${si + 1}`}</span>}
-                        {label && <span className="cf-span">{label}</span>}
-                        <span id={`cf-st-${s.id}`} className={`cf-state ${mod ? 'is-mod' : 'is-same'}`}>{mod ? 'Modifiée' : 'Inchangée'}</span>
-                      </div>
-                      <AutoGrow
-                        id={`cf-s-${s.id}`}
-                        className="cf-text"
-                        value={textOf(s)}
-                        maxLength={2000}
-                        aria-invalid={blank || undefined}
-                        aria-describedby={`cf-st-${s.id}${blank ? ` cf-err-${s.id}` : ''}`}
-                        onChange={(e) => edit(s, e.target.value)}
-                      />
-                      {blank && <p id={`cf-err-${s.id}`} className="cf-fielderr">Une phrase ne peut pas être vide.</p>}
-                      {isSplit(s) && (
-                        <p className="cf-splitnote">
-                          Cette phrase est sur plusieurs pages, on ne la coupe pas.{' '}
-                          <button type="button" className="cf-link" onClick={() => goPage(s.pages![1])}>Voir la page {s.pages![1]}</button>
-                        </p>
-                      )}
-                      {mod && (
-                        <button type="button" className="cf-undo" onClick={() => edit(s, s.text)}>
-                          Remettre la version lue<span className="sr-only"> pour la phrase {n + i + 1}</span>
-                        </button>
-                      )}
-                    </li>,
-                  ];
-                })}
-                {nextFirst && !startOf.has(nextFirst.id) && cutBar(nextFirst, true)}
-                {nextFirst && startOf.has(nextFirst.id) && <li className="cf-cutrow cf-nextsec">La fiche {(secOf.get(nextFirst.id) ?? 0) + 1} commence page {pages[idx + 1].page}.</li>}
-              </ol>
-            )}
-            {pages.length > 1 && (
-              <div className="cf-nav">
-                <button type="button" className="btn btn-ghost" disabled={idx === 0} onClick={() => setPageIdx(idx - 1)}>Page précédente</button>
-                <button type="button" className="btn btn-ghost" disabled={idx === pages.length - 1} onClick={() => setPageIdx(idx + 1)}>Page suivante</button>
+            {all.length === 0 ? (
+              <div className="cf-empty">
+                <p>Je n'ai rien lu sur {pages.length > 1 ? 'tes photos' : 'ta photo'}. Essaie avec une photo plus nette, bien à plat et bien éclairée.</p>
+                <button type="button" className="btn btn-ghost" onClick={() => go('/scan')}>Refaire la photo</button>
               </div>
+            ) : (
+              <DocView
+                model={model}
+                label="Ton cours"
+                renderSentence={renderSentence}
+                renderFigure={(f) => <FigureCard figure={f} choice={figs[f.figureId]} onChange={(c) => setFigs((l) => ({ ...l, [f.figureId]: c }))} onReload={reloadPhotos} />}
+                beforeSentence={(s, { first, pageBreak }) => {
+                  if (startOf.has(s.id)) return band(secs[secOf.get(s.id) ?? 0], secOf.get(s.id) ?? 0);
+                  return first && canCut(s) ? cutBar(s, pageBreak) : null;
+                }}
+              />
             )}
           </div>
         </div>
 
-        <p className="cf-privacy">Ton cours complet est gardé dans ton espace jusqu'à ce que tu le supprimes ou que ton compte soit supprimé. La photo est effacée maintenant. Tes corrections ne sont gardées qu'une fois envoyées.</p>
+        <p className="cf-privacy">Ton cours complet est gardé dans ton espace jusqu'à ce que tu le supprimes ou que ton compte soit supprimé. La photo est effacée maintenant. Tes corrections ne sont gardées qu'une fois envoyées.{model.figures.size > 0 ? ' Les images ne sont gardées que si tu le choisis.' : ''}</p>
         <div className="cf-actions">
           <ErrorBox message={error} />
+          {busyFigs && (
+            <div className="notice cf-retry" role="alert">
+              <p>Je n'ai pas réussi à garder tes images pour le moment. Rien n'est perdu : ton texte et tes choix sont toujours là.</p>
+              <div className="btn-row">
+                <button type="button" className="btn btn-small" onClick={() => void send()}>Réessayer</button>
+                <button type="button" className="btn btn-ghost btn-small" onClick={() => void send(true)}>Continuer sans garder les images</button>
+              </div>
+            </div>
+          )}
           {blocker && <p className="cf-fielderr">{blocker}</p>}
           {!blocker && (
             <p className="cf-plan">
@@ -376,11 +419,66 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
               {pl.ignored > 0 && `, ${pl.ignored} ${plural(pl.ignored, 'partie ignorée', 'parties ignorées')}`}
             </p>
           )}
-          <button type="button" className="btn btn-big cf-send" onClick={send} disabled={busy || !!blocker} aria-busy={busy}>
+          <button type="button" className="btn btn-big cf-send" onClick={() => void send()} disabled={busy || !!blocker} aria-busy={busy}>
             {busy ? <><span className="cf-spin" aria-hidden="true" /> Vérification en cours…</> : pl.kept > 1 ? `C'est bon, fais ${pl.kept} fiches` : "C'est bon, vérifie !"}
           </button>
         </div>
       </div>
     </Card>
+  );
+}
+
+interface EditorProps {
+  s: Sentence; n: number; text: string; formula: boolean; removed: boolean; changed: boolean; canCut: boolean;
+  onCommit: (text: string, refocus: boolean) => void; onCancel: () => void; onRemove: () => void; onRestore: () => void; onReset: () => void; onCut: () => void;
+}
+
+/** Correction a la place de la phrase: champ de texte (fiable sur telephone), brouillon valide ou annule; rien n'est envoye au serveur ici. */
+function SentenceEditor({ s, n, text, formula, removed, changed, canCut, onCommit, onCancel, onRemove, onRestore, onReset, onCut }: EditorProps) {
+  const [draft, setDraft] = useState(text);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const clean = draft.replace(/\s*\n\s*/g, ' ');
+  const problem = clean.trim() === '' ? 'Une phrase ne peut pas être vide. Pour l’enlever, utilise « Retirer cette phrase ».' : correctionProblem(clean, formula);
+  const hasMath = formula || /\$/.test(clean);
+  useEffect(() => {
+    const el = document.getElementById(`cf-in-${s.id}`) as HTMLTextAreaElement | null;
+    el?.focus();
+    if (el && 'setSelectionRange' in el) el.setSelectionRange(el.value.length, el.value.length);
+  }, [s.id]);
+  const done = (refocus: boolean) => { if (!problem) onCommit(clean, refocus); };
+  function key(e: KeyboardEvent) {
+    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+    else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); done(true); }
+  }
+  function blur(e: FocusEvent) {
+    if (wrap.current && e.relatedTarget instanceof Node && wrap.current.contains(e.relatedTarget)) return;
+    if (clean.trim() === '') onCancel();
+    else if (!problem) onCommit(clean, false);
+  }
+  if (removed) {
+    return (
+      <span className="cf-edit cf-edit-gone" ref={wrap}>
+        <span className="cf-gone-text"><span aria-hidden="true">✕ </span><Rich text={text} formula={formula} /></span>
+        <span className="cf-edit-actions">
+          <button type="button" id={`cf-in-${s.id}`} className="btn btn-ghost btn-small" onClick={onRestore}>Remettre cette phrase<span className="sr-only"> ({n})</span></button>
+          <button type="button" className="cf-link" onClick={onCancel}>Fermer</button>
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="cf-edit" ref={wrap} onBlur={blur}>
+      <label className="cf-editlabel" htmlFor={`cf-in-${s.id}`}>Phrase {n}{formula ? ' (formule en LaTeX)' : ''}</label>
+      <AutoGrow id={`cf-in-${s.id}`} className="cf-text" value={draft} maxLength={2000} aria-invalid={problem ? true : undefined} aria-describedby={`cf-err-${s.id}${hasMath ? ` cf-prev-${s.id}` : ''}`} onChange={(e) => setDraft(e.target.value)} onKeyDown={key} />
+      {hasMath && !problem && <span className="cf-preview" id={`cf-prev-${s.id}`}><span className="cf-preview-l">Aperçu</span> <Rich text={clean} formula={formula} /></span>}
+      <span id={`cf-err-${s.id}`} className="cf-fielderr" role={problem ? 'alert' : undefined}>{problem ?? ''}</span>
+      <span className="cf-edit-actions">
+        <button type="button" className="btn btn-small" disabled={!!problem} onClick={() => done(true)}>Valider<span className="sr-only"> la phrase {n}</span></button>
+        <button type="button" className="btn btn-ghost btn-small" onClick={onCancel}>Annuler</button>
+        {changed && <button type="button" className="cf-undo" onClick={onReset}>Remettre la version lue<span className="sr-only"> pour la phrase {n}</span></button>}
+        {canCut && <button type="button" className="cf-undo" onClick={onCut}><span aria-hidden="true">✂ </span>Couper avant cette phrase<span className="sr-only"> ({n})</span></button>}
+        <button type="button" className="cf-undo cf-danger" onClick={onRemove}>Retirer cette phrase<span className="sr-only"> ({n})</span></button>
+      </span>
+    </span>
   );
 }

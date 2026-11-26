@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api } from '../api';
+import { ExportMine } from '../components/ExportMine';
 import { FolderSelect } from '../components/FolderSelect';
 import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg } from '../hooks';
@@ -158,6 +159,7 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
       {selecting && !readOnly && (
         <SelectionBar chosen={chosen} all={byDoc.size} pickAll={() => setPicked(new Set(byDoc.keys()))} folders={folders} onCreated={(f) => setFolders((l) => [...l, f])} onDone={() => { setPicked(new Set()); setSelecting(false); void load(true); void reloadFolders(); }} setError={setError} />
       )}
+      {!readOnly && <ExportMine />}
     </>
   );
 }
