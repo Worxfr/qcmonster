@@ -83,7 +83,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.5.1');
+    expect(spec.info.version).toBe('1.6.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
@@ -298,5 +298,40 @@ describe('contrat v1.5 (R1): relecture en blocs, figures, fiche en paragraphes',
     expect(schemas.ExportArchive.required).toEqual(['url', 'expiresAt', 'format', 'sizeBytes', 'students', 'tests', 'truncated']);
     expect(spec.paths['/family/export/archive'].post.description).toMatch(/aucun texte de cours/);
     expect(JSON.stringify(spec.paths['/family/export'])).not.toMatch(/figures\//);
+  });
+});
+
+describe('contrat v1.6 (F10): ajout de pages a un cours', () => {
+  const schemas = spec.components.schemas as Record<string, { required?: string[]; properties?: Record<string, { maximum?: number; maxItems?: number; enum?: string[] }> }>;
+  it('additif: aucun champ requis nouveau, un client 1.5 reste valide', () => {
+    expect(schemas.ScanCreateRequest.required).toEqual(['pages', 'contentType']);
+    expect(schemas.Transcription.required).toEqual(['jobId', 'docType', 'pages', 'photoUrls', 'photoUrlsExpireAt']);
+    expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
+    expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg', coursId: 'C1' }).success).toBe(true);
+    expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg', coursId: '' }).success).toBe(false);
+  });
+  it('transcription d un ajout: pages a la suite du cours, contexte de 2 phrases au plus, continuesId', () => {
+    const t = { jobId: 'J', docType: 'cours', pages: [{ page: 5, sentences: [{ id: 'p5-s1', text: 'suite', continuesId: 'p4-s9' }] }], context: [{ id: 'p4-s8', text: 'a' }, { id: 'p4-s9', text: 'b' }], photoUrls: ['https://example.invalid/0'], photoUrlsExpireAt: '2026-12-01T10:05:00Z' };
+    expect(zodSchemas.TranscriptionSchema.safeParse(t).success).toBe(true);
+    expect(zodSchemas.TranscriptionSchema.safeParse({ ...t, context: [...t.context, { id: 'p4-s7', text: 'c' }] }).success).toBe(false);
+    expect(zodSchemas.SentenceSchema.safeParse({ id: 'p1-s1', text: 'x', continuesId: 'page' }).success).toBe(false);
+  });
+  it('limites du cours: 30 pages, 20 sections; limites d un scan inchangees (un ajout = un scan)', () => {
+    const meta = { coursId: 'C', createdAt: '2026-12-01T10:00:00Z', pages: 30, sections: Array.from({ length: 20 }, (_, n) => ({ fromSentenceId: `p1-s${n + 1}`, subject: 'svt', status: 'fiche', docId: `D${n}` })) };
+    expect(zodSchemas.CoursMetaSchema.safeParse(meta).success).toBe(true);
+    expect(zodSchemas.CoursMetaSchema.safeParse({ ...meta, pages: 31 }).success).toBe(false);
+    expect(zodSchemas.CoursMetaSchema.safeParse({ ...meta, sections: [...meta.sections, meta.sections[0]] }).success).toBe(false);
+    expect(schemas.ScanCreateRequest.properties!.pages.maximum).toBe(10);
+    expect(schemas.ScanSummary.properties!.sectionIndex.maximum).toBe(5);
+    expect(schemas.ScanSummary.properties!.sectionCount.maximum).toBe(6);
+    expect(schemas.ScanSummary.properties!.docIds.maxItems).toBe(6);
+  });
+  it('cours_plein (409) et 403/409 de POST /scans, 409 de DELETE /cours', () => {
+    expect(schemas.Error.properties!.code.enum).toContain('cours_plein');
+    const post = spec.paths['/scans'].post.responses;
+    expect(Object.keys(post)).toEqual(expect.arrayContaining(['403', '404', '409', '429']));
+    expect(Object.keys(post['409'].content['application/json'].examples)).toEqual(['plein', 'ouvert']);
+    expect(zodSchemas.ErrorSchema.safeParse(post['409'].content['application/json'].examples.plein.value).success).toBe(true);
+    expect(Object.keys(spec.paths['/cours/{coursId}'].delete.responses)).toContain('409');
   });
 });

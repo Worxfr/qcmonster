@@ -110,7 +110,7 @@ for (const env of ENVS) {
       const fig = (name: string) => onFigures(p(name)).flatMap(acts).sort();
       expect(fig('pipeline-role')).toEqual(['s3:DeleteObject', 's3:ListBucket']);
       expect(p('pipeline-role').some((s) => acts(s).includes('s3:PutObject') && text(s.Resource).includes('/scans/*/fig/*'))).toBe(true);
-      expect(fig('pipeline-api-confirm-role')).toEqual(['s3:DeleteObject', 's3:PutObject']);
+      expect(fig('pipeline-api-confirm-role')).toEqual(['s3:DeleteObject', 's3:ListBucket', 's3:PutObject']); // F10: ListBucket du prefixe figures/ pour la restauration d'un ajout
       expect(p('pipeline-api-confirm-role').some((s) => acts(s).includes('s3:GetObject') && text(s.Resource).includes('/scans/*'))).toBe(true);
       expect(fig('pipeline-api-read-role')).toEqual(['s3:GetObject']);
       expect(fig('pipeline-api-cours-read-role')).toEqual(['s3:GetObject']);

@@ -12,6 +12,9 @@ export const MAX_TOPIC = 80;
 export const MAX_FOLDER_SCANS_PER_CALL = 50;
 /** Sections (donc fiches) par scan: plafond propose, une section = un appel d'extraction, de verification et de generation. */
 export const MAX_SECTIONS = 6;
+/** Limites d'un COURS (F10): plusieurs scans (le cours d'origine et ses ajouts de pages). Un scan reste borne par MAX_PAGES_PER_SCAN et MAX_SECTIONS. */
+export const MAX_COURS_PAGES = 30;
+export const MAX_COURS_SECTIONS = 20;
 export const LIST_DEFAULT_LIMIT = 50;
 export const LIST_MAX_LIMIT = 100;
 export const TOPIC_FACETS_MAX = 100;
@@ -320,7 +323,7 @@ export function listScans(input: ListInput): ScanList {
 export const MIN_WORDS_RETAINED = 40;
 export type SectionError = 'inconnu' | 'ordre' | 'debut' | 'trop' | 'aucune_fiche' | 'vide' | 'trop_court';
 /** Au plus 2 sections par page du scan (et 6 en tout): 6 fiches pour 1 page depasseraient le plafond de cout du job. */
-export const maxSectionsFor = (pages: number): number => Math.min(MAX_SECTIONS, 2 * Math.max(1, Math.trunc(Number.isFinite(pages) ? pages : 1)));
+export const maxSectionsFor = (pages: number, room: number = MAX_COURS_SECTIONS): number => Math.min(MAX_SECTIONS, room, 2 * Math.max(1, Math.trunc(Number.isFinite(pages) ? pages : 1)));
 export interface SectionInput {
   fromSentenceId: string;
   ignore?: boolean;
@@ -333,9 +336,9 @@ export interface SectionInput {
  * est fourni, le total des sections non ignorees atteint `minWords` (40 par defaut); si `pages` est fourni, au plus `maxSectionsFor(pages)`
  * sections (2 par page, 6 au plus).
  */
-export function planSections(ids: string[], sections: SectionInput[], opts: { wordCounts?: number[]; minWords?: number; pages?: number } = {}): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
+export function planSections(ids: string[], sections: SectionInput[], opts: { wordCounts?: number[]; minWords?: number; pages?: number; room?: number } = {}): { ok: true; ranges: { start: number; end: number; ignore: boolean }[] } | { ok: false; error: SectionError } {
   if (sections.length === 0) return { ok: false, error: 'aucune_fiche' };
-  if (sections.length > (opts.pages === undefined ? MAX_SECTIONS : maxSectionsFor(opts.pages))) return { ok: false, error: 'trop' };
+  if (sections.length > (opts.pages === undefined ? Math.min(MAX_SECTIONS, opts.room ?? MAX_COURS_SECTIONS) : maxSectionsFor(opts.pages, opts.room))) return { ok: false, error: 'trop' };
   const pos = new Map(ids.map((id, k) => [id, k]));
   const starts: number[] = [];
   for (const sec of sections) {

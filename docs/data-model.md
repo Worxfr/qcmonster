@@ -146,3 +146,19 @@ A la relecture l'eleve decoupe le texte en **sections par sujet**; chaque sectio
 - Une figure conservee: S3 `figures/<sid>/<coursId>/<figureId>.jpg` (bucket `figures`, lot B). Recadrage temporaire: `scans/<sid>/<jobId>/fig/<figureId>.jpg` (part avec la photo).
 - Suppression, dans l'ordre: S3 `figures/` d'abord, puis DynamoDB. `deleteCoursTree` supprime `COURS#<id>#B` et `JOB#<jobId>/BLOCKS` avec `TEXT#`. L'IAM ne change pas pour DynamoDB (cles `STUDENT#*` et `JOB#*` deja couvertes).
 - Lecture des marques (`Cours.marks`): `CLAIM#` et `VERDICT#` sous `DOC#<docId>` des fiches de l'en-tete du cours, 2 requetes par fiche au plus.
+
+## Ajout de pages a un cours (F10, contrat 1.6.0)
+
+Aucun nouvel element: des attributs s'ajoutent a des elements existants (docs/F10-design.md, section 4). Un ajout est un job ordinaire (`appendTo`).
+
+| Element | Attribut | Role |
+|---|---|---|
+| `JOB#` (`STUDENT#<sid>` / `JOB#<jobId>`) | `appendTo` (= `coursId`), `appendBase` = `{ pagesBefore, sectionsBefore, nbPhrasesBefore, hasBlocks, blockMax, figureMax }`, `textDone`, `confirmStartedAt`, `restoredAt` | `appendBase` est ecrit a la creation (meme transaction que le verrou) et n'est JAMAIS recalcule. `textDone` marque la fin de `transcribe` (un ajout n'a pas de `TEXT#1`). `confirmStartedAt` marque le debut de la confirmation (au-dela, la restauration complete est due). `restoredAt` marque la fin de la restauration. Ecrivains: `scans-create`, `transcribe`, `jobs-confirm`, restauration |
+| `COURS#<id>` (en-tete) | `appendJobId` (verrou; `suppression` pendant `DELETE /cours`), `jobIds` (ensemble des jobs qui ont construit le cours), `pages` (30 au plus), `sections` (20 au plus), `nbPhrases` | Le verrou est pose dans la transaction de creation du job, avec condition sur `pages` et `nbPhrases` lus; libere en dernier pas (finalize ou restauration). Sous verrou, un seul ecrivain: le job porteur (ecritures conditionnees a `appendJobId = <job>`) |
+| `COURS#<id>#T<nn>` | pages `N+1..N+k` | Ecrites par `jobs-confirm`; `GET /cours` ne montre que les pages `<= pages` |
+| `COURS#<id>#B` | `blocks` (1200 au plus), `figures` (24 au plus) | Les blocs et figures d'un ajout continuent la numerotation du cours (`b<n>`, `f<n>` uniques dans le cours, `renumber`); recalcules depuis la base a chaque ecriture |
+| `JOB#/TEXT#<page>` | `page` globale (offset applique a la lecture), `continuesId?` sur la premiere phrase | Copie de travail de l'ajout |
+| `DOC#` | `coursId`, `sectionIndex` et `sectionCount` LOCAUX au job de l'ajout | Un ajout = un scan: les fiches d'origine ne sont jamais reecrites |
+
+- Restauration (`restoreAfterFailedAppend`, `api/src/pipeline/append.ts`): fiches du job, textes `> pagesBefore`, en-tete et blocs ramenes a la base, images des nouvelles figures, copie de travail, `restoredAt`, puis verrou. Idempotente; chaque ecriture sur le cours exige `appendJobId = <ce job>`. Le cours n'est jamais supprime par un echec d'ajout.
+- `jobIds` n'est pas nettoye par la restauration (ensemble DynamoDB): un `jobId` en trop est sans effet (`DELETE /cours` retire `coursId` des jobs qui existent encore).

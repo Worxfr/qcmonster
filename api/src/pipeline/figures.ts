@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { validBox, type FigureMeta } from './blocks.js';
 import { callModel, jobKey, mapLimit, type Ctx } from './ctx.js';
 import { scansPrefix } from './job.js';
+import { photoIndex } from './append.js';
 import type { CropPort, FigureStore } from './ports.js';
 import { parseModelJson } from './text.js';
 import { SYSTEM_JSON } from './prompts.js';
@@ -89,7 +90,7 @@ export async function cropFigures(ctx: Ctx, i: CropInput): Promise<{ ok: boolean
       if (done.has(key)) return;
       let img = pages.get(f.page);
       if (!img) {
-        img = await ctx.s3.getBytes(`${prefix}${f.page - 1}`);
+        img = await ctx.s3.getBytes(`${prefix}${photoIndex(job, f.page)}`); // un ajout: pages numerotees a la suite du cours, photos depuis 0
         pages.set(f.page, img);
       }
       await ctx.s3.put(key, await ctx.crop.crop(img, f.box), 'image/jpeg');

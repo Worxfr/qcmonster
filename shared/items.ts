@@ -132,17 +132,19 @@ export const CoursItemSchema = z.object({
   PK: z.string(),
   SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}$/),
   jobId: z.string(),
-  pages: z.number().int().min(1).max(10),
+  /** Jobs qui ont construit le cours (le scan d'origine et ses ajouts); absent: `[jobId]` (cours ancien). */
+  jobIds: z.array(z.string()).max(30).optional(),
+  pages: z.number().int().min(1).max(30),
   createdAt: z.string(),
   nbPhrases: z.number().int().min(1),
-  sections: z.array(z.object({ fromSentenceId: z.string(), subject: z.enum(SUBJECTS), topic: z.string().max(80).optional(), title: z.string().max(200).optional(), folderId: z.string().optional(), ignore: z.boolean(), docId: z.string().optional(), statut: z.enum(['fiche', 'ignoree', 'sans_fiche']) })).min(1).max(6),
+  sections: z.array(z.object({ fromSentenceId: z.string(), subject: z.enum(SUBJECTS), topic: z.string().max(80).optional(), title: z.string().max(200).optional(), folderId: z.string().optional(), ignore: z.boolean(), docId: z.string().optional(), statut: z.enum(['fiche', 'ignoree', 'sans_fiche']) })).min(1).max(20),
 });
 /** Texte d'une page du cours: `STUDENT#<sid> / COURS#<coursId>#T<nn>`. Memes phrases que `JOB#.../TEXT#`, mais durables et corrigees. */
 export const CoursTextItemSchema = z.object({
   PK: z.string(),
   SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}#T[0-9]{2}$/),
-  page: z.number().int().min(1).max(10),
-  sentences: z.array(z.object({ id: z.string().regex(/^p[0-9]+-s[0-9]+$/), text: z.string().max(2000), pages: z.array(z.number().int().min(1).max(10)).min(1).max(4).optional() })),
+  page: z.number().int().min(1).max(30),
+  sentences: z.array(z.object({ id: z.string().regex(/^p[0-9]+-s[0-9]+$/), text: z.string().max(2000), pages: z.array(z.number().int().min(1).max(30)).min(1).max(4).optional() })),
 });
 
 /** Bloc du cours (contrat 1.5). */
@@ -157,7 +159,7 @@ export const BlockSchema = z.object({
 /** Figure du cours SANS url (l'url est signee a la lecture). `boxInvalid` n'existe que dans le job, jamais dans le cours. */
 export const FigureMetaSchema = z.object({
   figureId: z.string().regex(/^f[0-9]+$/),
-  page: z.number().int().min(1).max(10),
+  page: z.number().int().min(1).max(30),
   kind: z.enum(['schema', 'graphique', 'tableau', 'carte', 'photo', 'autre']),
   alt: z.string().min(1).max(300),
   caption: z.string().max(200).optional(),
@@ -167,6 +169,6 @@ export const FigureMetaSchema = z.object({
 export const CoursBlocksItemSchema = z.object({
   PK: z.string(),
   SK: z.string().regex(/^COURS#[A-Za-z0-9_-]{1,64}#B$/),
-  blocks: z.array(BlockSchema).max(400),
-  figures: z.array(FigureMetaSchema).max(8),
+  blocks: z.array(BlockSchema).max(1200),
+  figures: z.array(FigureMetaSchema).max(24),
 });

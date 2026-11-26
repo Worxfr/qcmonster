@@ -247,6 +247,8 @@ export class PipelineStack extends Stack {
     // jobs-confirm: lit le recadrage temporaire (scans/), ecrit la figure gardee, la supprime si la confirmation perd la course.
     confirmRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [objects] }));
     confirmRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [figureObjects] }));
+    // F10: la restauration d'un ajout (course perdue) supprime les figures de CE job par `deleteAll`, qui liste le prefixe avant de supprimer.
+    confirmRole.addToPolicy(listFigures);
     // Signature des URL de figures (jobs-get, jobs-transcription, docs-read; cours-api): GetObject seulement.
     readRole.addToPolicy(figureGet);
     coursReadRole.addToPolicy(figureGet);

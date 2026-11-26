@@ -3,17 +3,18 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import { ConfirmRequestSchema, ScanCreateRequestSchema } from '../../../shared/contract/generated/schemas.js';
 import { costGateFor } from '../../../shared/cost.js';
 import { keys, monthParis } from '../../../shared/ddb/keys.js';
-import { cleanLabel, cleanTopic, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
+import { cleanLabel, cleanTopic, MAX_COURS_SECTIONS, planSections, statusOfJob, SUBJECTS, type SectionError } from '../../../shared/scans.js';
 import { deleteCoursTree } from '../../../shared/delete-tree.js';
 import { CoursBlocksItemSchema, CoursItemSchema, CoursTextItemSchema } from '../../../shared/items.js';
 import { isSafeText, sanitizeLatex } from '../../../shared/latex.js';
 import { releasePages, reservePages } from '../../../shared/quota.js';
 import { log } from '../../../shared/log/index.js';
 import { bodyOf, callerOf, fail, json, pathId, requireStudent, resetDate } from './http.js';
-import { centsFromMicros, DAY_S, iso, jobKey, ttlIn, type Ctx } from './ctx.js';
+import { centsFromMicros, DAY_S, ID_RE, iso, jobKey, ttlIn, type Ctx } from './ctx.js';
+import { appendBaseOf, baseOf, fits, lastSentences, MSG_APPEND, reclaimLock, releaseLock, restoreAfterFailedAppend, DELETING, type AppendBase } from './append.js';
 import { endWithoutDoc, loadJob, scansPrefix, sentencesOf, sortedTexts, transition } from './job.js';
 import { MIN_WORDS } from './steps.js';
-import type { Block, FigureMeta } from './blocks.js';
+import { renumber, type Block, type FigureMeta } from './blocks.js';
 import { coursFiguresPrefix, figureKey, FIGURE_URL_TTL_S, tempFigureKey } from './figures.js';
 import { words } from './text.js';
 import { quotaScope } from './quota-ops.js';
@@ -39,6 +40,7 @@ export function jobView(j: Item, now: Date = new Date()) {
     ...(Number.isFinite(started) && Number.isFinite(ended) ? { durationSeconds: Math.max(0, Math.round((ended - started) / 1000)) } : {}),
     ...(micros > 0 ? { costCents: centsFromMicros(micros) } : {}),
     ...(typeof j.docId === 'string' ? { docId: j.docId } : {}),
+    ...(typeof j.coursId === 'string' ? { coursId: j.coursId } : {}),
     ...(typeof j.message === 'string' ? { message: j.message } : {}),
     status: statusOfJob(j, now),
     ...(j.state === 'termine' && Array.isArray(j.docIds) && j.docIds.length ? { docIds: j.docIds } : {}),
@@ -50,24 +52,34 @@ export async function scansCreate(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   const sid = requireStudent(caller);
   const parsed = ScanCreateRequestSchema.safeParse(bodyOf(event));
   if (!parsed.success) return fail('requete_invalide', 'Demande invalide');
-  const { pages, contentType, contentTypes, folderId } = parsed.data;
+  const { pages, contentType, contentTypes, folderId, coursId: appendTo } = parsed.data;
+  if (appendTo !== undefined && !ID_RE.test(appendTo)) return fail('requete_invalide', 'Demande invalide');
   if (contentType === 'application/pdf') return fail('requete_invalide', 'Les PDF ne sont pas encore pris en charge : envoie des photos');
   // Tout est controle AVANT la reservation des pages: un refus ne laisse rien a rendre.
   if (contentTypes && contentTypes.length !== pages) return fail('requete_invalide', 'Un type par page est attendu');
   if (folderId !== undefined && !(await ctx.db.get(keys.folder(sid, folderId)))) return fail('introuvable', 'Dossier introuvable');
   const typeOf = (n: number): string => contentTypes?.[n] ?? contentType;
 
+  // Ajout de pages (F10): tout est controle AVANT la reservation. Cours inconnu ou d'un autre eleve: 404 uniforme (cle de l'appelant).
+  let target: { head: Item; base: AppendBase } | undefined;
+  if (appendTo !== undefined) {
+    let head = (await ctx.db.get(keys.cours(sid, appendTo))) ?? fail('introuvable', 'Introuvable');
+    if (!(await reclaimLock(ctx, sid, head))) fail('etat_invalide', head.appendJobId === DELETING ? MSG_APPEND.deleting : MSG_APPEND.open);
+    head = (await ctx.db.get(keys.cours(sid, appendTo))) ?? fail('introuvable', 'Introuvable');
+    const origin = typeof head.jobId === 'string' ? await ctx.db.get(jobKey(sid, head.jobId)) : undefined;
+    if (origin && origin.state !== 'termine') fail('etat_invalide', MSG_APPEND.notFinished); // scan d'origine pas fini: l'en-tete a encore un autre ecrivain
+    const refusal = fits(head, pages);
+    if (refusal) fail(refusal.code, refusal.message);
+    target = { head, base: await baseOf(ctx, sid, head) };
+  }
+
   const totals = await ctx.costStore.read();
   if (costGateFor(ctx.env, totals) !== 'ok') return fail('budget_epuise', 'Le service est en pause pour le moment', { resetDate: resetDate(ctx.now()) });
 
   const month = monthParis(ctx.now());
   const scope = await quotaScope(ctx, caller.familyId, sid, month);
-  if (!(await reservePages(ctx.quota, scope, pages))) return fail('quota_epuise', 'Quota de pages épuisé', { resetDate: resetDate(ctx.now()) });
-
   const jobId = ctx.newId();
-  try {
-    await ctx.db.put(
-      {
+  const jobItem = {
         ...jobKey(sid, jobId),
         familyId: caller.familyId,
         studentId: sid,
@@ -83,16 +95,33 @@ export async function scansCreate(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
         coutCentimes: 0,
         createdAt: iso(ctx),
         ttl: ttlIn(ctx, 7 * DAY_S),
-      },
-      true,
-    );
+        ...(target ? { appendTo, coursId: appendTo, appendBase: target.base } : {}),
+  };
+  if (target) {
+    // Le job et le verrou du cours naissent ensemble (une transaction): jamais de verrou sans job. La condition porte sur l'etat lu (pages, phrases): la base ne peut pas etre perimee.
+    // Les pages sont reservees APRES: un refus de quota libere le verrou (aucune page a rendre).
+    const created = await ctx.db.transact([
+      { put: { ...jobItem, quotaState: 'pending' }, ifNotExists: true },
+      { key: keys.cours(sid, appendTo!), spec: { set: { appendJobId: jobId }, addSet: { jobIds: [target.head.jobId as string, jobId] }, cond: { exists: true, absent: ['appendJobId'], eq: { pages: target.base.pagesBefore, nbPhrases: target.base.nbPhrasesBefore } } } },
+    ]);
+    if (!created) fail('etat_invalide', MSG_APPEND.open);
+    if (!(await reservePages(ctx.quota, scope, pages))) {
+      await transition(ctx, sid, jobId, ['en_attente_envoi'], 'echec', { message: 'Quota de pages épuisé', finishedAt: iso(ctx), quotaState: 'none' });
+      await releaseLock(ctx, sid, appendTo!, jobId);
+      return fail('quota_epuise', 'Quota de pages épuisé', { resetDate: resetDate(ctx.now()) });
+    }
+    await ctx.db.update(jobKey(sid, jobId), { set: { quotaState: 'reserved' }, cond: { exists: true } });
+  } else if (!(await reservePages(ctx.quota, scope, pages))) return fail('quota_epuise', 'Quota de pages épuisé', { resetDate: resetDate(ctx.now()) });
+
+  try {
+    if (!target) await ctx.db.put({ ...jobItem, quotaState: 'reserved' }, true);
     // Le workflow demarre tout de suite: s'il n'y a pas d'envoi dans les 15 min, il rend le quota (aucune reservation orpheline).
     await ctx.sfn.start(`job-${jobId}`, { jobId, sid });
     // Une URL pre-signee PAR page: cle exacte scans/<eleve>/<job>/<p-1>, type fige pour cette page.
     const uploads = [];
     for (let n = 0; n < pages; n++) {
-      const target = await ctx.s3.presignPost({ prefix: scansPrefix(sid, jobId), firstKey: `${scansPrefix(sid, jobId)}${n}`, contentType: typeOf(n), maxBytes: MAX_IMAGE_BYTES, expiresSec: UPLOAD_WINDOW_S });
-      uploads.push({ page: n + 1, ...target });
+      const post = await ctx.s3.presignPost({ prefix: scansPrefix(sid, jobId), firstKey: `${scansPrefix(sid, jobId)}${n}`, contentType: typeOf(n), maxBytes: MAX_IMAGE_BYTES, expiresSec: UPLOAD_WINDOW_S });
+      uploads.push({ page: n + 1, ...post });
     }
     const upload = uploads[0];
     const q = await ctx.quota.get(keys.quota(caller.familyId, month, sid));
@@ -148,10 +177,14 @@ export async function jobsTranscription(ctx: Ctx, event: APIGatewayProxyEventV2)
   );
   const shown = new Set(figures.map((f) => f.figureId));
   const blocks = (meta?.blocks as Block[] | undefined)?.filter((b) => b.kind !== 'figure' || (b.figureId !== undefined && shown.has(b.figureId)));
+  // Ajout de pages: les deux dernieres phrases du cours, en lecture seule (texte seul).
+  const base = appendBaseOf(job);
+  const context = base ? await lastSentences(ctx, sid, job.appendTo as string, base.pagesBefore) : [];
   return json(200, {
     jobId,
     docType: job.docType ?? 'cours',
     pages: texts.map((t) => ({ page: t.page, sentences: t.sentences })),
+    ...(context.length ? { context } : {}),
     ...(blocks ? { blocks } : {}),
     ...(figures.length ? { figures } : {}),
     ...(typeof job.suggestedSubject === 'string' ? { suggestedSubject: job.suggestedSubject } : {}),
@@ -240,7 +273,8 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     single = { ...(req.subject ? { subjectChoice: req.subject } : {}), ...(topic ? { topicChoice: topic } : {}), ...(folderId ? { folderId } : {}) };
     chosen = [{ fromSentenceId: all[0]?.id ?? '', subject: req.subject ?? fallbackSubject, ...(topic ?? (job.suggestedTopic as string | undefined) ? { topic: topic ?? (job.suggestedTopic as string) } : {}), ...(folderId ? { folderId } : {}), ignore: false }];
   }
-  const plan = planSections(all.map((s) => s.id), chosen, { wordCounts: all.map((s) => words(s.text).length), minWords: MIN_WORDS, pages: job.pages as number });
+  const base = appendBaseOf(job);
+  const plan = planSections(all.map((s) => s.id), chosen, { wordCounts: all.map((s) => words(s.text).length), minWords: MIN_WORDS, pages: job.pages as number, ...(base ? { room: MAX_COURS_SECTIONS - base.sectionsBefore } : {}) });
   if (!plan.ok) return fail('requete_invalide', SECTION_MESSAGES[plan.error]);
 
   // Figures (R1): le choix de l'eleve est valide AVANT toute ecriture; une figure absente de la liste n'est pas conservee.
@@ -254,33 +288,61 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     choice.set(f.figureId, { keep: f.keep, ...(alt ? { alt: sanitizeLatex(alt) } : {}) });
   }
 
+  // Ajout de pages: de ce point, la restauration complete (cours, textes, figures) est due si la confirmation n'aboutit pas.
+  if (base && !(await ctx.db.update(jobKey(sid, jobId), { set: { confirmStartedAt: iso(ctx) }, cond: { exists: true, eq: { state: 'a_confirmer' } } }))) return fail('etat_invalide', "Le job n'est plus à confirmer");
   // (a) identifiants: un docId par section non ignoree; le cours porte l'identifiant du job (deterministe: une relance ne laisse pas d'orphelin).
-  const coursId = jobId;
+  // Ajout de pages (F10): le cours est celui du job (`appendTo`), ses identifiants de blocs et de figures continuent ceux du cours (P15).
+  const coursId = base ? (job.appendTo as string) : jobId;
+  const offFig = base?.figureMax ?? 0;
+  const newFigId = (id: string): string => (base ? `f${offFig + Number(id.slice(1))}` : id);
   // Copie des figures gardees AVANT la transition (la photo existe encore): idempotente (meme cle), une erreur S3 est reessayable et ne change pas l'etat du job.
+  // Un cours ancien sans couche de blocs ne recoit ni blocs ni figures pour un ajout (l'ecran affiche les phrases).
+  const withBlocks = !base || base.hasBlocks;
   const kept: FigureMeta[] = [];
   try {
-    for (const f of jobFigures) {
+    for (const f of withBlocks ? jobFigures : []) {
       const c = choice.get(f.figureId);
       if (!c?.keep) continue;
-      if (await ctx.figures.copyFromScans(tempFigureKey(sid, jobId, f.figureId), figureKey(sid, coursId, f.figureId))) kept.push({ ...f, ...(c.alt ? { alt: c.alt } : {}) });
+      if (await ctx.figures.copyFromScans(tempFigureKey(sid, jobId, f.figureId), figureKey(sid, coursId, newFigId(f.figureId)))) kept.push({ ...f, ...(c.alt ? { alt: c.alt } : {}) });
     }
   } catch {
-    await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)).catch(() => undefined);
+    // Jamais le prefixe du cours entier pour un ajout: seules les figures de ce job sont supprimees.
+    if (base) for (const f of jobFigures) await ctx.figures.deleteAll(figureKey(sid, coursId, newFigId(f.figureId))).catch(() => undefined);
+    else await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)).catch(() => undefined);
     return fail('indisponible', 'Service momentanément indisponible, réessaie');
   }
   const sections = chosen.map((c) => ({ ...c, ...(c.ignore ? {} : { docId: ctx.newId() }) }));
   const docIds = sections.flatMap((s) => (s.docId ? [s.docId] : []));
   // (b) cours durable (sans TTL), corrections appliquees, section ignoree conservee. Une ecriture identique rejouee est sans effet.
   const createdAt = iso(ctx);
-  await ctx.db.put(CoursItemSchema.parse({ ...keys.cours(sid, coursId), jobId, pages: job.pages, createdAt, nbPhrases: all.length, sections: sections.map((s) => ({ ...s, statut: s.ignore ? 'ignoree' : 'fiche' })) }));
+  const newSections = sections.map((s) => ({ ...s, statut: s.ignore ? 'ignoree' : 'fiche' }));
+  if (base) {
+    // En-tete d'abord et sous verrou (condition `appendJobId = ce job`, cours existant): calcule depuis la base, jamais depuis l'etat courant (rejouable sans doublon).
+    const head = await ctx.db.get(keys.cours(sid, coursId));
+    if (!head || head.appendJobId !== jobId) return fail('etat_invalide', "Le job n'est plus à confirmer");
+    const merged = CoursItemSchema.parse({ ...head, pages: base.pagesBefore + (job.pages as number), nbPhrases: base.nbPhrasesBefore + all.length, sections: [...(head.sections as unknown[]).slice(0, base.sectionsBefore), ...newSections] });
+    const ok = await ctx.db.update(keys.cours(sid, coursId), { set: { pages: merged.pages, nbPhrases: merged.nbPhrases, sections: merged.sections }, cond: { exists: true, eq: { appendJobId: jobId } } });
+    if (!ok) return fail('etat_invalide', "Le job n'est plus à confirmer");
+  } else {
+    await ctx.db.put(CoursItemSchema.parse({ ...keys.cours(sid, coursId), jobId, jobIds: [jobId], pages: job.pages, createdAt, nbPhrases: all.length, sections: newSections }));
+  }
   for (const t of finalTexts) await ctx.db.put(CoursTextItemSchema.parse({ ...keys.coursText(sid, coursId, t.page as number), page: t.page, sentences: t.sentences }));
-  if (meta?.blocks) {
+  if (meta?.blocks && withBlocks) {
     // Blocs du cours: sans les phrases retirees, sans bloc vide, sans bloc de figure non gardee. Pas de `doubt`. Identifiants renumerotes par `renumber` seulement pour un ajout de pages (F10).
     const keptIds = new Set(kept.map((f) => f.figureId));
     const blocks = (meta.blocks as Block[])
       .map((b) => (b.sentenceIds ? { ...b, sentenceIds: b.sentenceIds.filter((id) => !removed.has(id)) } : b))
       .filter((b) => (b.kind === 'figure' ? b.figureId !== undefined && keptIds.has(b.figureId) : (b.sentenceIds?.length ?? 0) > 0));
-    await ctx.db.put(CoursBlocksItemSchema.parse({ ...keys.coursBlocks(sid, coursId), blocks, figures: kept }));
+    if (base) {
+      // Ajout: les blocs et figures de la base, puis les nouveaux renumerotes a la suite (recalcule depuis la base: un rejeu ne duplique rien).
+      const old = await ctx.db.get(keys.coursBlocks(sid, coursId));
+      const oldBlocks = ((old?.blocks as Block[] | undefined) ?? []).filter((b) => Number(b.id.slice(1)) <= base.blockMax);
+      const oldFigures = ((old?.figures as FigureMeta[] | undefined) ?? []).filter((f) => Number(f.figureId.slice(1)) <= base.figureMax);
+      const rn = renumber(blocks, kept, { block: base.blockMax, figure: base.figureMax });
+      await ctx.db.put(CoursBlocksItemSchema.parse({ ...keys.coursBlocks(sid, coursId), blocks: [...oldBlocks, ...rn.blocks], figures: [...oldFigures, ...rn.figures] }));
+    } else {
+      await ctx.db.put(CoursBlocksItemSchema.parse({ ...keys.coursBlocks(sid, coursId), blocks, figures: kept }));
+    }
   }
   // (c) le plan sur le job et la transition, en une seule ecriture conditionnelle: le premier qui change l'etat gagne la course
   // contre une annulation ou l'expiration.
@@ -290,8 +352,12 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     // est bien termine (jamais si une autre confirmation a gagne: meme `coursId`).
     const now = await ctx.db.get(jobKey(sid, jobId));
     if (now && ['rejete', 'expire', 'echec'].includes(now.state as string)) {
-      await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)); // S3 avant DynamoDB
-      await deleteCoursTree(treeDbFrom(ctx.db), sid, coursId, { jobId });
+      // Ajout: le cours existait avant ce job, il est RESTAURE depuis la base (jamais supprime).
+      if (base) await restoreAfterFailedAppend(ctx, sid, now);
+      else {
+        await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)); // S3 avant DynamoDB
+        await deleteCoursTree(treeDbFrom(ctx.db), sid, coursId, { jobId });
+      }
     }
     return fail('etat_invalide', "Le job n'est plus à confirmer");
   }
@@ -317,6 +383,7 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
 export async function jobsCancel(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const { sid, jobId, job } = await ownJob(ctx, event);
   if (job.state !== 'en_attente_envoi' && job.state !== 'a_confirmer') return fail('etat_invalide', 'Ce traitement ne peut plus être annulé');
+  if (job.confirmStartedAt !== undefined) return fail('etat_invalide', 'La confirmation est en cours, réessaie dans un instant'); // ajout: la restauration complete releve de l'expiration
   const won = await endWithoutDoc(ctx, sid, jobId, ['en_attente_envoi', 'a_confirmer'], 'rejete', MESSAGES.cancelled);
   if (!won) return fail('etat_invalide', 'Ce traitement ne peut plus être annulé');
   const after = await loadJob(ctx, sid, jobId);

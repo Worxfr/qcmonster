@@ -9,7 +9,7 @@ import { ID_RE, iso, type Ctx } from '../pipeline/ctx.js';
 import { bodyOf, callerOf, fail, json, noContent, pathId, requireStudent, type Caller } from '../pipeline/http.js';
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { claimStatus } from '../pipeline/steps-doc.js';
-import { figuresOfSection, loadCoursBlocks, sentenceOrder, signFigures } from '../cours/view.js';
+import { figuresOfSection, loadCoursBlocks, sectionRank, sentenceOrder, signFigures } from '../cours/view.js';
 import { ALLOWED_HOSTS } from '../verify/fetch.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
@@ -91,7 +91,7 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
     const cb = head ? await loadCoursBlocks(ctx, sid, coursId) : undefined;
     if (head && cb) {
       const texts = (await ctx.db.query(`STUDENT#${sid}`, `COURS#${coursId}#T`)).filter((t) => t.SK.startsWith(`COURS#${coursId}#T`));
-      figures = await signFigures(ctx, sid, coursId, figuresOfSection(head, sentenceOrder(texts), cb.blocks, cb.figures, doc.sectionIndex));
+      figures = await signFigures(ctx, sid, coursId, figuresOfSection(head, sentenceOrder(texts), cb.blocks, cb.figures, sectionRank(head, docId, doc.sectionIndex)));
     }
   }
   return json(200, {

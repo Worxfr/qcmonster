@@ -8,6 +8,7 @@ import { callerOf, fail, json, noContent, pathId, requireStudent } from '../pipe
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { coursFiguresPrefix } from '../pipeline/figures.js';
 import { coursMeta } from './meta.js';
+import { DELETING, MSG_APPEND, reclaimLock } from '../pipeline/append.js';
 import { coursMarks, loadCoursBlocks, signFigures } from './view.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
@@ -18,7 +19,8 @@ async function get(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const coursId = pathId(event, 'coursId');
   const head = (await ctx.db.get(keys.cours(sid, coursId))) ?? fail('introuvable', 'Introuvable');
   const prefix = `COURS#${coursId}#T`;
-  const texts = (await ctx.db.query(`STUDENT#${sid}`, prefix)).filter((t) => t.SK.startsWith(prefix));
+  // Seules les pages du cours (`pages`): le texte d'un ajout interrompu, ecrit avant sa restauration, n'est jamais montre.
+  const texts = (await ctx.db.query(`STUDENT#${sid}`, prefix)).filter((t) => t.SK.startsWith(prefix) && Number(t.page) <= Number(head.pages));
   const sections = Array.isArray(head.sections) ? (head.sections as { docId?: unknown }[]) : [];
   const ids = [...new Set(sections.map((s) => s.docId).filter((d): d is string => typeof d === 'string' && ID_RE.test(d)))];
   const existing = new Set((await Promise.all(ids.map(async (id) => ((await ctx.db.get(keys.doc(sid, id))) ? id : undefined)))).filter((x): x is string => x !== undefined));
@@ -42,7 +44,14 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const coursId = pathId(event, 'coursId');
   const fiches = event.queryStringParameters?.fiches;
   if (fiches !== 'garder' && fiches !== 'supprimer') return fail('requete_invalide', 'Demande invalide'); // obligatoire, pas de defaut
-  const head = (await ctx.db.get(keys.cours(sid, coursId))) ?? fail('introuvable', 'Introuvable');
+  let head = (await ctx.db.get(keys.cours(sid, coursId))) ?? fail('introuvable', 'Introuvable');
+  // Ajout de pages (F10): pendant un ajout reellement ouvert, 409. Un verrou laisse par un ajout fini ou restaure est repris. Sinon le verrou `suppression` est pose
+  // (condition: aucun autre verrou) AVANT toute suppression: aucun ajout ne peut demarrer pendant que le cours disparait. Une suppression interrompue se reprend par un second DELETE.
+  if (head.appendJobId !== DELETING) {
+    if (!(await reclaimLock(ctx, sid, head))) fail('etat_invalide', MSG_APPEND.deleteBusy);
+    const locked = await ctx.db.update(keys.cours(sid, coursId), { set: { appendJobId: DELETING }, cond: { exists: true, absent: ['appendJobId'] } });
+    head = locked ?? fail('etat_invalide', MSG_APPEND.deleteBusy);
+  }
   // Figures conservees d'abord (S3 avant DynamoDB): interrompue, l'en-tete existe encore et un second DELETE reprend.
   await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId));
   const sectionDocs = new Set((Array.isArray(head.sections) ? (head.sections as { docId?: unknown }[]) : []).map((s) => s.docId).filter((d): d is string => typeof d === 'string'));
@@ -63,10 +72,12 @@ async function del(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
     });
   }
   const jobId = typeof head.jobId === 'string' && ID_RE.test(head.jobId) ? head.jobId : undefined;
-  if (jobId) {
-    await ctx.db.update(keys.job(sid, jobId), { remove: ['coursId'], cond: { exists: true } }); // le job a pu expirer: sans effet
+  // Tous les jobs qui ont construit le cours (le scan d'origine et ses ajouts): chacun perd `coursId` et sa copie de travail (cours ancien: `jobId` seul).
+  const jobIds = [...new Set([...(Array.isArray(head.jobIds) ? (head.jobIds as unknown[]) : []), ...(jobId ? [jobId] : [])])].filter((j): j is string => typeof j === 'string' && ID_RE.test(j));
+  for (const j of jobIds) {
+    await ctx.db.update(keys.job(sid, j), { remove: ['coursId'], cond: { exists: true } }); // le job a pu expirer: sans effet
     // Copie de travail du texte AVANT l'en-tete du cours: interrompue, l'en-tete reste et un second DELETE finit le travail.
-    const texts = (await ctx.db.query(`JOB#${jobId}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK }));
+    const texts = (await ctx.db.query(`JOB#${j}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK }));
     if (texts.length) await ctx.db.remove(texts);
   }
   await deleteCoursTree(tree, sid, coursId, { ...(jobId ? { jobId } : {}) });
