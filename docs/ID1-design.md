@@ -1,6 +1,6 @@
 # ID1: identifiant de connexion visible pour l'eleve et pseudo choisi par l'eleve (issue #33)
 
-Statut: **conception**, aucun code. Le contrat n'est pas modifie: la PR #82 possede `shared/contract/openapi.yaml` (1.5.0). Le contrat additif propose est en section 6; son numero de version se prend apres la fusion de #82.
+Statut: **valide par le proprietaire** (les 12 points de la section 9 sont tranches avec leur valeur par defaut). Conception, aucun code. Le contrat n'est pas modifie: la PR #82 possede `shared/contract/openapi.yaml` (1.5.0). Le contrat additif propose est en section 6; son numero de version se prend apres la fusion de #82.
 Vocabulaire du document: **identifiant de connexion** = ce que l'eleve tape pour entrer (ex. `lila-7k2f`). **Pseudo affiche** = le nom vu dans l'application (accueil, classement de la famille, espace parent).
 
 ## 1. Etat actuel (code lu sur `main`, tete 0099592)
@@ -129,7 +129,9 @@ Web (vitest + e2e):
 - Verification sur le site dev reel apres deploiement (parcours complet, compte de test), car la casse des identifiants depend du vrai pool et le faux serveur ne la reproduit pas.
 - Axe (accessibilite): le champ surnom a un label, le message d'erreur est annonce (`role="alert"`), le bouton Copier a un nom accessible.
 
-## 9. Points a trancher (valeur proposee par defaut, en mots simples)
+## 9. Decisions du proprietaire (points 1 a 12 valides avec la valeur par defaut indiquee)
+
+Chaque point ci-dessous est une **decision**: la valeur « Defaut » est celle retenue. Les textes legaux (politique, registre, AIPD) sont dans un commit separe de cette PR. **La version de la politique (`POLICY_VERSION`) n'est pas augmentee par ID1**: une seule hausse commune avec R1, faite par le lot qui les regroupe (decision du proprietaire).
 
 1. **Le surnom sert-il aussi pour se connecter ?** Defaut: **non**. L'enfant se connecte avec un identifiant fabrique par le site (ex. `lila-7k2f`). Son surnom, lui, sert seulement a l'affichage. Raison: on ne peut pas verifier si un surnom est libre sans reveler quels surnoms existent chez d'autres familles.
 2. **Le parent valide-t-il le surnom avant qu'il serve ?** Defaut: **non**, pas d'etape de validation. Le parent voit le surnom dans sa liste et peut le changer a tout moment. Raison: une validation obligatoire bloque l'enfant qui n'a pas son parent a cote.
@@ -142,7 +144,7 @@ Web (vitest + e2e):
 9. **Anciens comptes.** Defaut: **on ne change rien d'office**. Leur surnom affiche devient le nom sans le code (`Lila`), leur identifiant reste le meme, et le parent peut renommer.
 10. **Reponse de `POST /activation`.** Defaut: **renvoyer l'identifiant dans la reponse** (`200` au lieu de `204`). Seul changement du contrat qui n'est pas un simple ajout.
 11. **Liste de mots refuses.** Defaut: **une liste courte maintenue dans le depot**, a faire evoluer apres les premiers retours. Tu n'as pas a la relire mot a mot.
-12. **Textes legaux.** La politique (« pseudo choisi par le parent ») et la section « correction » (« supprimer et recreer ») changent. Defaut: **le proprietaire relit les nouveaux textes**, la version de la politique n'est pas modifiee car la finalite et les donnees collectees restent les memes (un pseudo). A confirmer.
+12. **Textes legaux.** La politique (« pseudo choisi par le parent ») et la section « correction » (« supprimer et recreer ») changent. Decision: **le proprietaire relit les nouveaux textes** (commit separe). **Pas de hausse propre de `POLICY_VERSION`**: hausse unique commune avec R1.
 
 ## 10. Decoupage en lots et proprietaires de fichiers
 
