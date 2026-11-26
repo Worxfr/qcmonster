@@ -56,7 +56,7 @@ export function PolicyAgain({ onDone }: { onDone: () => void }) {
     <main className="login">
       <Mascot stage={3} size={120} label={false} />
       <h1>La politique de confidentialité a changé</h1>
-      <p className="lead">Nous gardons maintenant l'historique des tests de tes enfants, et tu peux le suivre en lecture seule. Relis le nouveau texte pour continuer.</p>
+      <p className="lead">Nous avons ajouté des nouveautés : chaque élève peut garder des schémas de ses cours, un par un et seulement s'il le choisit ; les formules s'écrivent et s'affichent mieux ; on peut ajouter des pages à un cours ; chaque élève a un identifiant de connexion et un surnom ; et nous gardons l'historique des tests, que tu suis en lecture seule. Relis le nouveau texte pour continuer.</p>
       <p className="calm">📄 Lire la <PolicyLink /> (elle s'ouvre dans un nouvel onglet).</p>
       <ErrorBox message={error} />
       <label className="check">
