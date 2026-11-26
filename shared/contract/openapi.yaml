@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.11.0
+  version: 1.12.0
   description: |
-    Contrat d'API QCMonster (contract-v1.11.0 (M1, docs/M1-design.md, issue #90, partie 1): modifier un cours apres confirmation (`POST /cours/{coursId}/revisions`, `GET /cours/{coursId}/revisions/{revisionId}`, `POST /cours/{coursId}/revisions/{revisionId}/cancel`, `ReviseRequest`, `Revision`, `Cours.revision`), codes d'erreur `fiche_trop_revisee` (409) et `plafond_revisions` (429), `TestDetail` `retired` et `AnswerResult.retired` (lus par la partie 2); contract-v1.10.0 (M1, docs/M1-design.md, issue #89): phrase oubliee ajoutee a la relecture (`ConfirmRequest.added`, `AddedSentence`, `ConfirmSection.fromSentenceId` accepte une cle d'ajout, `Sentence.added` dans `Cours`); contract-v1.9.0 (E1, docs/E1-design.md, issue #43): exercices de raisonnement a la demande (`/docs/{docId}/exercices`, `/exercices/{exoId}`, indices, solution) et correction de la copie photographiee (`/exercices/{exoId}/copies`, `/copies/{copieId}`), `kind: exo` dans les lignes de test, `DocSummary.exerciceCount`, codes d'erreur `matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte`, `pas_encore`, `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies`, `copie_deja_rendue`, `solution_vue`, `en_correction`; contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.12.0 (S1, docs/S1-design.md, issue #34): partage de QCM avec des tiers par lien (`GET /docs/{docId}/shareable`, `/me/shares`, `/students/{sid}/shares`, routes publiques `POST /shares/open` et `POST /shares/report`, `SharedQuiz`, `StudentUpdateRequest.sharing`, `Student.sharing`, `StudentExport.shares`), codes d'erreur `titre_refuse` (400), `questions_non_partageables` (409), `plafond_partages` (429) et `lien_indisponible` (404); le partage reste ferme tant que le parent ne l'active pas et que `SHARE_PUBLIC_ENABLED` est a `false`; contract-v1.11.0 (M1, docs/M1-design.md, issue #90, partie 1): modifier un cours apres confirmation (`POST /cours/{coursId}/revisions`, `GET /cours/{coursId}/revisions/{revisionId}`, `POST /cours/{coursId}/revisions/{revisionId}/cancel`, `ReviseRequest`, `Revision`, `Cours.revision`), codes d'erreur `fiche_trop_revisee` (409) et `plafond_revisions` (429), `TestDetail` `retired` et `AnswerResult.retired` (lus par la partie 2); contract-v1.10.0 (M1, docs/M1-design.md, issue #89): phrase oubliee ajoutee a la relecture (`ConfirmRequest.added`, `AddedSentence`, `ConfirmSection.fromSentenceId` accepte une cle d'ajout, `Sentence.added` dans `Cours`); contract-v1.9.0 (E1, docs/E1-design.md, issue #43): exercices de raisonnement a la demande (`/docs/{docId}/exercices`, `/exercices/{exoId}`, indices, solution) et correction de la copie photographiee (`/exercices/{exoId}/copies`, `/copies/{copieId}`), `kind: exo` dans les lignes de test, `DocSummary.exerciceCount`, codes d'erreur `matiere_non_prevue`, `plafond_exercices`, `fiche_trop_courte`, `pas_encore`, `trop_tot`, `deja_en_cours`, `quota_copies`, `plafond_copies`, `copie_deja_rendue`, `solution_vue`, `en_correction`; contract-v1.8.0 (ID1, docs/ID1-design.md, issue #33): identifiant de connexion visible et surnom d'affichage separes (`loginId`, `displayName` sur `Student` et `Me`; `Student.pseudo` et `Me.pseudo` gardent la valeur de `loginId` le temps du deploiement), surnom choisi a l'activation (`ActivationRequest.displayName`), `POST /activation` repond 200 `ActivationResponse` au lieu de 204 (seul changement non additif; un client qui ignore le corps reste valide), renommage par le parent (`StudentUpdateRequest.displayName`), nouvel identifiant (`POST /students/{sid}/login-id`), codes d'erreur `pseudo_refuse` (400) et `pseudo_pris` (409); contract-v1.7.0, additif par rapport a v1.6.0 (Q1, docs/Q1-design.md): banque de questions variees par fiche (`DocSummary.questionCount`), taille du test (`size`), `Session.available`, `Session.short`, `Session.xpRemaining`, S'entrainer sur plusieurs fiches ou un dossier (`POST /practice/session`, `PracticeRequest`, `PracticeSession`), `Question.docId`, `Question.docTitle`, plafond de 50 XP par fiche (`AnswerResult.capped`), passage multi-fiches (`TestSummary.scope`, `TestSummary.docIds`), code d'erreur `aucune_question` (409), une reponse n'est acceptee que pour une question du test ouvert (409 `etat_invalide`); contract-v1.6.0, additif par rapport a v1.5.1 (F10, docs/F10-design.md): ajout de pages a la fin d'un cours existant (`ScanCreateRequest.coursId`, un ajout = un scan ordinaire), relecture des seules nouvelles pages avec deux phrases de contexte en lecture seule (`Transcription.context`, `Sentence.continuesId`), code d'erreur `cours_plein` (409), cours jusqu'a 30 pages et 20 sections (`CoursMeta`), `Job.coursId`; contract-v1.5.1, additif par rapport a v1.5.0 (R1-A): archive de l'eleve construite en asynchrone (`POST /me/export/archive`, `GET /me/export/archive/{exportId}`, `ExportStatus`, `ExportArchive.omittedCourses`) et code d'erreur `indisponible` (503, confirmation avec figures); contract-v1.5, additif par rapport a v1.4.1 (R1, docs/R1-design.md): structure du cours en blocs (titres, paragraphes, listes, formules, figures) au-dessus des phrases (`Transcription.blocks`, `Cours.blocks`), phrases douteuses a la relecture (`Sentence.doubt`), figures recadrees confirmees par l'eleve (`Transcription.figures`, `ConfirmRequest.figures`, `Cours.figures`), retrait de phrases (`ConfirmRequest.removed`), statut de verification par phrase du cours (`Cours.marks`, `Claim.sentenceId`), fiche en paragraphes avec rappel final (`Doc.body`, `Doc.recall`); formules en LaTeX dans le texte des phrases; champs facultatifs `courses` et `figures` de `ExportArchive` (archive de l'eleve, route a ajouter par le lot A, voir docs/R1-design.md 3.6); aucun champ requis nouveau dans une requete; contract-v1.4.1, additif par rapport a v1.4.0: `Me.policyOutdated` et `POST /family/policy` pour la re-acceptation de la politique de confidentialite; contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -19,6 +19,7 @@ tags:
   - { name: admin }
   - { name: folders }
   - { name: cours }
+  - { name: shares }
 paths:
   /scans:
     post:
@@ -1373,6 +1374,179 @@ paths:
           description: "`en_correction`: la correction tourne encore"
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: en_correction, message: "La correction est en cours" } } }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+  /docs/{docId}/shareable:
+    get:
+      operationId: getShareableQuestions
+      tags: [shares]
+      summary: "Questions de la fiche que l'eleve peut partager (handler shares-shareable, S1 #34, v1.12). Eleve seulement."
+      description: |
+        Seules les questions partageables portent leur enonce, leurs choix et leur reponse (`answer` ou `expected`): une question jamais reussie (`reason: a_jouer`) est renvoyee sans enonce ni reponse, pour ne pas lire la cle avant de jouer.
+        Partageable = deja payee (`rewarded`), ou toute la fiche si elle a atteint ses 50 points. `reason`: `a_jouer`, `donnee_personnelle` (le filtre de donnees personnelles la refuse) ou `retiree` (retiree par une modification du cours).
+        Reponse `403` si le parent n'a pas active le partage pour cet eleve.
+      parameters: [{ $ref: '#/components/parameters/DocId' }]
+      responses:
+        '200':
+          description: Questions de la fiche
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareableList' }
+              example:
+                questions:
+                  - { questionId: 01JEXAMPLE0DOC0000000000AA:qcm:01, kind: qcm, prompt: "Ou se deroule la photosynthese ?", choices: [Les mitochondries, Les chloroplastes, Le noyau, Les ribosomes], answer: 1, shareable: true }
+                  - { questionId: 01JEXAMPLE0DOC0000000000AA:gap:01, kind: gap, prompt: "La photosynthese produit du ___.", expected: dioxygene, shareable: true }
+                  - { questionId: 01JEXAMPLE0DOC0000000000AA:qcm:02, kind: qcm, shareable: false, reason: a_jouer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /me/shares:
+    get:
+      operationId: listMyShares
+      tags: [shares]
+      summary: "Liens de partage de l'eleve (handler shares-list, S1 #34, v1.12). Jamais le lien lui-meme."
+      responses:
+        '200':
+          description: Liens de l'eleve (5 au plus actifs)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyShareList' }
+              example: { shares: [{ shareId: 01JEXAMPLE0SHR0000000000AA, title: Photosynthese, count: 8, createdAt: '2026-12-01T10:00:00Z', expiresAt: '2026-12-08T10:00:00Z', state: actif, reads: 3, reports: 0, outdated: false }] }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: createShare
+      tags: [shares]
+      summary: "Cree un lien de partage: copie figee de 5 a 20 questions d'une fiche (handler shares-create, S1 #34, v1.12). Eleve seulement, partage active par le parent."
+      description: |
+        Le jeton (`token`) n'est renvoye qu'ici: seul son hache est conserve, il ne se relit jamais. Le lien a donner est `<site>/p#t=<token>` (dans le fragment, jamais dans le chemin).
+        Erreurs: `403` (partage coupe pour cet eleve, ou eleve suspendu), `404` (fiche inconnue), `400 titre_refuse` (le titre contient une donnee personnelle ou un mot refuse), `409 questions_non_partageables`, `429 plafond_partages` (5 liens actifs par eleve, 10 par famille, 10 creations par jour et par eleve).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShareCreateRequest' }
+            example: { docId: 01JEXAMPLE0DOC0000000000AA, questionIds: ['01JEXAMPLE0DOC0000000000AA:qcm:01', '01JEXAMPLE0DOC0000000000AA:qcm:03', '01JEXAMPLE0DOC0000000000AA:qcm:04', '01JEXAMPLE0DOC0000000000AA:gap:01', '01JEXAMPLE0DOC0000000000AA:gap:02'], title: Photosynthese, ttlDays: 7 }
+      responses:
+        '201':
+          description: Lien cree
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareCreated' }
+              example: { shareId: 01JEXAMPLE0SHR0000000000AA, token: AbCdEfGhIjKlMnOpQrStUv, expiresAt: '2026-12-08T10:00:00Z' }
+        '400':
+          description: "Requete invalide (`requete_invalide`) ou titre refuse (`titre_refuse`, message neutre, le mot n'est jamais nomme)"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: titre_refuse, message: "Ce titre n'est pas possible, essaie-en un autre" } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: "`questions_non_partageables`: une question n'est pas partageable (pas encore jouee, retiree ou refusee par le filtre)"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: questions_non_partageables, message: "Certaines questions ne peuvent pas etre partagees" } } }
+        '429':
+          description: "`plafond_partages`: trop de liens actifs ou de creations aujourd'hui"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: plafond_partages, message: "Tu as deja trop de liens, supprime-en un" } } }
+  /me/shares/{shareId}:
+    delete:
+      operationId: deleteMyShare
+      tags: [shares]
+      summary: "Revoque un lien de l'eleve (handler shares-delete, S1 #34, v1.12). Effet immediat."
+      parameters: [{ $ref: '#/components/parameters/ShareId' }]
+      responses:
+        '204': { description: Revoque }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: "Lien inconnu ou d'un autre eleve (indiscernable)"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: introuvable, message: Introuvable } } }
+  /students/{sid}/shares:
+    get:
+      operationId: listStudentShares
+      tags: [shares]
+      summary: "Le parent voit les liens d'un eleve, sans les questions ni le lien (handler shares-parent-list, S1 #34, v1.12)"
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      responses:
+        '200':
+          description: "Liens de l'eleve. `purgePending`: le partage est coupe mais des liens restent (la suppression n'est pas finie: la rejouer avec `DELETE`)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentShareList' }
+              example: { shares: [{ shareId: 01JEXAMPLE0SHR0000000000AA, title: Photosynthese, count: 8, createdAt: '2026-12-01T10:00:00Z', expiresAt: '2026-12-08T10:00:00Z', state: suspendu, reads: 12, reports: 3 }], purgePending: false }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteStudentShares
+      tags: [shares]
+      summary: "Le parent supprime tous les liens d'un eleve (handler shares-parent-delete, S1 #34, v1.12). Idempotent, rejouable."
+      description: |
+        Sert a la coupure du partage: le site appelle d'abord `PATCH /students/{sid}` avec `sharing: false` (le drapeau, creation refusee tout de suite), puis cette route. Les copies sont supprimees avant les references; un rejeu apres un echec ne fait que finir le travail.
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      responses:
+        '204': { description: "Tous les liens de l'eleve sont supprimes (aucun lien: 204 aussi)" }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /students/{sid}/shares/{shareId}:
+    delete:
+      operationId: deleteStudentShare
+      tags: [shares]
+      summary: "Le parent revoque un lien d'un eleve (handler shares-parent-delete, S1 #34, v1.12)"
+      parameters: [{ $ref: '#/components/parameters/StudentId' }, { $ref: '#/components/parameters/ShareId' }]
+      responses:
+        '204': { description: Revoque }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /shares/open:
+    post:
+      operationId: openShare
+      tags: [shares]
+      summary: "Le destinataire ouvre un QCM partage. Route PUBLIQUE, sans JWT (handler shares-open, S1 #34, v1.12)"
+      description: |
+        Le jeton est dans le corps, jamais dans le chemin ni l'URL (les journaux d'acces n'ont pas les corps). Reponse unique `404 lien_indisponible` pour un jeton mal forme, inconnu, expire, revoque, suspendu ou dont le plafond de lectures du jour est atteint.
+        Reponse `Cache-Control: no-store`. Aucun identifiant de fiche, d'eleve ou de famille. Le destinataire ne gagne aucun point et rien n'est enregistre de ses reponses.
+        Fermee par defaut (`SHARE_PUBLIC_ENABLED` a `false`): meme `404`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShareOpenRequest' }
+            example: { token: AbCdEfGhIjKlMnOpQrStUv }
+      responses:
+        '200':
+          description: Copie figee du QCM
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SharedQuiz' }
+              example:
+                title: Photosynthese
+                subject: svt
+                questions:
+                  - { kind: qcm, prompt: "Ou se deroule la photosynthese ?", choices: [Les mitochondries, Les chloroplastes, Le noyau, Les ribosomes], answer: 1 }
+                  - { kind: gap, prompt: "La photosynthese produit du ___.", expected: dioxygene }
+                  - { kind: qcm, prompt: "Quelle energie la plante utilise-t-elle ?", choices: [Chimique, Lumineuse, Thermique, Nucleaire], answer: 1 }
+                  - { kind: qcm, prompt: "Quel gaz la plante absorbe-t-elle ?", choices: [Le dioxygene, Le diazote, Le dioxyde de carbone, L'argon], answer: 2 }
+                  - { kind: gap, prompt: "Les chloroplastes contiennent de la ___.", expected: chlorophylle }
+                expiresAt: '2026-12-08T10:00:00Z'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: "`lien_indisponible`: reponse unique pour tout lien inutilisable"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: lien_indisponible, message: "Ce lien n'est plus disponible" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /shares/report:
+    post:
+      operationId: reportShare
+      tags: [shares]
+      summary: "Le destinataire signale un QCM partage. Route PUBLIQUE, sans JWT (handler shares-report, S1 #34, v1.12)"
+      description: |
+        Motif dans une liste fermee, aucun texte libre, aucune adresse ni identifiant du signaleur n'est conserve. A 3 signalements le lien est suspendu. Meme `404 lien_indisponible` unique que `POST /shares/open`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShareReportRequest' }
+            example: { token: AbCdEfGhIjKlMnOpQrStUv, reason: inapproprie }
+      responses:
+        '204': { description: Signalement enregistre }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: "`lien_indisponible`"
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' }, example: { code: lien_indisponible, message: "Ce lien n'est plus disponible" } } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -1384,6 +1558,7 @@ components:
     RevisionId: { name: revisionId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     FolderId: { name: folderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     ExoId: { name: exoId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    ShareId: { name: shareId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     CopieId: { name: copieId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     TestId: { name: testId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     SchoolYear: { name: schoolYear, in: query, required: false, schema: { type: string, pattern: '^[0-9]{4}-[0-9]{4}$' }, description: "Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027" }
@@ -1417,7 +1592,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris, matiere_non_prevue, plafond_exercices, fiche_trop_courte, pas_encore, trop_tot, deja_en_cours, quota_copies, plafond_copies, copie_deja_rendue, solution_vue, en_correction, fiche_trop_revisee, plafond_revisions], description: "M1 #90 (1.11.0): `fiche_trop_revisee` (409): la fiche a epuise ses numeros de questions ou d'affirmations, la supprimer et rescanner; `plafond_revisions` (429): 1 modification par cours et par jour, 2 par eleve et par jour, ou plafond mensuel de cout atteint (0,50 EUR par eleve, 1,50 EUR par famille). E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
+        code: { type: string, enum: [requete_invalide, interdit, introuvable, etat_invalide, quota_epuise, budget_epuise, dossier_nom_pris, dossiers_limite, indisponible, cours_plein, aucune_question, pseudo_refuse, pseudo_pris, matiere_non_prevue, plafond_exercices, fiche_trop_courte, pas_encore, trop_tot, deja_en_cours, quota_copies, plafond_copies, copie_deja_rendue, solution_vue, en_correction, fiche_trop_revisee, plafond_revisions, titre_refuse, questions_non_partageables, plafond_partages, lien_indisponible], description: "S1 #34 (1.12.0): `titre_refuse` (400): le titre d'un partage contient une donnee personnelle ou un mot refuse (message neutre); `questions_non_partageables` (409): une question choisie n'est pas partageable; `plafond_partages` (429): 5 liens actifs par eleve, 10 par famille ou 10 creations par jour; `lien_indisponible` (404, routes publiques): reponse unique pour tout lien inutilisable. M1 #90 (1.11.0): `fiche_trop_revisee` (409): la fiche a epuise ses numeros de questions ou d'affirmations, la supprimer et rescanner; `plafond_revisions` (429): 1 modification par cours et par jour, 2 par eleve et par jour, ou plafond mensuel de cout atteint (0,50 EUR par eleve, 1,50 EUR par famille). E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP." }
         message: { type: string, maxLength: 500 }
         resetDate: { type: string, format: date, description: Remise a zero du quota (1er du mois a Paris) }
     JobState:
@@ -2151,6 +2326,7 @@ components:
         under15: { type: boolean }
         status: { type: string, enum: [actif, suspendu] }
         pageQuota: { type: integer, minimum: 0, maximum: 500, description: "Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur" }
+        sharing: { type: boolean, description: "Partage de QCM par lien active par le parent pour cet eleve (v1.12). Absent = faux (ferme par defaut, y compris pour les plus de 15 ans)." }
     StudentCreateRequest:
       type: object
       required: [pseudo, schoolLevel, under15, parentalAuthority, policyVersion]
@@ -2198,6 +2374,7 @@ components:
         status: { type: string, enum: [actif, suspendu] }
         pageQuota: { type: integer, minimum: 0, maximum: 500, description: "Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur" }
         schoolLevel: { type: string, enum: [seconde, premiere, terminale] }
+        sharing: { type: boolean, description: "Active ou coupe le partage de QCM par lien pour cet eleve (v1.12). `false` ne fait que poser le drapeau (creation refusee tout de suite): supprimer ensuite les liens par `DELETE /students/{sid}/shares`." }
     Dashboard:
       type: object
       required: [students, familyPagesRemaining, familyPagesLimit]
@@ -2258,6 +2435,7 @@ components:
               description: Profil de jeu (XP, serie, badges, signalements valides)
               additionalProperties: true
             activeDays: { type: array, items: { type: string }, description: Jours (Paris) ou l'eleve a joue }
+            shares: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/ShareExport' }, description: "Liens de partage de l'eleve (v1.12): titre, nombre de questions, dates, etat, lectures. Sans jeton, sans copie, sans question." }
             testsCount: { type: integer, minimum: 0, description: "Nombre de passages de test conserves (v1.4). Le detail est dans l'archive `POST /family/export/archive`." }
 
             attempts:
@@ -2444,3 +2622,116 @@ components:
         comment: { type: string }
         status: { type: string, enum: [ouvert, valide, rejete] }
         createdAt: { type: string }
+    ShareToken:
+      type: string
+      pattern: '^[A-Za-z0-9_-]{22}$'
+      description: "Jeton de 128 bits en base64url (22 caracteres). Jamais stocke (seul son hache SHA-256 l'est), renvoye une seule fois a la creation."
+    ShareState:
+      type: string
+      enum: [actif, suspendu]
+      description: "`suspendu`: 3 signalements recus. L'expiration se lit sur `expiresAt`."
+    ShareableQuestion:
+      type: object
+      required: [questionId, kind, shareable]
+      description: "`prompt`, `choices` et `answer` ou `expected` ne sont presents que si `shareable` est vrai."
+      properties:
+        questionId: { type: string }
+        kind: { type: string, enum: [qcm, gap] }
+        prompt: { type: string, maxLength: 1000 }
+        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 } }
+        answer: { type: integer, minimum: 0, maximum: 3, description: "Indice du bon choix (qcm)" }
+        expected: { type: string, maxLength: 300, description: "Mot attendu (trou)" }
+        shareable: { type: boolean }
+        reason: { type: string, enum: [a_jouer, donnee_personnelle, retiree], description: "Present quand `shareable` est faux" }
+    ShareableList:
+      type: object
+      required: [questions]
+      properties:
+        questions: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ShareableQuestion' } }
+    ShareCreateRequest:
+      type: object
+      required: [docId, questionIds, title]
+      properties:
+        docId: { type: string, minLength: 1, maxLength: 64 }
+        questionIds: { type: array, minItems: 5, maxItems: 20, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 80 }, description: "Questions de la fiche `docId`, partageables" }
+        title: { type: string, minLength: 3, maxLength: 60, description: "Titre court ecrit par l'eleve. Memes regles de forme que le surnom, et filtre de donnees personnelles. Jamais repris du titre de la fiche." }
+        ttlDays: { type: integer, enum: [1, 7, 30], default: 7 }
+    ShareCreated:
+      type: object
+      required: [shareId, token, expiresAt]
+      properties:
+        shareId: { type: string }
+        token: { $ref: '#/components/schemas/ShareToken' }
+        expiresAt: { type: string, format: date-time }
+    ShareSummary:
+      type: object
+      required: [shareId, title, count, createdAt, expiresAt, state, reads, reports]
+      description: "Un lien, sans le jeton ni les questions."
+      properties:
+        shareId: { type: string }
+        title: { type: string, maxLength: 60 }
+        count: { type: integer, minimum: 5, maximum: 20, description: Nombre de questions }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        state: { $ref: '#/components/schemas/ShareState' }
+        reads: { type: integer, minimum: 0, description: "Somme des lectures sur la vie du lien" }
+        reports: { type: integer, minimum: 0 }
+    MyShare:
+      allOf:
+        - $ref: '#/components/schemas/ShareSummary'
+        - type: object
+          required: [outdated]
+          properties:
+            outdated: { type: boolean, description: "La fiche a ete modifiee depuis la copie (la copie reste figee)" }
+    MyShareList:
+      type: object
+      required: [shares]
+      properties:
+        shares: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/MyShare' } }
+    StudentShareList:
+      type: object
+      required: [shares, purgePending]
+      properties:
+        shares: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/ShareSummary' } }
+        purgePending: { type: boolean, description: "Le partage est coupe (`sharing` faux) mais des liens restent: rejouer `DELETE /students/{sid}/shares`" }
+    ShareExport:
+      type: object
+      required: [title, count, createdAt, expiresAt, state, reads]
+      description: "Un lien dans l'export. Ni jeton, ni copie, ni question."
+      properties:
+        title: { type: string, maxLength: 60 }
+        count: { type: integer, minimum: 5, maximum: 20 }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        state: { $ref: '#/components/schemas/ShareState' }
+        reads: { type: integer, minimum: 0 }
+    ShareOpenRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { $ref: '#/components/schemas/ShareToken' }
+    ShareReportRequest:
+      type: object
+      required: [token, reason]
+      properties:
+        token: { $ref: '#/components/schemas/ShareToken' }
+        reason: { type: string, enum: [inapproprie, donnees_perso, autre] }
+    SharedQuestion:
+      type: object
+      required: [kind, prompt]
+      description: "Liste blanche: aucun identifiant de fiche, de question, d'affirmation, d'eleve ou de famille. `qcm`: `choices` et `answer`. `gap`: `expected` (compare avec `normalizeGap`)."
+      properties:
+        kind: { type: string, enum: [qcm, gap] }
+        prompt: { type: string, maxLength: 1000 }
+        choices: { type: array, minItems: 4, maxItems: 4, items: { type: string, maxLength: 300 } }
+        answer: { type: integer, minimum: 0, maximum: 3 }
+        expected: { type: string, maxLength: 300 }
+    SharedQuiz:
+      type: object
+      required: [title, questions, expiresAt]
+      description: "Copie figee, publique. Jamais de nom, pseudo, identifiant, cours, photo, schema, exercice, affirmation, source ni point."
+      properties:
+        title: { type: string, maxLength: 60 }
+        subject: { $ref: '#/components/schemas/Subject' }
+        questions: { type: array, minItems: 5, maxItems: 20, items: { $ref: '#/components/schemas/SharedQuestion' } }
+        expiresAt: { type: string, format: date-time }

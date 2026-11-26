@@ -940,16 +940,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/docs/{docId}/shareable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Questions de la fiche que l'eleve peut partager (handler shares-shareable, S1 #34, v1.12). Eleve seulement.
+         * @description Seules les questions partageables portent leur enonce, leurs choix et leur reponse (`answer` ou `expected`): une question jamais reussie (`reason: a_jouer`) est renvoyee sans enonce ni reponse, pour ne pas lire la cle avant de jouer.
+         *     Partageable = deja payee (`rewarded`), ou toute la fiche si elle a atteint ses 50 points. `reason`: `a_jouer`, `donnee_personnelle` (le filtre de donnees personnelles la refuse) ou `retiree` (retiree par une modification du cours).
+         *     Reponse `403` si le parent n'a pas active le partage pour cet eleve.
+         */
+        get: operations["getShareableQuestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Liens de partage de l'eleve (handler shares-list, S1 #34, v1.12). Jamais le lien lui-meme. */
+        get: operations["listMyShares"];
+        put?: never;
+        /**
+         * Cree un lien de partage: copie figee de 5 a 20 questions d'une fiche (handler shares-create, S1 #34, v1.12). Eleve seulement, partage active par le parent.
+         * @description Le jeton (`token`) n'est renvoye qu'ici: seul son hache est conserve, il ne se relit jamais. Le lien a donner est `<site>/p#t=<token>` (dans le fragment, jamais dans le chemin).
+         *     Erreurs: `403` (partage coupe pour cet eleve, ou eleve suspendu), `404` (fiche inconnue), `400 titre_refuse` (le titre contient une donnee personnelle ou un mot refuse), `409 questions_non_partageables`, `429 plafond_partages` (5 liens actifs par eleve, 10 par famille, 10 creations par jour et par eleve).
+         */
+        post: operations["createShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/shares/{shareId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoque un lien de l'eleve (handler shares-delete, S1 #34, v1.12). Effet immediat. */
+        delete: operations["deleteMyShare"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{sid}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Le parent voit les liens d'un eleve, sans les questions ni le lien (handler shares-parent-list, S1 #34, v1.12) */
+        get: operations["listStudentShares"];
+        put?: never;
+        post?: never;
+        /**
+         * Le parent supprime tous les liens d'un eleve (handler shares-parent-delete, S1 #34, v1.12). Idempotent, rejouable.
+         * @description Sert a la coupure du partage: le site appelle d'abord `PATCH /students/{sid}` avec `sharing: false` (le drapeau, creation refusee tout de suite), puis cette route. Les copies sont supprimees avant les references; un rejeu apres un echec ne fait que finir le travail.
+         */
+        delete: operations["deleteStudentShares"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{sid}/shares/{shareId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Le parent revoque un lien d'un eleve (handler shares-parent-delete, S1 #34, v1.12) */
+        delete: operations["deleteStudentShare"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shares/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Le destinataire ouvre un QCM partage. Route PUBLIQUE, sans JWT (handler shares-open, S1 #34, v1.12)
+         * @description Le jeton est dans le corps, jamais dans le chemin ni l'URL (les journaux d'acces n'ont pas les corps). Reponse unique `404 lien_indisponible` pour un jeton mal forme, inconnu, expire, revoque, suspendu ou dont le plafond de lectures du jour est atteint.
+         *     Reponse `Cache-Control: no-store`. Aucun identifiant de fiche, d'eleve ou de famille. Le destinataire ne gagne aucun point et rien n'est enregistre de ses reponses.
+         *     Fermee par defaut (`SHARE_PUBLIC_ENABLED` a `false`): meme `404`.
+         */
+        post: operations["openShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shares/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Le destinataire signale un QCM partage. Route PUBLIQUE, sans JWT (handler shares-report, S1 #34, v1.12)
+         * @description Motif dans une liste fermee, aucun texte libre, aucune adresse ni identifiant du signaleur n'est conserve. A 3 signalements le lien est suspendu. Meme `404 lien_indisponible` unique que `POST /shares/open`.
+         */
+        post: operations["reportShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Error: {
             /**
-             * @description M1 #90 (1.11.0): `fiche_trop_revisee` (409): la fiche a epuise ses numeros de questions ou d'affirmations, la supprimer et rescanner; `plafond_revisions` (429): 1 modification par cours et par jour, 2 par eleve et par jour, ou plafond mensuel de cout atteint (0,50 EUR par eleve, 1,50 EUR par famille). E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description S1 #34 (1.12.0): `titre_refuse` (400): le titre d'un partage contient une donnee personnelle ou un mot refuse (message neutre); `questions_non_partageables` (409): une question choisie n'est pas partageable; `plafond_partages` (429): 5 liens actifs par eleve, 10 par famille ou 10 creations par jour; `lien_indisponible` (404, routes publiques): reponse unique pour tout lien inutilisable. M1 #90 (1.11.0): `fiche_trop_revisee` (409): la fiche a epuise ses numeros de questions ou d'affirmations, la supprimer et rescanner; `plafond_revisions` (429): 1 modification par cours et par jour, 2 par eleve et par jour, ou plafond mensuel de cout atteint (0,50 EUR par eleve, 1,50 EUR par famille). E1 (1.9.0, tous 409 sauf mention): `matiere_non_prevue` (maths et physique seulement), `plafond_exercices` (5 par fiche, 1 generation par fiche et par jour, 5 par jour), `fiche_trop_courte` (moins de 2 affirmations verifiees), `pas_encore` (solution pas encore disponible), `trop_tot` (copie rendue moins de 60 s apres l'ouverture), `deja_en_cours` (une correction a la fois), `quota_copies` (40 pages par mois, `resetDate`), `plafond_copies` (3 corrections par exercice, 5 par jour), `copie_deja_rendue` (etat `echec` d'une copie dont une page a deja ete corrigee), `solution_vue` (copie sans points), `en_correction` (suppression refusee pendant la correction). `pseudo_refuse` (400, ajoute en 1.8.0): surnom refuse (forme, mot de la liste, donnee personnelle); message neutre, le mot n'est jamais nomme. `pseudo_pris` (409, ajoute en 1.8.0): surnom deja porte par un autre eleve de la famille. `aucune_question` (409, ajoute en 1.7.0): `POST /practice/session` sans aucune question disponible. `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris" | "matiere_non_prevue" | "plafond_exercices" | "fiche_trop_courte" | "pas_encore" | "trop_tot" | "deja_en_cours" | "quota_copies" | "plafond_copies" | "copie_deja_rendue" | "solution_vue" | "en_correction" | "fiche_trop_revisee" | "plafond_revisions";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein" | "aucune_question" | "pseudo_refuse" | "pseudo_pris" | "matiere_non_prevue" | "plafond_exercices" | "fiche_trop_courte" | "pas_encore" | "trop_tot" | "deja_en_cours" | "quota_copies" | "plafond_copies" | "copie_deja_rendue" | "solution_vue" | "en_correction" | "fiche_trop_revisee" | "plafond_revisions" | "titre_refuse" | "questions_non_partageables" | "plafond_partages" | "lien_indisponible";
             message: string;
             /**
              * Format: date
@@ -1657,6 +1798,8 @@ export interface components {
             status: "actif" | "suspendu";
             /** @description Plafond reel = plafond de la famille de l environnement (50 en prod, 500 en dev), verifie par le serveur */
             pageQuota: number;
+            /** @description Partage de QCM par lien active par le parent pour cet eleve (v1.12). Absent = faux (ferme par defaut, y compris pour les plus de 15 ans). */
+            sharing?: boolean;
         };
         StudentCreateRequest: {
             /** @description Surnom de depart (sans nom de famille): base de l'identifiant de connexion et surnom affiche par defaut. Le serveur applique en plus les regles de surnom (400 `pseudo_refuse`) */
@@ -1705,6 +1848,8 @@ export interface components {
             pageQuota?: number;
             /** @enum {string} */
             schoolLevel?: "seconde" | "premiere" | "terminale";
+            /** @description Active ou coupe le partage de QCM par lien pour cet eleve (v1.12). `false` ne fait que poser le drapeau (creation refusee tout de suite): supprimer ensuite les liens par `DELETE /students/{sid}/shares`. */
+            sharing?: boolean;
         };
         Dashboard: {
             students: {
@@ -1751,6 +1896,8 @@ export interface components {
             };
             /** @description Jours (Paris) ou l'eleve a joue */
             activeDays: string[];
+            /** @description Liens de partage de l'eleve (v1.12): titre, nombre de questions, dates, etat, lectures. Sans jeton, sans copie, sans question. */
+            shares?: components["schemas"]["ShareExport"][];
             /** @description Nombre de passages de test conserves (v1.4). Le detail est dans l'archive `POST /family/export/archive`. */
             testsCount?: number;
             attempts: {
@@ -1943,6 +2090,115 @@ export interface components {
             status: "ouvert" | "valide" | "rejete";
             createdAt: string;
         };
+        /** @description Jeton de 128 bits en base64url (22 caracteres). Jamais stocke (seul son hache SHA-256 l'est), renvoye une seule fois a la creation. */
+        ShareToken: string;
+        /**
+         * @description `suspendu`: 3 signalements recus. L'expiration se lit sur `expiresAt`.
+         * @enum {string}
+         */
+        ShareState: "actif" | "suspendu";
+        /** @description `prompt`, `choices` et `answer` ou `expected` ne sont presents que si `shareable` est vrai. */
+        ShareableQuestion: {
+            questionId: string;
+            /** @enum {string} */
+            kind: "qcm" | "gap";
+            prompt?: string;
+            choices?: string[];
+            /** @description Indice du bon choix (qcm) */
+            answer?: number;
+            /** @description Mot attendu (trou) */
+            expected?: string;
+            shareable: boolean;
+            /**
+             * @description Present quand `shareable` est faux
+             * @enum {string}
+             */
+            reason?: "a_jouer" | "donnee_personnelle" | "retiree";
+        };
+        ShareableList: {
+            questions: components["schemas"]["ShareableQuestion"][];
+        };
+        ShareCreateRequest: {
+            docId: string;
+            /** @description Questions de la fiche `docId`, partageables */
+            questionIds: string[];
+            /** @description Titre court ecrit par l'eleve. Memes regles de forme que le surnom, et filtre de donnees personnelles. Jamais repris du titre de la fiche. */
+            title: string;
+            /**
+             * @default 7
+             * @enum {integer}
+             */
+            ttlDays: 1 | 7 | 30;
+        };
+        ShareCreated: {
+            shareId: string;
+            token: components["schemas"]["ShareToken"];
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        /** @description Un lien, sans le jeton ni les questions. */
+        ShareSummary: {
+            shareId: string;
+            title: string;
+            /** @description Nombre de questions */
+            count: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            state: components["schemas"]["ShareState"];
+            /** @description Somme des lectures sur la vie du lien */
+            reads: number;
+            reports: number;
+        };
+        MyShare: components["schemas"]["ShareSummary"] & {
+            /** @description La fiche a ete modifiee depuis la copie (la copie reste figee) */
+            outdated: boolean;
+        };
+        MyShareList: {
+            shares: components["schemas"]["MyShare"][];
+        };
+        StudentShareList: {
+            shares: components["schemas"]["ShareSummary"][];
+            /** @description Le partage est coupe (`sharing` faux) mais des liens restent: rejouer `DELETE /students/{sid}/shares` */
+            purgePending: boolean;
+        };
+        /** @description Un lien dans l'export. Ni jeton, ni copie, ni question. */
+        ShareExport: {
+            title: string;
+            count: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            state: components["schemas"]["ShareState"];
+            reads: number;
+        };
+        ShareOpenRequest: {
+            token: components["schemas"]["ShareToken"];
+        };
+        ShareReportRequest: {
+            token: components["schemas"]["ShareToken"];
+            /** @enum {string} */
+            reason: "inapproprie" | "donnees_perso" | "autre";
+        };
+        /** @description Liste blanche: aucun identifiant de fiche, de question, d'affirmation, d'eleve ou de famille. `qcm`: `choices` et `answer`. `gap`: `expected` (compare avec `normalizeGap`). */
+        SharedQuestion: {
+            /** @enum {string} */
+            kind: "qcm" | "gap";
+            prompt: string;
+            choices?: string[];
+            answer?: number;
+            expected?: string;
+        };
+        /** @description Copie figee, publique. Jamais de nom, pseudo, identifiant, cours, photo, schema, exercice, affirmation, source ni point. */
+        SharedQuiz: {
+            title: string;
+            subject?: components["schemas"]["Subject"];
+            questions: components["schemas"]["SharedQuestion"][];
+            /** Format: date-time */
+            expiresAt: string;
+        };
     };
     responses: {
         /** @description Requete invalide */
@@ -2061,6 +2317,7 @@ export interface components {
         RevisionId: string;
         FolderId: string;
         ExoId: string;
+        ShareId: string;
         CopieId: string;
         TestId: string;
         /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
@@ -5122,6 +5379,457 @@ export interface operations {
                      * @example {
                      *       "code": "en_correction",
                      *       "message": "La correction est en cours"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getShareableQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                docId: components["parameters"]["DocId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Questions de la fiche */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "questions": [
+                     *         {
+                     *           "questionId": "01JEXAMPLE0DOC0000000000AA:qcm:01",
+                     *           "kind": "qcm",
+                     *           "prompt": "Ou se deroule la photosynthese ?",
+                     *           "choices": [
+                     *             "Les mitochondries",
+                     *             "Les chloroplastes",
+                     *             "Le noyau",
+                     *             "Les ribosomes"
+                     *           ],
+                     *           "answer": 1,
+                     *           "shareable": true
+                     *         },
+                     *         {
+                     *           "questionId": "01JEXAMPLE0DOC0000000000AA:gap:01",
+                     *           "kind": "gap",
+                     *           "prompt": "La photosynthese produit du ___.",
+                     *           "expected": "dioxygene",
+                     *           "shareable": true
+                     *         },
+                     *         {
+                     *           "questionId": "01JEXAMPLE0DOC0000000000AA:qcm:02",
+                     *           "kind": "qcm",
+                     *           "shareable": false,
+                     *           "reason": "a_jouer"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ShareableList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMyShares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liens de l'eleve (5 au plus actifs) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "shares": [
+                     *         {
+                     *           "shareId": "01JEXAMPLE0SHR0000000000AA",
+                     *           "title": "Photosynthese",
+                     *           "count": 8,
+                     *           "createdAt": "2026-12-01T10:00:00Z",
+                     *           "expiresAt": "2026-12-08T10:00:00Z",
+                     *           "state": "actif",
+                     *           "reads": 3,
+                     *           "reports": 0,
+                     *           "outdated": false
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["MyShareList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "docId": "01JEXAMPLE0DOC0000000000AA",
+                 *       "questionIds": [
+                 *         "01JEXAMPLE0DOC0000000000AA:qcm:01",
+                 *         "01JEXAMPLE0DOC0000000000AA:qcm:03",
+                 *         "01JEXAMPLE0DOC0000000000AA:qcm:04",
+                 *         "01JEXAMPLE0DOC0000000000AA:gap:01",
+                 *         "01JEXAMPLE0DOC0000000000AA:gap:02"
+                 *       ],
+                 *       "title": "Photosynthese",
+                 *       "ttlDays": 7
+                 *     }
+                 */
+                "application/json": components["schemas"]["ShareCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Lien cree */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "shareId": "01JEXAMPLE0SHR0000000000AA",
+                     *       "token": "AbCdEfGhIjKlMnOpQrStUv",
+                     *       "expiresAt": "2026-12-08T10:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ShareCreated"];
+                };
+            };
+            /** @description Requete invalide (`requete_invalide`) ou titre refuse (`titre_refuse`, message neutre, le mot n'est jamais nomme) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "titre_refuse",
+                     *       "message": "Ce titre n'est pas possible, essaie-en un autre"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `questions_non_partageables`: une question n'est pas partageable (pas encore jouee, retiree ou refusee par le filtre) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "questions_non_partageables",
+                     *       "message": "Certaines questions ne peuvent pas etre partagees"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `plafond_partages`: trop de liens actifs ou de creations aujourd'hui */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "plafond_partages",
+                     *       "message": "Tu as deja trop de liens, supprime-en un"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteMyShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shareId: components["parameters"]["ShareId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoque */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description Lien inconnu ou d'un autre eleve (indiscernable) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "introuvable",
+                     *       "message": "Introuvable"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listStudentShares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liens de l'eleve. `purgePending`: le partage est coupe mais des liens restent (la suppression n'est pas finie: la rejouer avec `DELETE`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "shares": [
+                     *         {
+                     *           "shareId": "01JEXAMPLE0SHR0000000000AA",
+                     *           "title": "Photosynthese",
+                     *           "count": 8,
+                     *           "createdAt": "2026-12-01T10:00:00Z",
+                     *           "expiresAt": "2026-12-08T10:00:00Z",
+                     *           "state": "suspendu",
+                     *           "reads": 12,
+                     *           "reports": 3
+                     *         }
+                     *       ],
+                     *       "purgePending": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StudentShareList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteStudentShares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tous les liens de l'eleve sont supprimes (aucun lien: 204 aussi) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteStudentShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+                shareId: components["parameters"]["ShareId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoque */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    openShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "AbCdEfGhIjKlMnOpQrStUv"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ShareOpenRequest"];
+            };
+        };
+        responses: {
+            /** @description Copie figee du QCM */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "title": "Photosynthese",
+                     *       "subject": "svt",
+                     *       "questions": [
+                     *         {
+                     *           "kind": "qcm",
+                     *           "prompt": "Ou se deroule la photosynthese ?",
+                     *           "choices": [
+                     *             "Les mitochondries",
+                     *             "Les chloroplastes",
+                     *             "Le noyau",
+                     *             "Les ribosomes"
+                     *           ],
+                     *           "answer": 1
+                     *         },
+                     *         {
+                     *           "kind": "gap",
+                     *           "prompt": "La photosynthese produit du ___.",
+                     *           "expected": "dioxygene"
+                     *         },
+                     *         {
+                     *           "kind": "qcm",
+                     *           "prompt": "Quelle energie la plante utilise-t-elle ?",
+                     *           "choices": [
+                     *             "Chimique",
+                     *             "Lumineuse",
+                     *             "Thermique",
+                     *             "Nucleaire"
+                     *           ],
+                     *           "answer": 1
+                     *         },
+                     *         {
+                     *           "kind": "qcm",
+                     *           "prompt": "Quel gaz la plante absorbe-t-elle ?",
+                     *           "choices": [
+                     *             "Le dioxygene",
+                     *             "Le diazote",
+                     *             "Le dioxyde de carbone",
+                     *             "L'argon"
+                     *           ],
+                     *           "answer": 2
+                     *         },
+                     *         {
+                     *           "kind": "gap",
+                     *           "prompt": "Les chloroplastes contiennent de la ___.",
+                     *           "expected": "chlorophylle"
+                     *         }
+                     *       ],
+                     *       "expiresAt": "2026-12-08T10:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SharedQuiz"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description `lien_indisponible`: reponse unique pour tout lien inutilisable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "lien_indisponible",
+                     *       "message": "Ce lien n'est plus disponible"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    reportShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "AbCdEfGhIjKlMnOpQrStUv",
+                 *       "reason": "inapproprie"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ShareReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Signalement enregistre */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description `lien_indisponible` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "lien_indisponible",
+                     *       "message": "Ce lien n'est plus disponible"
                      *     }
                      */
                     "application/json": components["schemas"]["Error"];

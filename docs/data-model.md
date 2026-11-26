@@ -217,3 +217,23 @@ Aucune table, aucun index, aucun bucket nouveau. La route de creation est fermee
 - Un job de modification n'est jamais un scan: `listScans`, `failJob`, `endWithoutDoc`, `purgeScan`, `expire`, `jobs-cancel`, `jobs-confirm` et `scans-delete` l'ignorent.
 - `deleteStudentTree` supprime aussi les partitions `DOC#<revisionId>-<k>` listees dans `docIds` du job.
 - Les lecteurs de questions (`retiree`, `claimsRetired`) sont la partie 2 (M1-C).
+## S1 #34: partage de QCM par lien (contrat 1.12.0, `docs/S1-design.md` sections 6 et 8)
+
+Aucune table, aucun index, aucun bucket nouveau. Nouvelle partition `SHARE#<hache>` (`hache` = SHA-256 du jeton en hexadecimal; le jeton n'est jamais stocke): le role de la route publique ne lit que cette partition. Le partage est ferme par defaut (`sharing` absent = faux; `SHARE_PUBLIC_ENABLED` a `false`).
+
+| Element | Cle | Attributs | Ecrit par |
+|---|---|---|---|
+| Copie figee | `SHARE#<hache>` / `META` | `shareId`, `title`, `subject?`, `questions[]` (5 a 20: `kind`, `prompt`, `choices`, `answer` ou `expected`), `createdAt`, `expiresAt`, `state` (`actif`, `suspendu`), `reports`, `docRev`, `ttl` (`expiresAt` + 2 j). **Aucun** `sid`, `fid`, `docId` | `shares-create` (cree); `shares-open` et `shares-report` (`reports`, `state`, si l'element existe) |
+| Lectures du jour | `SHARE#<hache>` / `DAY#<aaaa-mm-jj>` | `n` (plafond 1 000, condition `n < 1000`), `ttl` = echeance du lien + 2 j | `shares-open` seul, apres lecture reussie de `META` |
+| Signalement | `SHARE#<hache>` / `REPORT#<ulid>` | `reason` (`inapproprie`, `donnees_perso`, `autre`), `at`, `ttl` 30 j. Aucun texte libre, aucune adresse | `shares-report` |
+| Reference | `STUDENT#<sid>` / `SHAREREF#<k>` (k de 1 a 5) | `shareId`, `hash`, `docId`, `title`, `count`, `createdAt`, `expiresAt`, `famSlot`, `ttl`. Pas de jeton | `shares-create`; supprimee par `shares-delete`, `shares-parent-delete` |
+| Emplacement famille | `FAMILY#<fid>` / `SHARESLOT#<k>` (k de 1 a 10) | `sid`, `expiresAt`, `ttl` | `shares-create`; supprime avec les references |
+| Creations du jour | `STUDENT#<sid>` / `SHAREJ#<aaaa-mm-jj>` | `n` (plafond 10), `ttl` 2 j | `shares-create` (meme transaction que la copie) |
+| Drapeau du parent | `FAMILY#<fid>` / `STUDENT#<sid>` | `sharing` (booleen, facultatif, absent = faux) | `students-update` seul (le drapeau, rien d'autre) |
+
+- Schemas Zod: `shared/items.ts` (`ShareItemSchema`, `ShareRefItemSchema`, `ShareSlotItemSchema`, `StudentSharingSchema`); cles: `keys.share`, `shareDay`, `shareReport`, `shareRef`, `shareSlot`, `shareCreateDay` (`shared/ddb/keys.ts`).
+- Plafonds (decides par le proprietaire, S1-P8): 5 liens actifs par eleve, 10 par famille, 10 creations par jour et par eleve, 1 000 lectures par lien et par jour, suspension a 3 signalements.
+- Expiration: 1, 7 (defaut) ou 30 jours, controlee par le code a chaque ouverture; le `ttl` DynamoDB (+ 2 jours) ne sert qu'au nettoyage.
+- Suppression en cascade (lot S1-D): la copie est supprimee **avant** la fiche, l'eleve ou la famille; option `deleteShares` de `shared/delete-tree.ts`, desactivee par defaut. Ce lot S1-K ne change pas `delete-tree.ts`.
+- Export: `StudentExport.shares[]` (titre, nombre de questions, dates, etat, lectures; sans jeton, sans copie, sans question).
+- Aucun element existant n'est modifie ni migre.

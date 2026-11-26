@@ -77,6 +77,19 @@ export const keys = {
   revFamily: (fid: string, month: string): Key => ({ PK: `FAMILY#${fid}`, SK: `REVQ#${month}` }),
   /** Requete d'une modification, sous le job (`JOB#<revisionId>`): `ttl` 7 jours, supprimee a la fin. */
   revChanges: (revisionId: string): Key => ({ PK: `JOB#${revisionId}`, SK: 'CHANGES' }),
+  // --- S1 #34 (docs/S1-design.md 6): partage de QCM par lien. Aucune table ni index nouveau. `hash` = SHA-256 du jeton (hexadecimal), jamais le jeton.
+  /** Copie figee publique (`META`), lue par `shares-open`. Partition a part: le role public ne lit que `SHARE#*`. */
+  share: (hash: string): Key => ({ PK: `SHARE#${hash}`, SK: 'META' }),
+  /** Compteur de lectures du jour d'un lien (`n`), `ttl` = echeance du lien + 2 jours. Ecrit par `shares-open` seul. */
+  shareDay: (hash: string, day: string): Key => ({ PK: `SHARE#${hash}`, SK: `DAY#${day}` }),
+  /** Signalement d'un destinataire (motif seulement), `ttl` 30 jours. */
+  shareReport: (hash: string, reportId: string): Key => ({ PK: `SHARE#${hash}`, SK: `REPORT#${reportId}` }),
+  /** Reference du lien chez l'eleve, emplacement `k` de 1 a 5. Pas de jeton. */
+  shareRef: (sid: string, k: number): Key => ({ PK: `STUDENT#${sid}`, SK: `SHAREREF#${k}` }),
+  /** Emplacement famille `k` de 1 a 10 (plafond de liens actifs par famille). */
+  shareSlot: (fid: string, k: number): Key => ({ PK: `FAMILY#${fid}`, SK: `SHARESLOT#${k}` }),
+  /** Compteur de creations du jour de l'eleve (`n`, plafond 10), `ttl` 2 jours. */
+  shareCreateDay: (sid: string, day: string): Key => ({ PK: `STUDENT#${sid}`, SK: `SHAREJ#${day}` }),
   /** Jeton d'activation en clair; seul son hache est stocke. */
   activation: (token: string): Key => ({ PK: `ACTIVATION#${sha256(token)}`, SK: 'META' }),
 };

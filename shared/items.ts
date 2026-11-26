@@ -190,3 +190,54 @@ export function retiredClaims(fiche: Record<string, unknown> | undefined): Set<n
   const a = fiche?.claimsRetired;
   return new Set(Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : []);
 }
+
+// --- S1 #34 (docs/S1-design.md 6): partage de QCM par lien. Aucune table ni index nouveau.
+/** Drapeau du parent sur l'element eleve (`FAMILY#<fid>` / `STUDENT#<sid>`): partage de QCM actif. Absent = ferme. Ecrit par `students-update` seul. */
+export const StudentSharingSchema = z.object({ sharing: z.boolean().optional() });
+
+const ShareStateSchema = z.enum(['actif', 'suspendu']);
+/** Question de la copie figee: AUCUN identifiant de fiche, de question ou d'affirmation. */
+export const ShareQuestionSchema = z.object({
+  kind: z.enum(['qcm', 'gap']),
+  prompt: z.string().max(1000),
+  choices: z.array(z.string().max(300)).length(4).optional(),
+  answer: z.number().int().min(0).max(3).optional(),
+  expected: z.string().max(300).optional(),
+});
+/** `SHARE#<hache>` / `META`: copie figee publique. Aucun champ d'identite (`sid`, `fid`, `docId` absents). `ttl` = `expiresAt` + 2 jours (nettoyage seulement). */
+export const ShareItemSchema = z.object({
+  PK: z.string().regex(/^SHARE#[0-9a-f]{64}$/),
+  SK: z.literal('META'),
+  shareId: z.string(),
+  title: z.string().min(3).max(60),
+  subject: z.enum(SUBJECTS).optional(),
+  questions: z.array(ShareQuestionSchema).min(5).max(20),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  state: ShareStateSchema,
+  reports: z.number().int().min(0),
+  docRev: z.number().int().min(0),
+  ttl: z.number().int(),
+});
+/** `STUDENT#<sid>` / `SHAREREF#<k>` (k de 1 a 5): reference du proprietaire. Pas de jeton. */
+export const ShareRefItemSchema = z.object({
+  PK: z.string(),
+  SK: z.string().regex(/^SHAREREF#[1-5]$/),
+  shareId: z.string(),
+  hash: z.string().regex(/^[0-9a-f]{64}$/),
+  docId: z.string(),
+  title: z.string().min(3).max(60),
+  count: z.number().int().min(5).max(20),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  famSlot: z.number().int().min(1).max(10),
+  ttl: z.number().int(),
+});
+/** `FAMILY#<fid>` / `SHARESLOT#<k>` (k de 1 a 10): emplacement famille. */
+export const ShareSlotItemSchema = z.object({
+  PK: z.string(),
+  SK: z.string().regex(/^SHARESLOT#([1-9]|10)$/),
+  sid: z.string(),
+  expiresAt: z.string(),
+  ttl: z.number().int(),
+});

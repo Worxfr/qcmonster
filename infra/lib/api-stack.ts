@@ -19,7 +19,7 @@ export interface RouteDef {
    * la route, l'autorisateur et la limitation. Un lot change SEULEMENT l'`owner` de ses lignes, dans sa PR.
    */
   owner?: Owner;
-  /** Route sans JWT (activation de l'eleve). */
+  /** Route sans JWT (activation de l'eleve, et les deux routes publiques du partage S1: ouverture et signalement). */
   public?: boolean;
   throttle?: Throttle;
 }
@@ -111,10 +111,21 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'POST /cours/{coursId}/revisions', handler: 'revise-create', owner: 'pipeline', throttle: { rate: 1, burst: 2 } },
   { route: 'GET /cours/{coursId}/revisions/{revisionId}', handler: 'revise-get', owner: 'pipeline', throttle: { rate: 5, burst: 10 } },
   { route: 'POST /cours/{coursId}/revisions/{revisionId}/cancel', handler: 'revise-cancel', owner: 'pipeline', throttle: { rate: 1, burst: 3 } },
+  // contract-v1.12 (S1 #34): partage de QCM par lien. Squelettes 501 (`owner` change dans la PR de S1-A). `POST /shares/open` et `POST /shares/report` sont PUBLIQUES.
+  // Limites: docs/S1-design.md section 7. La route publique saturee ne gene aucune autre route (limite par route).
+  { route: 'GET /docs/{docId}/shareable', handler: 'shares-shareable' },
+  { route: 'POST /me/shares', handler: 'shares-create', throttle: { rate: 1, burst: 3 } },
+  { route: 'GET /me/shares', handler: 'shares-list', throttle: { rate: 5, burst: 10 } },
+  { route: 'DELETE /me/shares/{shareId}', handler: 'shares-delete', throttle: { rate: 2, burst: 5 } },
+  { route: 'GET /students/{sid}/shares', handler: 'shares-parent-list', throttle: { rate: 5, burst: 10 } },
+  { route: 'DELETE /students/{sid}/shares', handler: 'shares-parent-delete', throttle: { rate: 2, burst: 5 } },
+  { route: 'DELETE /students/{sid}/shares/{shareId}', handler: 'shares-parent-delete', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /shares/open', handler: 'shares-open', public: true, throttle: { rate: 3, burst: 6 } },
+  { route: 'POST /shares/report', handler: 'shares-report', public: true, throttle: { rate: 1, burst: 3 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */
-export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1' | 'M1'> = {
+export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1' | 'M1' | 'S1'> = {
   'scans-create': 'L2a', 'jobs-get': 'L2a', 'jobs-transcription': 'L2a', 'jobs-confirm': 'L2a', 'jobs-cancel': 'L2a',
   'docs-read': 'L2a', 'docs-delete': 'L2a', 'docs-report': 'L2a',
   'session-get': 'L3', 'answers-post': 'L3', 'practice-post': 'L3', 'me-get': 'L3', 'students-create': 'L3', 'students-link': 'L3', 'students-update': 'L3', 'students-login-id-post': 'L3',
@@ -123,6 +134,7 @@ export const HANDLER_LOT: Record<string, 'L2a' | 'L3' | 'FEAT-A' | 'R1-A' | 'E1'
   'tests-read': 'L3', 'family-progress': 'L3', 'family-export-archive': 'L3', 'me-export-archive': 'R1-A',
   'exo-list': 'E1', 'exo-post': 'E1', 'exo-get': 'E1', 'exo-hint-post': 'E1', 'exo-solution-post': 'E1', 'copies-create': 'E1', 'copies-submit': 'E1', 'copie-get': 'E1', 'copie-delete': 'E1',
   'revise-create': 'M1', 'revise-get': 'M1', 'revise-cancel': 'M1',
+  'shares-shareable': 'S1', 'shares-create': 'S1', 'shares-list': 'S1', 'shares-delete': 'S1', 'shares-parent-list': 'S1', 'shares-parent-delete': 'S1', 'shares-open': 'S1', 'shares-report': 'S1',
 };
 
 /** Limite par defaut (par route) pour une route sans limite propre. Pas de plafond global ni par utilisateur: le quota de pages s'en charge (design 4.8). */

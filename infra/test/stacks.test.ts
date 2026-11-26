@@ -64,10 +64,12 @@ describe('Api', () => {
     expect(ROUTES.map((r) => r.route).sort()).toEqual(contract);
   });
   const t = tpl('dev', 'api');
-  it('chaque route est protegee par l\'autorisateur JWT, sauf POST /activation', () => {
+  const PUBLIC = ['POST /activation', 'POST /shares/open', 'POST /shares/report'];
+  it('chaque route est protegee par l\'autorisateur JWT, sauf les trois routes publiques (activation, ouverture et signalement d\'un partage)', () => {
     const routes = Object.values(t.findResources('AWS::ApiGatewayV2::Route')) as { Properties: { AuthorizationType: string; RouteKey: string } }[];
     expect(routes).toHaveLength(contract.length);
-    for (const r of routes) expect(r.Properties.AuthorizationType).toBe(r.Properties.RouteKey === 'POST /activation' ? 'NONE' : 'JWT');
+    expect(routes.filter((r) => r.Properties.AuthorizationType === 'NONE').map((r) => r.Properties.RouteKey).sort()).toEqual([...PUBLIC].sort());
+    for (const r of routes) expect(r.Properties.AuthorizationType).toBe(PUBLIC.includes(r.Properties.RouteKey) ? 'NONE' : 'JWT');
   });
   it('CORS restreint a une origine, jamais *', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Api', { CorsConfiguration: Match.objectLike({ AllowOrigins: ['https://front.example.invalid'] }) });
