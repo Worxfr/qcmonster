@@ -1,0 +1,168 @@
+# ID1: identifiant de connexion visible pour l'eleve et pseudo choisi par l'eleve (issue #33)
+
+Statut: **conception**, aucun code. Le contrat n'est pas modifie: la PR #82 possede `shared/contract/openapi.yaml` (1.5.0). Le contrat additif propose est en section 6; son numero de version se prend apres la fusion de #82.
+Vocabulaire du document: **identifiant de connexion** = ce que l'eleve tape pour entrer (ex. `lila-7k2f`). **Pseudo affiche** = le nom vu dans l'application (accueil, classement de la famille, espace parent).
+
+## 1. Etat actuel (code lu sur `main`, tete 0099592)
+
+- **Creation.** Le parent saisit un pseudo (`Parent.tsx`, `Invite`). Regle front et contrat: `^[A-Za-z][A-Za-z0-9 -]{1,19}$`, donc 2 a 20 caracteres ASCII, sans accent. `createStudent` (`api/src/family/students.ts`) remplace les espaces par des tirets, ajoute `-` et 4 caracteres `[a-z0-9]` au hasard (`deps.suffix`), et tente jusqu'a 3 fois si Cognito refuse un doublon (`AliasTakenError`).
+- **Un seul champ pour deux usages.** Le resultat (`Lila-7k2f`) est stocke dans `STUDENT#<sid>.pseudo` ET pose dans l'attribut Cognito `preferred_username` (`api/src/lib/identity.ts`). Le nom d'utilisateur Cognito est un identifiant aleatoire interne (le `studentId`). L'alias `preferred_username` est donc l'identifiant de connexion (`signInAliases` dans `infra/lib/auth-stack.ts`). Le pseudo affiche et l'identifiant de connexion sont la meme chaine.
+- **Affichage.** Le parent voit la chaine dans la carte « Lien d'activation de Lila-7k2f », dans sa liste d'eleves et dans le classement. L'eleve la voit en haut de l'accueil (« Salut Lila-7k2f ! ») une fois connecte, et les freres et soeurs la voient dans le classement de la famille.
+- **Activation.** `POST /activation` renvoie `204` sans corps. L'ecran `Activate.tsx` dit « Connecte-toi avec ton pseudo » sans jamais l'ecrire. Le jeton est a usage unique: apres activation, l'eleve n'a aucun endroit de l'application ou lire son identifiant tant qu'il n'est pas connecte. S'il l'a oublie, il doit le demander au parent.
+- **Connexion.** `Login.tsx` accepte « Pseudo ou e-mail » (les parents utilisent l'e-mail). `preventUserExistenceErrors` est actif sur les deux clients Cognito: un identifiant inconnu et un mauvais mot de passe donnent la meme erreur.
+- **Pas de changement possible.** `updateStudent` ne change pas le pseudo. La politique de confidentialite (section sur la correction) dit qu'il faut supprimer l'eleve et le recreer.
+- **Majuscules.** Le pool n'est pas declare insensible a la casse (`signInCaseSensitive` absent, valeur par defaut du CDK: sensible). `Lila-7k2f` et `lila-7k2f` sont donc probablement deux identifiants differents. **A verifier sur le pool dev** avant le lot 1 (point 7 de la section 9). Ce reglage ne se change pas apres la creation du pool.
+- **Ce qui ne depend PAS du pseudo** (bonne nouvelle pour un changement): le classement est indexe par `studentId` (`api/src/game/family-read.ts`), les jetons de session portent le `sub` et le nom Cognito interne, jamais le pseudo, et le pseudo n'est ni journalise ni envoye a Wikimedia (politique, `sous-traitants.md`).
+
+## 2. Problemes a resoudre
+
+1. L'eleve ne voit jamais son identifiant de connexion avant d'avoir a s'en servir.
+2. Le pseudo est fixe par le parent et ressemble a un code (`Lila-7k2f`). L'eleve ne peut pas choisir un nom qui lui plait.
+3. Pour les comptes deja crees, le classement de la famille montre l'identifiant de connexion complet aux autres eleves. Un frere ou une soeur connait alors la moitie des informations pour se connecter (il manque le mot de passe). A corriger par la separation des deux champs.
+4. Aucun filtre sur les pseudos (mots grossiers, donnees personnelles).
+
+## 3. Propositions
+
+### Option A: afficher seulement (minimum)
+Montrer l'identifiant a l'eleve a la fin de l'activation et dans un profil. Rien d'autre ne change. Regle le probleme 1 seulement.
+
+### Option B: separer identifiant et pseudo (recommandee)
+- L'**identifiant de connexion** reste genere par le serveur et ne change pas, sauf demande du parent. Il garde le suffixe au hasard.
+- Le **pseudo affiche** devient un champ a part, choisi par l'eleve a l'activation (propose par defaut: la partie avant le suffixe du nom donne par le parent), modifiable ensuite par le parent.
+- L'identifiant est montre a l'eleve (fin d'activation, profil) et au parent.
+
+Regle les problemes 1 a 4.
+
+### Option C: le pseudo choisi sert aussi d'identifiant
+Rejetee. Pour garantir l'unicite dans tout le pool, il faudrait dire a l'eleve « ce pseudo est deja pris » (c'est un test d'existence de compte, donc une enumeration possible de pseudos) ou reintroduire un suffixe, ce qui redonne l'option B. Un identifiant choisi par un enfant est aussi plus facile a deviner par un camarade (« prenom + annee »).
+
+## 4. Securite et vie privee
+
+### 4.1 Enumeration d'identifiants
+- Option B n'ajoute aucun test « ce pseudo est-il libre ? » sur le pool entier: le pseudo affiche n'est unique que **dans la famille** (contrôle fait sur les eleves de `FAMILY#<fid>`, dix au plus). L'identifiant de connexion reste produit par le serveur.
+- Le message d'erreur de connexion reste identique pour identifiant inconnu et mauvais mot de passe (`preventUserExistenceErrors`, inchange). Le verrouillage temporaire de Cognito apres des essais rates reste la protection contre la devinette.
+- Aucune nouvelle route publique ne repond selon l'existence d'un identifiant. `POST /activation` reste publique mais exige un jeton valide et garde sa reponse `404` unique pour tout jeton inutilisable.
+- Nouveau format des identifiants (comptes crees apres le lot 1): base en **minuscules** sans accent, suffixe de **5 caracteres** pris dans un alphabet sans caracteres ambigus (sans `0 o 1 l i`), soit 31 caracteres et environ 28 millions de combinaisons par base (contre 1,7 million avec 4 caracteres). Moins de collisions, moins d'erreurs de frappe, et pas de difference majuscule/minuscule a retenir. Les identifiants existants continuent de fonctionner tels quels.
+
+### 4.2 Unicite
+- Identifiant de connexion: Cognito refuse deja un alias deja pris (`AliasExistsException`); la boucle de 3 essais existe. Elle est conservee, en passant a 5 caracteres.
+- Pseudo affiche: refuse s'il est deja porte par un autre eleve de la famille (comparaison sans accent ni casse). Une course entre deux activations simultanees est couverte par une ecriture conditionnelle sur l'element eleve (le champ `v` existe deja).
+
+### 4.3 Pseudos inappropries
+Controle **cote serveur** (le front applique la meme fonction pour guider, il ne decide pas). Une fonction pure partagee `shared/pseudo-rules.ts` (front et API l'importent, comme `shared/policy.ts`):
+- Forme: 2 a 20 caracteres, lettres (accents autorises, ex. `Lea`, `Leo`), chiffres, espace, tiret, apostrophe. Premier caractere = une lettre. Pas de caracteres de controle ni d'emoji. Normalisation Unicode NFC avant tout test.
+- Liste de mots refuses: comparaison apres mise en minuscules, retrait des accents, retrait des separateurs et remplacement des chiffres usuels (`0 o`, `1 i`, `3 e`, `4 a`, `5 s`, `7 t`). Contient des insultes, mots sexuels, termes haineux, noms de drogues, le nom du produit et des mots de role (`admin`, `parent`, `moderateur`). Fichier `shared/pseudo-blocklist.ts`, tenu a jour par le proprietaire.
+- Le refus renvoie toujours le meme message neutre (« Ce pseudo n'est pas possible, essaie-en un autre »), sans nommer le mot, pour ne pas servir de test de gros mots.
+- Faux positifs (un prenom qui contient un fragment de la liste): le message ne les distingue pas; l'eleve en essaie un autre. Limite assumee, a revoir si des plaintes arrivent.
+
+### 4.4 Mineurs: aucune donnee personnelle dans le pseudo
+Le pseudo est affiche aux freres et soeurs et au parent, jamais hors de la famille, jamais journalise, jamais envoye a un tiers. Regles en plus de la forme:
+- Refuse: `@`, `http`, `www`, `.com`/`.fr`, plus de **2 chiffres** au total (annee de naissance, numero de telephone, numero de classe precis).
+- Refuse: une chaine qui ressemble a une adresse e-mail ou a l'e-mail du parent (partie avant `@`), si le serveur la connait au moment de l'appel.
+- Impossible a detecter par code: un vrai nom de famille ou le nom de l'ecole. La seule protection est le texte d'aide, le fait que le parent voit le pseudo et peut le changer, et le fait que le pseudo ne quitte jamais la famille.
+- Texte d'aide a l'eleve: « Invente un surnom. Pas ton nom de famille, ni ton ecole, ni ta date de naissance. »
+
+## 5. Changement d'identifiant et impacts
+
+### 5.1 Changer le pseudo affiche
+Ecriture d'un seul champ dans `STUDENT#<sid>` (condition de version). Aucun impact sur Cognito, sur les sessions ouvertes, sur le classement (cle `studentId`), ni sur l'historique des tests (rattache a `studentId`). L'ecran affiche le nouveau nom au prochain chargement. Pas de limite de frequence cote parent. Pas de changement cote eleve apres l'activation (voir point a trancher 3).
+
+### 5.2 Regenerer l'identifiant de connexion (parent seulement)
+Usage: l'identifiant a ete vu par quelqu'un qui ne devrait pas, ou il est inapproprie. Le serveur:
+1. genere un nouvel identifiant (meme regles que 4.1) et pose le nouvel alias avec `AdminUpdateUserAttributes` (`preferred_username`). Si Cognito refuse (`AliasExistsException`), nouvel essai;
+2. ecrit `loginId` dans `STUDENT#<sid>` (condition de version);
+3. appelle `AdminUserGlobalSignOut` pour revoquer les jetons de rafraichissement, de sorte que l'ancien appareil doive se reconnecter avec le nouvel identifiant.
+
+Ordre: Cognito d'abord, base ensuite, comme pour l'activation du compte; si la base echoue apres Cognito, rejouer la meme requete repare (idempotent: la requete lit l'alias courant et ne regenere que si la base ne le contient pas). Impacts:
+- Le nom d'utilisateur Cognito interne (`studentId`) et le `sub` ne changent pas: aucune donnee n'est rattachee a l'alias. Le jeton d'acces d'une session deja ouverte reste valide jusqu'a son expiration (courte); seule la reconnexion change.
+- L'ancien identifiant est libere et peut etre reattribue par hasard a un autre eleve. Probabilite negligeable avec 5 caracteres sur alphabet de 31; acceptee.
+- Le mot de passe ne change pas. Le parent peut aussi demander un nouveau lien d'activation (`POST /students/{sid}/activation-link`, existant).
+- Il n'y a pas de fonction « l'eleve change son propre identifiant ».
+
+### 5.3 Comptes existants
+Aucune migration obligatoire. Pour un eleve sans `loginId` en base, le serveur lit l'ancien champ `pseudo` (c'est le meme texte que l'alias Cognito). Le pseudo affiche d'un ancien compte est ce meme texte **sans le suffixe** (`^(.+)-[a-z0-9]{4}$` -> groupe 1) tant que le parent ne l'a pas change; ainsi le classement cesse de montrer l'identifiant de connexion. Un script de migration optionnel (hors lot 1) peut ecrire les deux champs une fois pour toutes.
+
+## 6. Contrat additif propose (a integrer apres la fusion de #82)
+
+Rien de supprime, aucun champ existant ne change de sens, sauf la reponse de `POST /activation` (signalee ci-dessous).
+
+- `Student` (reponse parent): ajouter `loginId: string` (identifiant de connexion, ex. `lila-7k2f`) et `displayName: string` (pseudo affiche). `pseudo` est conserve et vaut `displayName` pour la compatibilite. Pour les anciens comptes, `loginId` = ancien `pseudo`.
+- `Me` (reponse eleve): ajouter `loginId` (eleve seulement) et `displayName`. `pseudo` conserve (= `displayName`). Pour un parent, aucun des deux nouveaux champs.
+- `StudentCreateRequest.pseudo`: le champ garde son nom et sa regle de forme (le parent donne la **base** de l'identifiant). Description precisee: il sert de base a l'identifiant et de pseudo affiche par defaut. La regle ASCII reste (l'identifiant est de l'ASCII).
+- `ActivationRequest`: ajouter `displayName?: string` (optionnel; absent = on garde le pseudo par defaut). Regles de la section 4.3 et 4.4, `400` si refuse **avant** de reserver le jeton, donc le jeton reste utilisable.
+- `POST /activation`: la reponse passe de `204` a `200` avec `{ loginId: string, displayName: string }`. C'est le seul point non strictement additif: le client genere et les tests (`web/src/flows.test.tsx`, `e2e/mock-api/server.mjs`, `api/src/handlers/handlers.test.ts`) doivent suivre. Alternative si le proprietaire refuse: garder `204` et ajouter `GET /activation/preview` (jeton dans l'en-tete, meme `404` unique, renvoie `loginId` et `displayName`), a appeler avant la saisie du mot de passe. Recommandation: `200` (un seul appel, pas de nouvelle route publique).
+- `StudentUpdateRequest` (`PATCH /students/{sid}`): ajouter `displayName?: string` (le parent renomme; memes regles; `409` si le nom est deja pris dans la famille).
+- Nouvelle route parent `POST /students/{sid}/login-id` (operationId `regenerateLoginId`), sans corps. Reponse `200 { loginId }`. Roles: parent de la famille du jeton seulement (meme garde que `activation-link`), `404` si l'eleve n'est pas de la famille.
+- Les reponses d'erreur gardent le format existant. Le message de `400` pour un pseudo refuse est neutre (4.3).
+
+## 7. Parcours et ecrans
+
+### 7.1 Eleve: activation (`Activate.tsx`)
+1. Champ « Ton surnom » (prérempli avec la base donnee par le parent, modifiable), texte d'aide de 4.4, verification en direct de la forme seulement (jamais de la liste de mots).
+2. Mot de passe et confirmation, comme aujourd'hui.
+3. Ecran de fin: « Ton identifiant pour te connecter: **lila-7k2f** », gros, avec un bouton « Copier » et la phrase « Ecris-le quelque part, ou demande a ton parent: il peut le retrouver ». Puis le bouton « Aller a la connexion », qui pre-remplit le champ identifiant (via la memoire de la session, jamais l'URL).
+4. L'identifiant n'est jamais dans l'URL ni dans le stockage local; il n'est montre qu'a l'ecran.
+
+### 7.2 Eleve: connexion et profil
+- `Login.tsx`: le champ passe de « Pseudo ou e-mail » a « Identifiant ou e-mail », avec un texte d'aide « Ton identifiant ressemble a lila-7k2f ». L'espace de debut et de fin est retire. Si le pool est sensible a la casse, le champ n'est PAS passe en minuscules automatiquement pour les anciens comptes (voir point 7 de la section 9).
+- Accueil: « Salut {pseudo affiche} ! » (aujourd'hui l'identifiant complet). Un lien « Mon profil » ouvre une carte avec le pseudo affiche, l'identifiant de connexion et le bouton « Copier ». Pas de modification dans cette carte.
+
+### 7.3 Parent (`Parent.tsx`)
+- Liste: le pseudo affiche, et en dessous, en petit, « Identifiant: lila-7k2f ».
+- Creation: le champ devient « Surnom de depart (l'eleve pourra en choisir un autre) » avec le texte d'aide de 4.4. La carte du lien d'activation montre aussi l'identifiant qui sera cree.
+- Bouton « Changer le surnom » (champ + enregistrer) et bouton « Nouvel identifiant de connexion » avec confirmation: « Ton enfant devra se reconnecter avec le nouvel identifiant. Son mot de passe reste le meme. »
+- Le classement de la famille montre les pseudos affiches uniquement.
+
+## 8. Tests
+
+Api, un fichier de tests par module existant (pas de nouveau banc):
+- `shared/pseudo-rules.test.ts`: formes valides et invalides; accents; mots refuses avec chiffres, tirets et majuscules (`L0l1ta`-style); `@`, `http`, plus de 2 chiffres; chaine vide; 21 caracteres; emoji; NFC contre NFD.
+- `students.test`/`family.test.ts`: la creation donne un `loginId` en minuscules, 5 caracteres d'alphabet autorise; la boucle de collision (`failCreate`) fonctionne; `studentView` renvoie `loginId` et `displayName` pour un eleve neuf ET pour un ancien eleve (sans `loginId`: derive du `pseudo`; sans suffixe: affichage); le `PATCH displayName` refuse un doublon de famille (`409`) et accepte le meme nom pour un eleve d'une autre famille; un parent ne renomme pas l'eleve d'une autre famille.
+- `activation.test` (dans `family.test.ts`): `displayName` refuse => `400` ET le jeton reste utilisable; `displayName` accepte => stocke, reponse `200` avec `loginId`; sans `displayName` => valeur par defaut; deux activations en course sur le meme nom de famille => une seule gagne.
+- `regenerateLoginId`: l'alias Cognito change (`memoryIdentity` etendu: `updateAlias`, avec `AliasTakenError` simulable), l'ancien alias est libre, `AdminUserGlobalSignOut` est appele, la base contient le nouvel identifiant; echec de la base apres Cognito puis rejeu => etat coherent; autre famille => `404`.
+- Test de contrat (`shared/contract`): les nouveaux champs sont dans les schemas et les exemples sont valides; `Me` d'un parent n'a pas `loginId`.
+- Anciens comptes: le classement ne contient jamais le suffixe (test de non-regression sur `family-read.ts`).
+
+Web (vitest + e2e):
+- `flows.test.tsx`: l'ecran de fin d'activation montre l'identifiant renvoye; surnom refuse => message neutre et le formulaire reste actif; pas d'identifiant dans l'URL ni dans `localStorage`.
+- `e2e/tests/02-famille.spec.ts` (mock): parcours parent cree un eleve, ouvre le lien, choisit un surnom, voit l'identifiant, se connecte avec lui, voit « Salut {surnom} ». Etendre `e2e/mock-api/server.mjs` pour renvoyer `loginId`.
+- Verification sur le site dev reel apres deploiement (parcours complet, compte de test), car la casse des identifiants depend du vrai pool et le faux serveur ne la reproduit pas.
+- Axe (accessibilite): le champ surnom a un label, le message d'erreur est annonce (`role="alert"`), le bouton Copier a un nom accessible.
+
+## 9. Points a trancher (valeur proposee par defaut, en mots simples)
+
+1. **Le surnom sert-il aussi pour se connecter ?** Defaut: **non**. L'enfant se connecte avec un identifiant fabrique par le site (ex. `lila-7k2f`). Son surnom, lui, sert seulement a l'affichage. Raison: on ne peut pas verifier si un surnom est libre sans reveler quels surnoms existent chez d'autres familles.
+2. **Le parent valide-t-il le surnom avant qu'il serve ?** Defaut: **non**, pas d'etape de validation. Le parent voit le surnom dans sa liste et peut le changer a tout moment. Raison: une validation obligatoire bloque l'enfant qui n'a pas son parent a cote.
+3. **L'enfant peut-il changer son surnom plus tard ?** Defaut: **non**, seul le parent le change apres l'activation. L'enfant choisit une fois, au debut.
+4. **Peut-on mettre son prenom ?** Defaut: **oui, mais on conseille un surnom inventé**; le site refuse les chiffres en trop, les adresses, les mots grossiers. On ne peut pas empecher un nom de famille ecrit a la main: c'est le parent qui surveille.
+5. **L'enfant revoit-il son identifiant plus tard ?** Defaut: **oui**, dans « Mon profil », et le parent le voit dans sa liste.
+6. **Bouton « Nouvel identifiant » pour le parent ?** Defaut: **oui**. L'enfant se reconnecte avec le nouvel identifiant, son mot de passe ne change pas.
+7. **Majuscules et minuscules dans l'identifiant.** Defaut: **identifiants neufs en minuscules seulement**. A verifier d'abord sur le site de test: si les anciens identifiants (`Lila-7k2f`) ne marchent qu'avec la bonne casse, on ajoute un message d'aide sur l'ecran de connexion. On ne peut pas modifier ce reglage du pool apres sa creation; changer de pool est hors sujet de ce lot.
+8. **Deux freres avec le meme surnom ?** Defaut: **non** dans la meme famille. Deux familles differentes peuvent avoir le meme.
+9. **Anciens comptes.** Defaut: **on ne change rien d'office**. Leur surnom affiche devient le nom sans le code (`Lila`), leur identifiant reste le meme, et le parent peut renommer.
+10. **Reponse de `POST /activation`.** Defaut: **renvoyer l'identifiant dans la reponse** (`200` au lieu de `204`). Seul changement du contrat qui n'est pas un simple ajout.
+11. **Liste de mots refuses.** Defaut: **une liste courte maintenue dans le depot**, a faire evoluer apres les premiers retours. Tu n'as pas a la relire mot a mot.
+12. **Textes legaux.** La politique (« pseudo choisi par le parent ») et la section « correction » (« supprimer et recreer ») changent. Defaut: **le proprietaire relit les nouveaux textes**, la version de la politique n'est pas modifiee car la finalite et les donnees collectees restent les memes (un pseudo). A confirmer.
+
+## 10. Decoupage en lots et proprietaires de fichiers
+
+Dependance: le lot 1 attend la fusion de #82 (contrat 1.5.0). Le lot 2 peut commencer avec le faux serveur des que les formes de la section 6 sont arretees.
+
+| Lot | Contenu | Fichiers (proprietaire du lot) |
+|---|---|---|
+| ID1-A (api, shared) | Regles de pseudo, liste, format des identifiants, creation, activation avec `displayName`, `PATCH displayName`, `POST login-id`, vues `Student` et `Me`, classement | `shared/pseudo-rules.ts`, `shared/pseudo-blocklist.ts`, leurs tests, `api/src/lib/identity.ts` (ajout `updateAlias`, `memoryIdentity`), `api/src/family/students.ts`, `api/src/family/activation.ts`, `api/src/game/access.ts`, `api/src/game/family-read.ts`, `api/src/handlers/me-get.ts`, `activation-post.ts`, nouveau handler `students-login-id-post.ts`, tests api |
+| ID1-C (contrat) | Passage au contrat additif, fichiers generes, tests de contrat | `shared/contract/openapi.yaml`, `shared/contract/generated/*`, tests de contrat. Un seul proprietaire apres #82; commit avant ID1-A |
+| ID1-I (infra) | Route API Gateway et droit IAM `cognito-idp:AdminUpdateUserAttributes` + `AdminUserGlobalSignOut` pour le nouveau handler (le premier existe pour `attachFamily`; verifier le role) | `infra/lib/api-stack.ts` ou `game-stack.ts`, `infra/test/*` |
+| ID1-W (web) | Ecrans Activate, Login (texte), Home (salut + profil), Parent (identifiant, renommer, nouvel identifiant), composant `LoginIdCard`, styles | `web/src/screens/Activate.tsx`, `Login.tsx`, `Home.tsx`, `Parent.tsx`, `web/src/components/LoginIdCard.tsx`, `web/src/api.ts`, `web/src/styles*.css`, `web/src/flows.test.tsx` |
+| ID1-E (e2e et faux serveur) | Parcours e2e, faux serveur | `e2e/mock-api/server.mjs`, `e2e/tests/02-famille.spec.ts` |
+| ID1-L (legal et docs) | Politique, registre, AIPD, modele de donnees | `docs/legal/*` (proprietaire du depot), `docs/data-model.md` (attributs `loginId`, `displayName`) |
+
+Ordre conseille: ID1-C, puis ID1-A et ID1-I en parallele, puis ID1-W et ID1-E, ID1-L en parallele du lot W. Aucun lot ne touche les memes fichiers qu'un autre. Les lots F10 (#84) et R1 (#82) touchent `openapi.yaml`, les ecrans de scan et le pipeline, pas ces fichiers, sauf `openapi.yaml` (voir ID1-C).
+
+## 11. Risques et limites connus
+
+- Casse des anciens identifiants: pas verifiee sur le vrai pool (point 7).
+- Liste de mots refuses: elle ne remplace pas un controle humain; des variantes passeront. Le parent est le filet.
+- Le nom de famille ecrit a la main n'est pas detectable (4.4).
+- Les gabarits d'ecran sont decrits, non maquettes; une maquette sera faite en ID1-W avant la PR.
+- Aucun appel Cognito reel n'a ete fait pour cette conception: le comportement de `AdminUpdateUserAttributes` sur `preferred_username` (liberation de l'ancien alias, erreur de doublon) est celui de la documentation et sera teste sur dev en ID1-A.
