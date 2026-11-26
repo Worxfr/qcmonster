@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { CostBlockedError, JobBudgetExceededError } from '../../../shared/bedrock.js';
 import { gsi1, keys } from '../../../shared/ddb/keys.js';
+import { log } from '../../../shared/log/index.js';
 import { ClaimItemSchema, FicheItemSchema, GapItemSchema, QcmItemSchema, questionId } from '../../../shared/items.js';
 import { jobCapEur } from '../../../shared/names.js';
 import { cleanLabel, cleanTopic } from '../../../shared/scans.js';
@@ -13,7 +14,7 @@ import { extractPrompt, generatePrompt, solvePrompt, SYSTEM_JSON } from './promp
 import type { Item } from './ports.js';
 import { MSG, purgeScan, type WfInput } from './steps.js';
 import { addVerifyCostOnce, currentAttempt, draftKey } from './steps-cost.js';
-import { ModelOutputError, normalize, parseModelJson, salvageTruncatedList, words } from './text.js';
+import { ModelOutputError, normalize, parseModelJson, salvageTruncatedList, sliceRanges, thinEvenly, words, type SliceRange } from './text.js';
 
 export const GEN_RESERVE_CENTS = 6; // part du plafond de 0,25 EUR gardee pour la generation (etapes 11 et 12)
 export const MAX_CLAIMS = 60;
@@ -39,9 +40,9 @@ export interface RawClaim {
 }
 /**
  * Controle d'ancrage PAR CODE (etape 6): le phraseId existe et l'extrait (2 mots au moins) est bien dans cette phrase
- * (comparaison normalisee). Sinon l'affirmation est supprimee. Une `consigne` d'exercice n'est jamais une affirmation (T3 B2/B3). Textes en double retires; MAX_CLAIMS au plus.
+ * (comparaison normalisee). Sinon l'affirmation est supprimee. Une `consigne` d'exercice n'est jamais une affirmation (T3 B2/B3). Textes en double retires; `max` au plus (MAX_CLAIMS par defaut).
  */
-export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>): { kept: (RawClaim & { page: number })[]; dropped: number } {
+export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>, max = MAX_CLAIMS): { kept: (RawClaim & { page: number })[]; dropped: number } {
   const seen = new Set<string>();
   const kept: (RawClaim & { page: number })[] = [];
   for (const c of raw) {
@@ -49,7 +50,7 @@ export function anchorClaims(raw: RawClaim[], sentences: Map<string, string>): {
     const ex = normalize(c.extrait);
     const texte = c.texte.trim();
     const ok = c.type !== 'consigne' && src !== undefined && ex.split(' ').length >= 2 && normalize(src).includes(ex) && texte.length >= 5 && texte.length <= 1000;
-    if (!ok || seen.has(normalize(texte)) || kept.length >= MAX_CLAIMS) continue;
+    if (!ok || seen.has(normalize(texte)) || kept.length >= max) continue;
     seen.add(normalize(texte));
     kept.push({ ...c, type: c.type as 'factuelle' | 'non_factuelle', texte, page: Number(/^p([0-9]+)-/.exec(c.phraseId)![1]), extrait: c.extrait.trim().slice(0, 300) });
   }
@@ -116,21 +117,129 @@ async function setCoursStatus(ctx: Ctx, sid: string, job: Item, planIndex: numbe
   await ctx.db.put({ ...head, sections });
 }
 
-/** Sortie d'extraction; si elle est coupee par la limite de jetons (section tres dense), on garde les affirmations entieres deja recues. */
-function parseExtract(raw: string): z.infer<typeof ExtractOut> {
+/** Phrases de contexte donnees avec une tranche (deja traitees par la tranche precedente: aucune affirmation n'en est gardee). */
+export const CONTEXT_SENTENCES = 2;
+/** Affirmations demandees au plus par tranche (40 x environ 130 jetons = 5 200 jetons, sous maxTokens). */
+export const SLICE_MAX_CLAIMS = 40;
+const SLICE_MAX_TOKENS = 6000;
+/** Au plus 12 tranches (360 phrases) par section; au-dela, les phrases suivantes ne sont pas lues (journal `stopReason: 'size'`). */
+export const MAX_SLICES = 12;
+/** Une tranche de cette taille ou moins n'est plus coupee en deux. */
+const MIN_SLICE = 4;
+
+interface ExtractPart {
+  titre: string;
+  matiere: string;
+  affirmations: z.infer<typeof ExtractOut>['affirmations'];
+  /** Faux: la sortie a ete coupee (limite de jetons) ou est abimee; `affirmations` ne contient que les objets entiers recus. */
+  complete: boolean;
+}
+
+/** Lit la sortie d'une tranche. JSON invalide (coupe par la limite de jetons): les affirmations entieres deja recues sont gardees. */
+function parseExtractPart(raw: string): ExtractPart {
   try {
-    return parseModelJson(raw, ExtractOut);
+    return { ...parseModelJson(raw, ExtractOut), complete: true };
   } catch (e) {
     if (!(e instanceof ModelOutputError)) throw e;
     const items = salvageTruncatedList(raw, 'affirmations');
-    const r = ExtractOut.safeParse({
+    return {
       titre: /"titre"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(raw)?.[1] ?? '',
-      matiere: /"matiere"\s*:\s*"([a-z_]*)"/.exec(raw)?.[1] ?? 'autre',
-      affirmations: (items ?? []).filter((x) => ExtractOut.shape.affirmations.element.safeParse(x).success),
-    });
-    if (!r.success || r.data.affirmations.length === 0) throw e;
-    return r.data;
+      matiere: /"matiere"\s*:\s*"([a-z_]*)"/.exec(raw)?.[1] ?? '',
+      affirmations: (items ?? []).filter((x) => ExtractOut.shape.affirmations.element.safeParse(x).success) as ExtractPart['affirmations'],
+      complete: false,
+    };
   }
+}
+
+/**
+ * Extraction d'une section par tranches (F11): l'eleve n'a jamais a redecouper. Chaque tranche possede ses phrases [start, end[ et recoit en plus
+ * CONTEXT_SENTENCES phrases avant elle (contexte): une affirmation ancree sur une phrase qu'une tranche ne possede pas est ignoree, donc aucune
+ * phrase n'est comptee deux fois. Sortie coupee: on garde les affirmations entieres des phrases deja passees et on reprend a la derniere phrase
+ * atteinte (ses affirmations sont refaites); sans progres, ou sans rien de lisible, la tranche est coupee en deux et rejouee.
+ * Bornes (C2): au plus MAX_SLICES tranches, donc au plus 3 x 12 + 6 = 42 appels; la boucle s'arrete aussi, en euros, quand la depense du job atteint le
+ * plafond moins GEN_RESERVE_CENTS (la verification et la generation gardent leur budget). Dans tous ces cas, ou si une tranche de 4 phrases est
+ * illisible, on garde ce qui est lu (si rien n'est lu, l'erreur est levee) et un journal sans texte donne le nombre de phrases non couvertes.
+ * shortcut: au-dela de 360 phrases dans UNE section la fin n'est pas lue; a revoir si de telles sections existent (le plan de sections les coupe d'ordinaire).
+ */
+async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text: string }[]): Promise<{ titre: string; matiere: string; claims: RawClaim[] }> {
+  const total = sentences.length;
+  const at = new Map(sentences.map((s, n) => [s.id, n]));
+  const all = sliceRanges(sentences.map((s) => s.text.length));
+  const queue: SliceRange[] = all.slice(0, MAX_SLICES);
+  const size = (rs: SliceRange[]) => rs.reduce((a, x) => a + x.end - x.start, 0);
+  let uncovered = size(all.slice(MAX_SLICES));
+  let stopReason: string | undefined = uncovered > 0 ? 'size' : undefined;
+  const maxCalls = queue.length * 3 + 6;
+  const job0 = await ctx.db.get(jobKey(i.sid, i.jobId));
+  const stopAtEur = jobCapEur((job0?.pages as number | undefined) ?? 1) - GEN_RESERVE_CENTS / 100;
+  const claims: RawClaim[] = [];
+  let titre = '';
+  let matiere = '';
+  let calls = 0;
+  let skipped = 0;
+  while (queue.length > 0) {
+    const r = queue.shift()!;
+    if (calls >= maxCalls) {
+      if (claims.length === 0) throw new ModelOutputError('sortie du modele: trop de reprises');
+      uncovered += size([r, ...queue]);
+      stopReason = 'calls';
+      break;
+    }
+    // Reserve de generation: on s'arrete en euros avant le plafond complet (JobBudgetExceededError arrive trop tard pour la verification).
+    const spentEur = (((await ctx.db.get(jobKey(i.sid, i.jobId)))?.coutMicros as number | undefined) ?? 0) / 1_000_000;
+    if (claims.length > 0 && spentEur >= stopAtEur) {
+      uncovered += size([r, ...queue]);
+      stopReason = 'budget';
+      break;
+    }
+    calls++;
+    const from = Math.max(0, r.start - CONTEXT_SENTENCES);
+    const numbered = sentences.slice(from, r.end).map((s) => `[${s.id}] ${s.text}`).join('\n');
+    const quota = Math.min(SLICE_MAX_CLAIMS, Math.max(3, Math.ceil((MAX_CLAIMS * (r.end - r.start)) / total)));
+    let raw: string;
+    try {
+      raw = await callModel(ctx, i, 'extraction', 'haiku', { system: SYSTEM_JSON, prompt: extractPrompt(numbered, quota, r.start - from), maxTokens: SLICE_MAX_TOKENS });
+    } catch (e) {
+      // Plafond du scan atteint en cours de route: on garde ce qui est deja extrait plutot que de tout perdre.
+      if ((e instanceof JobBudgetExceededError || e instanceof CostBlockedError) && claims.length > 0) {
+        uncovered += size([r, ...queue]);
+        stopReason = 'budget';
+        break;
+      }
+      throw e;
+    }
+    const part = parseExtractPart(raw);
+    titre ||= part.titre;
+    matiere ||= part.matiere;
+    const own = part.affirmations.filter((c) => {
+      const n = at.get(c.phraseId);
+      return n !== undefined && n >= r.start && n < r.end;
+    });
+    if (part.complete) {
+      claims.push(...own);
+      continue;
+    }
+    const last = own.reduce((m, c) => Math.max(m, at.get(c.phraseId)!), -1);
+    if (last > r.start) {
+      claims.push(...own.filter((c) => at.get(c.phraseId)! < last));
+      queue.unshift({ start: last, end: r.end });
+    } else if (r.end - r.start > MIN_SLICE) {
+      const mid = r.start + Math.ceil((r.end - r.start) / 2);
+      queue.unshift({ start: r.start, end: mid }, { start: mid, end: r.end });
+    } else {
+      claims.push(...own);
+      if (own.length === 0) {
+        skipped++;
+        uncovered += r.end - r.start;
+        stopReason ??= 'skipped';
+      }
+    }
+  }
+  if (uncovered > 0) log({ jobId: i.jobId, step: 'extraction', status: 'ok', sentencesUncovered: uncovered, stopReason });
+  if (claims.length === 0 && skipped > 0) throw new ModelOutputError('sortie du modele: illisible');
+  // Ordre du cours (tri stable: l'ordre donne par le modele est garde dans une meme phrase).
+  const sorted = claims.map((c, n) => ({ c, n })).sort((a, b) => at.get(a.c.phraseId)! - at.get(b.c.phraseId)! || a.n - b.n);
+  return { titre, matiere, claims: sorted.map((x) => x.c) };
 }
 
 export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
@@ -147,10 +256,8 @@ export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
   await clearDoc(ctx, docId, ['CLAIM#', 'VERDICT#', 'QCM#', 'GAP#']); // restes d'une tentative precedente
 
   const sentences = new Map(sec.sentences.map((s) => [s.id, s.text]));
-  const numbered = sec.sentences.map((s) => `[${s.id}] ${s.text}`).join('\n');
-  const raw = await callModel(ctx, i, 'extraction', 'haiku', { system: SYSTEM_JSON, prompt: extractPrompt(numbered), maxTokens: 8000 });
-  const out = parseExtract(raw);
-  const { kept } = anchorClaims(out.affirmations, sentences);
+  const out = await extractSlices(ctx, i, sec.sentences);
+  const kept = thinEvenly(anchorClaims(out.claims, sentences, Infinity).kept, MAX_CLAIMS); // plafond de la section, reparti sur tout le cours
   const sectionsDone = sec.plan ? (await ctx.db.update(jobKey(i.sid, i.jobId), { addSet: { extractedSections: [sec.rank] } }))?.extractedSections ?? [] : [];
 
   if (kept.length === 0) {
