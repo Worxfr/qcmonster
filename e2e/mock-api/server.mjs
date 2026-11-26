@@ -2,7 +2,10 @@
 // Prism (npm run mock) renvoie toujours les memes exemples: il ne permet pas de creer une famille puis d'envoyer des photos.
 // Ce serveur suit le contrat shared/contract/openapi.yaml pour les routes utilisees par le front. Il n'ecrit rien sur disque.
 // shortcut: un seul utilisateur a la fois (le role est fixe par POST /__test/reset), pas de jeton, pas de pagination (limit/cursor ignores).
+// Version en vigueur lue dans shared/policy.ts: le mock ne doit pas la dupliquer.
+const POLICY_VERSION = /POLICY_VERSION = '([0-9-]+)'/.exec(readFileSync(new URL('../../shared/policy.ts', import.meta.url), 'utf8'))[1];
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 4012);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -580,7 +583,7 @@ const server = createServer(async (req, res) => {
       return send(res, 204);
     case 'POST /family/policy':
       if (!parent) return err(res, 403, 'interdit', 'Interdit');
-      if (b.consent !== true || b.policyVersion !== '2026-11-27') return err(res, 400, 'requete_invalide', 'Consentement requis');
+      if (b.consent !== true || b.policyVersion !== POLICY_VERSION) return err(res, 400, 'requete_invalide', 'Consentement requis');
       S.policyOutdated = false;
       return send(res, 204);
     case 'POST /family/export/archive':
