@@ -272,3 +272,11 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 math { font-family: 'KaTeX Main', 'STIX Two Math', 'Cambria Math', 'Latin Modern Math', 'DejaVu Math TeX Gyre', serif; }
 math mi.mi-i { font-family: 'KaTeX Math', 'KaTeX Main', serif; font-style: normal; text-transform: none; }
 math mi:not(.mi-i) + mi.mi-i { margin-inline-start: .17em; } /* « sin x » */
+
+/* F10: ajout de pages a un cours (clair, vif, joyeux) */
+.cours-add { display: grid; gap: .3rem; margin: .8rem 0 .2rem; padding: .7rem .9rem .8rem; border-radius: 18px; background: linear-gradient(135deg, #fef3c7, #fce7f3); border: 2px dashed #db2777; }
+.cours-add .btn-big { margin: 0 0 .2rem; background: var(--pink); }
+.cours-add-full { display: block; background: var(--ok-bg); border: 2px solid var(--ok); color: var(--ok); font-weight: 700; }
+.append-banner { display: flex; gap: .8rem; align-items: flex-start; margin: 0 0 .9rem; padding: .8rem .9rem; border-radius: 18px; background: linear-gradient(135deg, #ede9fe, #fce7f3); border: 2px solid var(--brand); }
+.append-ico { flex: none; display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--pink); color: #fff; font-size: 1.3rem; box-shadow: 0 3px 0 rgba(0,0,0,.2); }
+.append-note { margin: .35rem 0 0; font-weight: 600; }

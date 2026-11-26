@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { Loading } from '../components/ui';
 import { ApiError, api, uploadScan } from '../api';
 import { useApp } from '../app-context';
 import { FolderSelect, useFolders } from '../components/FolderSelect';
 import { Bar, Card, ErrorBox } from '../components/ui';
-import { errMsg } from '../hooks';
-import { plural } from '../labels';
+import { errMsg, useLoad } from '../hooks';
+import { plural, subjectLabel } from '../labels';
 import { go } from '../router';
 import { MyScans } from './MyScans';
 
 export const MAX_PAGES = 10;
+/** Un cours tient 30 pages et 20 sections au plus (contrat 1.6). */
+export const MAX_COURS_PAGES = 30;
+export const MAX_COURS_SECTIONS = 20;
 export const MAX_BYTES = 5 * 1024 * 1024;
 const TYPES = ['image/jpeg', 'image/png'];
 
@@ -33,8 +37,19 @@ async function uploadAll(uploads: { url: string; fields: Record<string, string> 
   await Promise.all([worker(), worker(), worker()].slice(0, Math.min(3, files.length)));
 }
 
-export function Scan() {
+export function Scan({ coursId }: { coursId?: string } = {}) {
+  const target = useLoad(() => (coursId ? api.cours(coursId) : Promise.resolve(null)), [coursId]);
+  if (coursId && target.loading && !target.data) return <Loading />;
+  if (coursId && !target.data) return <><ErrorBox message={target.error} /><button className="btn btn-ghost" onClick={() => go('/docs')}>Retour à mes cours</button></>;
+  return <ScanForm coursId={coursId} cours={target.data ?? undefined} />;
+}
+
+function ScanForm({ coursId, cours }: { coursId?: string; cours?: { pages: number; sections: { subject: Parameters<typeof subjectLabel>[0]; topic?: string }[] } }) {
   const { progress, refreshProgress } = useApp();
+  // Ajout: au plus 10 pages par envoi, et ce qui reste dans les 30 pages du cours.
+  const room = cours ? MAX_COURS_PAGES - cours.pages : MAX_PAGES;
+  const maxPages = Math.min(MAX_PAGES, Math.max(0, room));
+  const full = !!cours && (room <= 0 || cours.sections.length >= MAX_COURS_SECTIONS);
   const [pages, setPages] = useState<Page[]>([]);
   const [messages, setMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +71,8 @@ export function Scan() {
     for (const f of files) {
       if (!TYPES.includes(f.type)) msgs.push(`« ${f.name} » n'est pas une photo JPEG ou PNG.`);
       else if (f.size > MAX_BYTES) msgs.push(`« ${f.name} » est trop lourde (5 Mo au maximum).`);
-      else if (pages.length + ok.length >= MAX_PAGES) {
-        if (!msgs.some((m) => m.startsWith('10 pages'))) msgs.push(`10 pages au maximum : les photos en trop n'ont pas été ajoutées.`);
+      else if (pages.length + ok.length >= maxPages) {
+        if (!msgs.some((m) => m.includes('au maximum'))) msgs.push(`${maxPages} ${plural(maxPages, 'page', 'pages')} au maximum${cours ? ' pour cet ajout' : ''} : les photos en trop n'ont pas été ajoutées.`);
       } else {
         const url = URL.createObjectURL(f);
         urls.current.push(url);
@@ -81,7 +96,7 @@ export function Scan() {
     setSent(0);
     let jobId: string | undefined;
     try {
-      const scan = await api.createScan(pages.map((p) => p.file.type), folderId || undefined);
+      const scan = await api.createScan(pages.map((p) => p.file.type), folderId || undefined, coursId);
       jobId = scan.jobId;
       const uploads = scan.uploads ?? [{ page: 1, ...scan.upload }];
       if (uploads.length < pages.length) {
@@ -97,7 +112,9 @@ export function Scan() {
       void refreshProgress();
       go(`/job/${encodeURIComponent(jobId)}`);
     } catch (err) {
-      if (err instanceof ApiError && (err.code === 'quota_epuise' || err.code === 'budget_epuise')) {
+      if (err instanceof ApiError && err.code === 'cours_plein') setError('Ce cours est complet : 30 pages et 20 parties au plus. Tu peux scanner ces pages comme un nouveau cours.');
+      else if (err instanceof ApiError && err.status === 404 && coursId) setError("Ce cours n'existe plus.");
+      else if (err instanceof ApiError && (err.code === 'quota_epuise' || err.code === 'budget_epuise')) {
         setError(err.resetDate ? `${err.message}. Retour des pages le ${new Date(err.resetDate).toLocaleDateString('fr-FR')}.` : err.message);
       } else setError(errMsg(err));
       setSent(null);
@@ -106,17 +123,30 @@ export function Scan() {
 
   return (
     <>
-    <Card title="Scanner un cours">
-      <p className="lead">Prends tes pages en photo, bien à plat et avec de la lumière. Tu peux en envoyer {MAX_PAGES} d'un coup, dans l'ordre du cours.</p>
+    <Card title={cours ? 'Ajouter des pages à ton cours' : 'Scanner un cours'}>
+      {cours && (
+        <div className="append-banner" aria-label="Cours auquel tu ajoutes des pages">
+          <span className="append-ico" aria-hidden="true">➕</span>
+          <div>
+            <strong>{subjectLabel(cours.sections[0]?.subject ?? 'autre')}{cours.sections[0]?.topic ? ` · ${cours.sections[0].topic}` : ''}</strong>
+            <span className="muted"> {cours.pages} {plural(cours.pages, 'page', 'pages')} aujourd'hui · {Math.max(0, room)} {plural(Math.max(0, room), 'page possible', 'pages possibles')} en plus</span>
+            <p className="append-note">Tes nouvelles pages seront ajoutées à la <strong>fin</strong> du cours. Ce que tu as déjà ne change pas.</p>
+          </div>
+        </div>
+      )}
+      {full && (
+        <p className="notice" role="status">Ce cours est complet ({MAX_COURS_PAGES} pages et {MAX_COURS_SECTIONS} parties au plus). Tu peux scanner tes nouvelles pages comme un nouveau cours.</p>
+      )}
+      {!full && <p className="lead">Prends tes pages en photo, bien à plat et avec de la lumière. Tu peux en envoyer {maxPages} d'un coup, dans l'ordre du cours.</p>}
       {left !== undefined && (
         <p className="muted" role="status">
           {pages.length > 0 ? `${pages.length} ${plural(pages.length, 'page', 'pages')}, il` : 'Il'} te reste {left} {plural(left, 'page', 'pages')} ce mois-ci
         </p>
       )}
-      <label className="btn btn-big file-btn">
+      {!full && <label className="btn btn-big file-btn">
         {pages.length ? '➕ Ajouter une page' : '📷 Prendre ou choisir des photos'}
-        <input type="file" multiple accept="image/jpeg,image/png" onChange={pick} disabled={busy || pages.length >= MAX_PAGES} aria-label={pages.length ? 'Ajouter une page' : 'Prendre ou choisir des photos'} />
-      </label>
+        <input type="file" multiple accept="image/jpeg,image/png" onChange={pick} disabled={busy || pages.length >= maxPages} aria-label={pages.length ? 'Ajouter une page' : 'Prendre ou choisir des photos'} />
+      </label>}
       {messages.map((m) => <p key={m} role="alert" className="error">{m}</p>)}
 
       {pages.length > 0 && (
@@ -143,7 +173,7 @@ export function Scan() {
             </div>
           )}
           <button type="button" className="btn btn-big" onClick={send} disabled={busy || tooMany} aria-busy={busy}>
-            {busy ? 'Envoi en cours…' : `Envoyer ${pages.length} ${plural(pages.length, 'page', 'pages')}`}
+            {busy ? 'Envoi en cours…' : cours ? `Ajouter ${pages.length} ${plural(pages.length, 'page', 'pages')} au cours` : `Envoyer ${pages.length} ${plural(pages.length, 'page', 'pages')}`}
           </button>
         </>
       )}

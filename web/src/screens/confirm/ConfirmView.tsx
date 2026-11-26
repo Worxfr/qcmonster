@@ -338,9 +338,10 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
   };
 
   return (
-    <Card title="Vérifie ce que j'ai lu">
+    <Card title={tr.context?.length ? "Vérifie les nouvelles pages" : "Vérifie ce que j'ai lu"}>
       <div className="confirm" ref={rootEl}>
         <header className="cf-head">
+          {tr.context?.length ? <p className="cf-append"><span aria-hidden="true">➕</span> Tu ajoutes ces pages à la <strong>fin</strong> de ton cours. Ce que tu as déjà ne change pas.</p> : null}
           <p className="cf-summary" role="status" aria-live="polite">{summary}</p>
           <p className="cf-words">{pl.words} {plural(pl.words, 'mot gardé', 'mots gardés')}</p>
           {doubts > 0 && <p className="cf-doubts"><span aria-hidden="true">?</span> {doubts} {plural(doubts, 'passage douteux', 'passages douteux')} à relire</p>}
@@ -380,6 +381,13 @@ function ConfirmBody({ id, tr, onDone, reloadPhotos, reloading, reloadError }: {
           </aside>
 
           <div className="cf-texts" id="cf-panel" role={pages.length > 1 ? 'tabpanel' : undefined} aria-labelledby={pages.length > 1 ? `cf-tab-${idx}` : undefined}>
+            {idx === 0 && tr.context && tr.context.length > 0 && (
+              <section className="cf-context" aria-label="Fin de ton cours, déjà gardée">
+                <p className="cf-context-title"><span aria-hidden="true">🔒</span> La fin de ton cours (déjà gardée, tu ne peux pas la changer)</p>
+                {tr.context.map((s) => <p key={s.id} className="cf-context-s">{s.text}</p>)}
+                {pages[0]?.sentences[0]?.continuesId && <p className="cf-context-link"><span aria-hidden="true">↳</span> La première phrase ci-dessous continue cette fin.</p>}
+              </section>
+            )}
             {all.length === 0 ? (
               <div className="cf-empty">
                 <p>Je n'ai rien lu sur {pages.length > 1 ? 'tes photos' : 'ta photo'}. Essaie avec une photo plus nette, bien à plat et bien éclairée.</p>

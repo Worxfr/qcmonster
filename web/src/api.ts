@@ -38,8 +38,9 @@ function testQs(q: TestQuery): string {
 export const api = {
   me: () => call<Me>('GET', '/me'),
   progress: () => call<Progress>('GET', '/me/progress'),
-  createScan: (contentTypes: string[], folderId?: string) =>
-    call<ScanCreateResponse>('POST', '/scans', { pages: contentTypes.length, contentType: contentTypes[0], contentTypes, ...(folderId ? { folderId } : {}) }),
+  /** `coursId`: ajout de pages a la fin d'un cours existant (contrat 1.6). */
+  createScan: (contentTypes: string[], folderId?: string, coursId?: string) =>
+    call<ScanCreateResponse>('POST', '/scans', { pages: contentTypes.length, contentType: contentTypes[0], contentTypes, ...(folderId ? { folderId } : {}), ...(coursId ? { coursId } : {}) }),
   listScans: (q: ScanQuery) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') p.set(k, String(v));

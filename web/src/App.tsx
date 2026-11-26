@@ -100,6 +100,7 @@ function Shell() {
   else if (parent && seg === 'suivi' && id && id2) body = <SuiviTest sid={id} testId={id2} />;
   else if (parent && seg === 'suivi' && id) body = <Suivi sid={id} />;
   else if (parent) body = <Parent />;
+  else if (seg === 'scan' && id === 'ajout' && id2) body = <Scan key={id2} coursId={id2} />; // ajout de pages a un cours (F10)
   else if (seg === 'scan') body = <Scan />;
   else if (seg === 'job' && id) body = <JobView id={id} />;
   else if (seg === 'doc' && id) body = <Doc id={id} claimId={id2 || undefined} />;

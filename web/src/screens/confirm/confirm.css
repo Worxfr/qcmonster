@@ -219,3 +219,10 @@
 .cs.mk-non_verifiable { background: #e5e7eb; box-shadow: 0 0 0 2px #e5e7eb; }
 .mk { white-space: nowrap; }
 .cf-retry p { margin: 0 0 .5rem; }
+
+/* F10: relecture d'un ajout de pages (contexte en lecture seule) */
+.cf-append { margin: 0 0 .5rem; padding: .5rem .9rem; border-radius: 14px; background: linear-gradient(135deg, #ede9fe, #fce7f3); border: 2px solid var(--brand); font-weight: 600; }
+.cf-context { margin: 0 0 1rem; padding: .7rem .9rem; border-radius: 16px; background: #f1f5f9; border: 2px dashed #94a3b8; color: #334155; }
+.cf-context-title { margin: 0 0 .4rem; font-weight: 800; font-size: .95rem; }
+.cf-context-s { margin: .2rem 0; opacity: .9; font-style: italic; }
+.cf-context-link { margin: .4rem 0 0; font-weight: 700; color: var(--brand); }

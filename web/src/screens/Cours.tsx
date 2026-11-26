@@ -5,6 +5,7 @@ import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg, useLoad } from '../hooks';
 import { fmtDay, plural, subjectLabel } from '../labels';
 import { go } from '../router';
+import { MAX_COURS_PAGES, MAX_COURS_SECTIONS } from './Scan';
 import { buildModel } from './confirm/blocks';
 import { DocView } from './confirm/DocView';
 import { FigureView } from './confirm/FigureCard';
@@ -57,6 +58,14 @@ export function Cours({ id }: { id: string }) {
       <Card title="Cours complet">
         <p className="muted">Du {fmtDay(cours.createdAt)} · {cours.pages} {plural(cours.pages, 'page', 'pages')} · {all.length} {plural(all.length, 'phrase', 'phrases')}{nFig > 0 ? ` · ${nFig} ${plural(nFig, 'image', 'images')}` : ''}</p>
         <p><a className="link" href="#/docs">‹ Mes cours</a></p>
+        {cours.pages >= MAX_COURS_PAGES || cours.sections.length >= MAX_COURS_SECTIONS ? (
+          <p className="cours-add cours-add-full" role="status"><span aria-hidden="true">✅</span> Ce cours est complet ({MAX_COURS_PAGES} pages et {MAX_COURS_SECTIONS} parties au plus).</p>
+        ) : (
+          <div className="cours-add">
+            <a className="btn btn-big" href={`#/scan/ajout/${encodeURIComponent(cours.coursId)}`}><span aria-hidden="true">➕</span> Ajouter des pages</a>
+            <span className="muted">Tu as oublié une page ? Elle sera ajoutée à la fin de ce cours ({MAX_COURS_PAGES - cours.pages} {plural(MAX_COURS_PAGES - cours.pages, 'page possible', 'pages possibles')}).</span>
+          </div>
+        )}
         <ol className="cours-secs" aria-label="Parties du cours">
           {cours.sections.map((s, i) => (
             <li key={s.fromSentenceId} className={`cours-sec sec-${i % 6}`}>
