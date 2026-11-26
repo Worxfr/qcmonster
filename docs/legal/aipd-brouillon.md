@@ -12,7 +12,7 @@ Voir `registre.md` (traitements T1 à T7) et `politique-confidentialite.md`.
 
 ## 3. Nécessité et proportionnalité
 
-- Seules les données utiles sont collectées : pseudo, indicateur d'âge, cours, résultats.
+- Seules les données utiles sont collectées : identifiant de connexion, pseudo affiché (filtré : pas de mot grossier, pas d'adresse, au plus 2 chiffres ; jamais envoyé à un tiers), indicateur d'âge, cours, résultats.
 - Pas d'e-mail ni de date de naissance pour les élèves.
 - Images supprimées à la confirmation du texte par l'élève (12 heures pour confirmer, sinon le scan est annulé et l'image supprimée), au plus tard dans les 2 jours. **Texte complet corrigé du cours conservé sans durée automatique** (jusqu'à suppression par l'élève ou avec le compte), parties ignorées comprises ; le parent n'y a pas accès. Durées courtes pour les jobs (7 jours) et les extraits de sources web (30 jours). Journaux 14 jours, historique Step Functions 90 jours sans texte de cours.
 - Vérification des faits : au plus 8 mots de l'affirmation sont envoyés aux sites Wikimedia (recherche), sans identifiant. Un nom de personne présent dans le cours peut en faire partie (risque à évaluer, §4).
