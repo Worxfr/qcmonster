@@ -6,6 +6,7 @@ import { Bar, Card, ErrorBox } from '../components/ui';
 import { errMsg } from '../hooks';
 import { plural } from '../labels';
 import { go } from '../router';
+import { MyScans } from './MyScans';
 
 export const MAX_PAGES = 10;
 export const MAX_BYTES = 5 * 1024 * 1024;
@@ -104,6 +105,7 @@ export function Scan() {
   }
 
   return (
+    <>
     <Card title="Scanner un cours">
       <p className="lead">Prends tes pages en photo, bien à plat et avec de la lumière. Tu peux en envoyer {MAX_PAGES} d'un coup, dans l'ordre du cours.</p>
       {left !== undefined && (
@@ -147,5 +149,7 @@ export function Scan() {
       )}
       <ErrorBox message={error} />
     </Card>
+    <MyScans />
+    </>
   );
 }

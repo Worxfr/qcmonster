@@ -30,9 +30,12 @@ test.describe('Parcours complet: scan, relecture, fiches, jeu, dossiers, parent,
     await expect(page.getByRole('heading', { name: 'Ton cours est en route' })).toBeVisible();
   });
 
-  test('la liste des scans montre le statut du scan en cours, puis « À relire »', async () => {
+  test('Scanner montre le scan en cours, puis « À relire »; Mes cours reste vide', async () => {
     await page.goto('/#/docs');
-    const running = page.getByRole('region', { name: 'En cours' });
+    await expect(page.getByText(/Scanne ton premier cours/)).toBeVisible();
+    await expect(page.getByRole('region', { name: /En cours/ })).toHaveCount(0);
+    await page.goto('/#/scan');
+    const running = page.getByRole('region', { name: 'Mes scans en cours' });
     await expect(running).toBeVisible();
     await expect(running).toContainText(/\d sur 3 pages/);
     await expect(running).toContainText('À relire', { timeout: SLOW });
@@ -125,16 +128,16 @@ test.describe('Parcours complet: scan, relecture, fiches, jeu, dossiers, parent,
 
     await page.getByRole('button', { name: /Contrôle de juillet/ }).first().click();
     await expect(page.getByRole('region', { name: 'Liste des cours' }).getByRole('listitem')).toHaveCount(1);
-    // filtre par statut, puis tri par matière (deux matières: deux intitulés)
+    // filtre par matière, puis tri par matière (deux matières: deux intitulés)
     await page.goto('/#/docs');
     const filtres = page.getByRole('button', { name: /^Filtres/ });
     if ((await filtres.getAttribute('aria-expanded')) !== 'true') await filtres.click();
-    await page.getByLabel('Statut').selectOption('termine');
-    await expect(page.getByRole('region', { name: 'Liste des cours' }).getByRole('listitem').first()).toBeVisible();
-    await page.getByLabel('Statut').selectOption('echec');
-    await expect(page.getByText('Aucun cours ne correspond')).toBeVisible();
+    await expect(page.getByLabel('Statut')).toHaveCount(0); // Mes cours ne liste que des cours terminés
+    const matiere = page.locator('#filters label', { hasText: 'Matière' }).locator('select');
+    await matiere.selectOption('svt');
+    await expect(page.getByRole('region', { name: 'Liste des cours' }).getByRole('listitem')).toHaveCount(1);
     await page.getByRole('button', { name: 'Effacer les filtres' }).first().click();
-    await expect(page.getByLabel('Statut')).toHaveValue('');
+    await expect(matiere).toHaveValue('');
     await page.getByLabel('Trier').selectOption('subject');
     await expect(page.locator('.grp-head.l2')).toHaveCount(2);
     expect((await page.locator('.grp-head.l2').allInnerTexts()).sort()).toEqual(['Histoire-géo', 'SVT']);

@@ -29,7 +29,7 @@ const EXPECTED = [
   // contract-v1.3 (FEAT-A)
   'GET /scans', 'PATCH /docs/{docId}', 'GET /folders', 'POST /folders', 'PATCH /folders/{folderId}', 'DELETE /folders/{folderId}',
   'POST /folders/{folderId}/scans', 'DELETE /folders/{folderId}/scans/{docId}',
-  'GET /cours/{coursId}', 'DELETE /cours/{coursId}',
+  'DELETE /scans/{scanId}', 'GET /cours/{coursId}', 'DELETE /cours/{coursId}',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),

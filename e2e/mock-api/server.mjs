@@ -235,6 +235,15 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { correct, xpGained: correct ? 10 : 0, badges: [], ...(correct ? {} : { correctAnswer: q.answer }), progress: progress() });
     }
   }
+  if (m === 'DELETE' && seg[1] === 'scans' && ID) {
+    if (parent) return err(res, 403, 'interdit', 'Interdit');
+    const j = S.jobs.find((x) => x.jobId === ID);
+    if (!j || (j.state === 'rejete' && /^annul/i.test(j.message ?? ''))) return err(res, 404, 'introuvable', 'Introuvable');
+    advance(j);
+    if (!['en_attente_envoi', 'transcription', 'a_confirmer', 'rejete', 'echec', 'expire'].includes(j.state)) return err(res, 409, 'etat_invalide', 'Ce scan est déjà confirmé');
+    Object.assign(j, { state: 'rejete', message: "Annulé par l'élève", refunded: true, finishedAt: iso() });
+    return send(res, 204);
+  }
   if (seg[1] === 'jobs') {
     const j = S.jobs.find((x) => x.jobId === ID);
     if (!j) return err(res, 404, 'introuvable', 'Introuvable');

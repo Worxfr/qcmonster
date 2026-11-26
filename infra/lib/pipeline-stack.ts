@@ -70,6 +70,7 @@ export const API_FUNCTIONS = {
   'jobs-transcription': 'jobsTranscriptionHandler',
   'jobs-confirm': 'jobsConfirmHandler',
   'jobs-cancel': 'jobsCancelHandler',
+  'scans-delete': 'scansDeleteHandler',
   'docs-read': 'docsReadHandler',
   'docs-delete': 'docsDeleteHandler',
   'docs-report': 'docsReportHandler',
@@ -134,6 +135,7 @@ export class PipelineStack extends Stack {
     const foldersRole = mkRole('pipeline-api-folders-role');
     const coursReadRole = mkRole('pipeline-api-cours-read-role');
     const coursRole = mkRole('pipeline-api-cours-role');
+    const scansDeleteRole = mkRole('pipeline-api-scans-delete-role');
     const triggerRole = mkRole('pipeline-trigger-role');
     const procRole = mkRole('pipeline-role');
     const ddb = (actions: string[]) => new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`] });
@@ -188,6 +190,12 @@ export class PipelineStack extends Stack {
     // folders-api (5 routes): dossiers FOLDER# et fiches rangees, sous FAMILY#/STUDENT#. Ni S3, ni Bedrock, ni Step Functions.
     // La suppression passe par `ctx.db.remove` = BatchWriteItem (ports.ts), jamais DeleteItem.
     foldersRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*'));
+    // scans-delete (DELETE /scans/{scanId}): role etroit. Table seulement sur FAMILY#/STUDENT#/JOB# (callerOf, job, marqueur QUOTAOP# et compteurs de la transaction de quota, TEXT# supprime par BatchWriteItem),
+    // photos (DeleteObject + ListBucket du prefixe scans/) et SendTaskFailure pour liberer la machine. Ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#.
+    scansDeleteRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:PutItem', 'dynamodb:BatchWriteItem'], 'FAMILY#*', 'STUDENT#*', 'JOB#*'));
+    scansDeleteRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [objects] }));
+    scansDeleteRole.addToPolicy(listScans);
+    scansDeleteRole.addToPolicy(new iam.PolicyStatement({ actions: ['states:SendTaskFailure'], resources: ['*'] })); // l'API n'accepte pas de ressource
     // cours-api GET: lecture seule de COURS# (partition STUDENT#). Le parent n'a aucun droit.
     coursReadRole.addToPolicy(familyQuery());
     coursReadRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query'], 'STUDENT#*'));
@@ -246,7 +254,7 @@ export class PipelineStack extends Stack {
     };
 
     const apiRoleOf: Record<keyof typeof API_FUNCTIONS, iam.Role> = {
-      'scans-create': writeRole, 'jobs-confirm': confirmRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
+      'scans-create': writeRole, 'jobs-confirm': confirmRole, 'scans-delete': scansDeleteRole, 'jobs-cancel': writeRole, 'docs-report': writeRole,
       'jobs-get': readRole, 'jobs-transcription': readRole, 'docs-read': readRole,
       'docs-delete': deleteRole,
       'scans-list': listRole,

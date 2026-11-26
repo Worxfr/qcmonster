@@ -129,6 +129,21 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+  /scans/{scanId}:
+    delete:
+      operationId: deleteScan
+      tags: [scans]
+      summary: "L'eleve supprime un scan non confirme, a tout moment (handler scans-delete)"
+      description: |
+        `scanId` = `jobId`. Eleve proprietaire seulement: le parent repond 403, un scan d'un autre eleve (ou d'une autre famille) 404.
+        Autorise tant que le scan n'est pas confirme: envoi, lecture, `a_confirmer`, et scans en echec ou expires encore listes. Efface la photo et le texte de travail, rend les pages du quota UNE seule fois (une suppression rejouee ne rend rien de plus), libere la machine de traitement (jeton d'envoi ou de confirmation): une confirmation tardive repond 409 et ne cree aucune fiche.
+        Un scan deja supprime ou annule repond 404 (idempotent: rien n'est rendu une seconde fois). Un scan confirme (verification, generation) repond 409 `etat_invalide`; un scan termine se supprime par ses fiches (`DELETE /docs/{docId}`).
+      parameters: [{ $ref: '#/components/parameters/ScanId' }]
+      responses:
+        '204': { description: Supprime }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /jobs/{jobId}:
     get:
       operationId: getJob
@@ -792,6 +807,7 @@ components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   parameters:
+    ScanId: { name: scanId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     JobId: { name: jobId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     CoursId: { name: coursId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }

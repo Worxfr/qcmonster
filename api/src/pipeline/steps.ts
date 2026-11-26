@@ -219,6 +219,12 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
   await ctx.db.update(jobKey(i.sid, i.jobId), { set: { docType: verdict.docType, wordCount, ...(suggestedSubject ? { suggestedSubject } : {}), ...(suggestedTopic ? { suggestedTopic: suggestedTopic.slice(0, MAX_TOPIC) } : {}), ...(sections ? { suggestedSections: sections } : {}) } });
   const ttl = ttlIn(ctx, 7 * DAY_S);
   for (const t of [...texts].reverse()) await ctx.db.put({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}`, page: t.page, sentences: t.sentences, ttl }); // `TEXT#1` en dernier
+  // Course avec une suppression (DELETE /scans/{id}) pendant la lecture: elle change l'etat PUIS efface les `TEXT#`; ici on ecrit PUIS relit l'etat.
+  // Quel que soit l'ordre, un des deux voit l'autre et le texte ne survit pas. Job plus a l'etape `transcription`: on efface ce qu'on vient d'ecrire et la machine s'arrete.
+  if ((await ctx.db.get(jobKey(i.sid, i.jobId)))?.state !== 'transcription') {
+    await ctx.db.remove(texts.map((t) => ({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}` })));
+    return { ok: false };
+  }
   return { ok: true };
 }
 

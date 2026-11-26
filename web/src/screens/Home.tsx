@@ -12,7 +12,7 @@ import { go } from '../router';
 
 export function Home() {
   const { me, progress } = useApp();
-  const docs = useLoad(() => api.listScans({ limit: 5 }), []);
+  const docs = useLoad(() => api.listScans({ status: 'termine', limit: 5 }), []);
   const review = useReview();
   const lp = progress ? levelProgress(progress.xp, progress.level) : null;
   return (

@@ -3,7 +3,7 @@ import { ApiError, api } from '../api';
 import { FolderSelect } from '../components/FolderSelect';
 import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg } from '../hooks';
-import { fmtDay, plural, stageLabel, subjectClass, subjectLabel, timeLeft } from '../labels';
+import { fmtDay, plural, stageLabel, subjectClass, subjectLabel } from '../labels';
 import { go, useRoute } from '../router';
 import type { Folder, ScanList, ScanQuery, ScanSummary } from '../types';
 
@@ -13,15 +13,13 @@ const SORTS = [
   { id: 'subject', label: 'Par matière', q: { sort: 'subject' } },
   { id: 'topic', label: 'Par sujet', q: { sort: 'topic' } },
 ] as const;
-const STATUSES = [['', 'Tout'], ['en_cours', 'En cours'], ['termine', 'Terminés'], ['echec', 'Pas réussis']] as const;
 const PAGE = 50;
 
-interface Params { subject: string; topic: string; folderId: string; status: string; sort: string }
-const EMPTY: Params = { subject: '', topic: '', folderId: '', status: '', sort: 'date-desc' };
+interface Params { subject: string; topic: string; folderId: string; sort: string }
+const EMPTY: Params = { subject: '', topic: '', folderId: '', sort: 'date-desc' };
 const KEYS = Object.keys(EMPTY) as (keyof Params)[];
 
 const rowKey = (s: ScanSummary) => `${s.scanId}/${s.docId ?? ''}`;
-const isFinal = (s: ScanSummary) => s.status.stage === 'termine' || s.status.stage === 'echec';
 
 function toQuery(p: Params, studentId?: string): ScanQuery {
   const sort = SORTS.find((s) => s.id === p.sort) ?? SORTS[0];
@@ -30,7 +28,7 @@ function toQuery(p: Params, studentId?: string): ScanQuery {
     ...(p.subject ? { subject: p.subject as ScanQuery['subject'] } : {}),
     ...(p.topic ? { topic: p.topic } : {}),
     ...(p.folderId ? { folderId: p.folderId } : {}),
-    ...(p.status ? { status: p.status as ScanQuery['status'] } : {}),
+    status: 'termine', // Mes cours = scans menes au bout; ceux en cours, a relire ou rates sont dans Scanner
     ...sort.q,
     limit: PAGE,
   };
@@ -66,8 +64,6 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [running, setRunning] = useState<ScanSummary[]>([]);
-  const [delay, setDelay] = useState(3000);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const key = JSON.stringify([params, studentId]);
@@ -75,15 +71,11 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
   const load = useCallback(async (first: boolean) => {
     try {
       const r = await api.listScans(toQuery(params, studentId));
-      const run = r.inProgress > 0 ? await api.listScans({ ...(studentId ? { studentId } : {}), status: 'en_cours', limit: 20 }) : null;
       setList(r);
       if (first) { setMore([]); setCursor(r.nextCursor); }
-      setRunning(run ? [...run.items].sort((a, b) => Number(b.status.stage === 'a_confirmer') - Number(a.status.stage === 'a_confirmer') || (a.status.expiresAt ?? 'z').localeCompare(b.status.expiresAt ?? 'z')) : []);
       setError(null);
-      setDelay(3000);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 429) setDelay((d) => Math.min(12000, d * 2)); // limite de debit: on ralentit sans message
-      else setError(errMsg(e));
+      setError(errMsg(e));
     } finally {
       setLoading(false);
     }
@@ -99,27 +91,6 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
     api.folders(studentId).then((r) => setFolders(r.items), () => undefined);
   }, [studentId]);
 
-  // Interrogation reguliere tant que des scans sont en cours et que l'onglet est visible.
-  const inProgress = list?.inProgress ?? 0;
-  useEffect(() => {
-    if (inProgress <= 0) return;
-    let stopped = false;
-    let t: ReturnType<typeof setTimeout>;
-    const loop = () => {
-      if (stopped) return;
-      t = setTimeout(async () => {
-        if (stopped) return;
-        if (!document.hidden) await load(false);
-        if (stopped) return; // l'ecran a ete quitte pendant le chargement: pas de nouveau minuteur
-        loop();
-      }, delay);
-    };
-    loop();
-    const vis = () => { if (!stopped && !document.hidden) void load(false); };
-    document.addEventListener('visibilitychange', vis);
-    return () => { stopped = true; clearTimeout(t); document.removeEventListener('visibilitychange', vis); };
-  }, [inProgress > 0, delay, load]);
-
   async function loadMore() {
     if (!cursor) return;
     try {
@@ -131,10 +102,9 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
     }
   }
 
-  const filtered = !!(params.subject || params.topic || params.folderId || params.status);
-  const hideRunning = !params.status && running.length > 0;
+  const filtered = !!(params.subject || params.topic || params.folderId);
   const seen = new Set((list?.items ?? []).map(rowKey));
-  const items = [...(list?.items ?? []), ...more.filter((s) => !seen.has(rowKey(s)))].filter((s) => !(hideRunning && !isFinal(s)));
+  const items = [...(list?.items ?? []), ...more.filter((s) => !seen.has(rowKey(s)))];
   const folderName = (id?: string) => folders.find((f) => f.folderId === id)?.name;
   const toggle = (docId: string) => setPicked((p) => { const n = new Set(p); if (n.has(docId)) n.delete(docId); else n.add(docId); return n; });
   const byDoc = new Map(items.filter((s) => s.docId).map((s) => [s.docId!, s]));
@@ -158,14 +128,7 @@ export function Docs({ studentId, pseudo }: { studentId?: string; pseudo?: strin
         )}
       </Card>
 
-      {running.length > 0 && !params.status && (
-        <section className="card running" aria-label="En cours">
-          <h2>⏳ En cours</h2>
-          <ul className="list">
-            {running.map((s) => <RunningRow key={s.scanId} s={s} readOnly={readOnly} />)}
-          </ul>
-        </section>
-      )}
+      {readOnly && <ChildRunning studentId={studentId!} />}
 
       <ErrorBox message={error} />
       {loading && !list && <Loading />}
@@ -222,11 +185,6 @@ function Toolbar({ params, setParams, list, folders, filtered }: { params: Param
               {folders.map((f) => <option key={f.folderId} value={f.folderId}>{f.name} ({f.scanCount})</option>)}
             </select>
           </label>
-          <label>Statut
-            <select value={params.status} onChange={(e) => setParams({ status: e.target.value })}>
-              {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </label>
           {filtered && <button type="button" className="btn btn-small btn-ghost" onClick={() => setParams({ ...EMPTY, sort: params.sort })}>Effacer les filtres</button>}
         </div>
       )}
@@ -252,17 +210,42 @@ function Empty({ filtered, folder, readOnly, clear }: { filtered: boolean; folde
   );
 }
 
-function RunningRow({ s, readOnly }: { s: ScanSummary; readOnly: boolean }) {
-  const review = s.status.stage === 'a_confirmer';
-  const left = timeLeft(s.status.expiresAt);
+/** Vue parent: l'etape et le nombre de pages des scans pas encore termines de l'eleve (jamais le texte). Lecture seule, actualisee toutes les 5 s tant qu'il y en a. */
+function ChildRunning({ studentId }: { studentId: string }) {
+  const [items, setItems] = useState<ScanSummary[]>([]);
+  useEffect(() => {
+    let stopped = false;
+    let t: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      let again = false;
+      try {
+        const [run, failed] = await Promise.all([api.listScans({ studentId, status: 'en_cours', limit: 20 }), api.listScans({ studentId, status: 'echec', limit: 20 })]);
+        if (stopped) return;
+        setItems([...run.items, ...failed.items]);
+        again = run.items.length > 0;
+      } catch {
+        again = false;
+      }
+      if (!stopped && again) t = setTimeout(tick, 5000);
+    };
+    void tick();
+    return () => { stopped = true; clearTimeout(t); };
+  }, [studentId]);
+  if (!items.length) return null;
   return (
-    <li className={`run-row${review && s.status.expiresSoon ? ' soon' : ''}`}>
-      <span className="grow">
-        <strong>{s.title ?? s.topic ?? 'Cours en lecture'}</strong><br />
-        <span className="muted">{review ? `À relire${left ? ` · ${left}` : ''}` : stageLabel(s.status.stage)} · {s.status.pagesDone} sur {s.status.pagesTotal} pages</span>
-      </span>
-      {review && !readOnly && <button type="button" className="btn btn-small" onClick={() => go(`/job/${encodeURIComponent(s.scanId)}`)}>Vérifier<span className="sr-only"> le scan</span></button>}
-    </li>
+    <section className="card running" aria-label="Scans en cours de l'élève">
+      <h2>⏳ Scans en cours</h2>
+      <ul className="list">
+        {items.map((s) => (
+          <li key={s.scanId} className="run-row">
+            <span className="grow">
+              <strong>{s.title ?? s.topic ?? (s.subject ? subjectLabel(s.subject) : `Scan du ${fmtDay(s.createdAt)}`)}</strong><br />
+              <span className="muted">{stageLabel(s.status.stage)} · {s.status.pagesDone} sur {s.status.pagesTotal} {plural(s.status.pagesTotal, 'page', 'pages')}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -314,12 +297,9 @@ function Groups({ items, sort, selecting, picked, toggle, startSelect, readOnly,
 function ScanCard({ s, selecting, picked, toggle, startSelect, readOnly, folder, grouped }: { s: ScanSummary; selecting: boolean; picked: boolean; toggle: (d: string) => void; startSelect: (d: string) => void; readOnly: boolean; folder?: string; grouped: boolean }) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const longPressed = useRef(false);
-  const stage = s.status.stage;
-  const failed = stage === 'echec';
-  const running = !failed && stage !== 'termine';
   const canPick = !!s.docId && !readOnly;
   const target = s.docId && !readOnly ? `/doc/${encodeURIComponent(s.docId)}` : !readOnly ? `/job/${encodeURIComponent(s.scanId)}` : null;
-  const title = s.title ?? (running ? 'Cours en lecture…' : 'Cours sans titre');
+  const title = s.title ?? 'Cours sans titre';
   const open = () => {
     if (longPressed.current) { longPressed.current = false; return; } // le relachement d'un appui long n'ouvre pas la fiche
     if (selecting && canPick) return toggle(s.docId!);
@@ -330,7 +310,7 @@ function ScanCard({ s, selecting, picked, toggle, startSelect, readOnly, folder,
       <span className="grow">
         <strong className="scan-title">{title}</strong>
         <span className="scan-meta">
-          {failed ? <span className="pill pill-warn">Pas réussi</span> : s.subject ? <span className={subjectClass(s.subject)}>{subjectLabel(s.subject)}</span> : <span className="subj subj-none">En cours</span>}
+          {s.subject ? <span className={subjectClass(s.subject)}>{subjectLabel(s.subject)}</span> : <span className="subj subj-none">Sans matière</span>}
           {s.topic && <span className="scan-topic">{s.topic}</span>}
         </span>
         <span className="muted scan-sub">
@@ -338,13 +318,12 @@ function ScanCard({ s, selecting, picked, toggle, startSelect, readOnly, folder,
           {folder && <> · <span aria-label="dossier">📁 {folder}</span></>}
           {grouped && s.sectionIndex !== undefined && <> · fiche {s.sectionIndex + 1} sur {s.sectionCount}</>}
         </span>
-        {failed && s.status.message && <span className="scan-fail">{s.status.message}</span>}
       </span>
       {!selecting && target && <span aria-hidden="true" className="chev">›</span>}
     </>
   );
   return (
-    <li className={`scan-card${picked ? ' picked' : ''}${failed ? ' failed' : ''}${grouped ? ' in-group' : ''}`}>
+    <li className={`scan-card${picked ? ' picked' : ''}${grouped ? ' in-group' : ''}`}>
       {selecting && !readOnly && (
         <label className="pick-hit">
           <input type="checkbox" className="pick" checked={picked} disabled={!canPick} onChange={() => canPick && toggle(s.docId!)} aria-label={`Choisir ${title}`} />

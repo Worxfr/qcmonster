@@ -44,7 +44,7 @@ describe('Pipeline (L2a)', () => {
       it('seul le role de traitement peut appeler Bedrock, et il est dans processingRoleNames', () => {
         expect(processingRoleNames(env)).toContain(`qcm-${env}-pipeline-role`);
         const roles = Object.values(t.findResources('AWS::IAM::Role')).map((r) => (r as { Properties: { RoleName?: string } }).Properties.RoleName).filter(Boolean); // la machine d'etats a son role genere (sans Bedrock)
-        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-confirm', 'api-list'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
+        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-scans-delete', 'api-confirm', 'api-list'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
         const bedrock = (re: RegExp) => actions(statements(t, re)).filter((a) => a.startsWith('bedrock:'));
         expect(bedrock(/pipelineapi/i)).toEqual([]);
         expect(bedrock(/pipelinetriggerrole/i)).toEqual([]);
@@ -280,6 +280,13 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
           { actions: ['dynamodb:BatchWriteItem', 'dynamodb:Query'], keys: ['FAMILY#*'] },
         ]);
         for (const re of [/pipelineapicoursread/i, /^pipelineapicoursrole/i]) expect(own(re).filter((a) => !a.startsWith('dynamodb:') || a === 'dynamodb:PutItem')).toEqual([]);
+      });
+      it('scans-delete: role etroit (ni confirmRole, ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#)', () => {
+        expect(fnRole('scans-delete').role).toMatch(/pipelineapiscansdelete/i);
+        expect(flat(/pipelineapiscansdelete/i)).toEqual([
+          { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['FAMILY#*', 'STUDENT#*', 'JOB#*'] },
+        ]);
+        expect(own(/pipelineapiscansdelete/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket', 'states:SendTaskFailure']);
       });
       it("jobs-confirm: role propre = droits d'ecriture + suppression du cours durable (STUDENT#, JOB#); le role d'ecriture ne supprime rien; l'etape fail supprime", () => {
         expect(fnRole('jobs-confirm').role).toMatch(/pipelineapiconfirm/i);
