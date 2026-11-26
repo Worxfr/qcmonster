@@ -6,7 +6,7 @@ import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg } from '../hooks';
 import { fmtDay, plural, stageLabel, subjectClass, subjectLabel } from '../labels';
 import { go, useRoute } from '../router';
-import { folderError } from './Folders';
+import { folderError, trainLabel } from './Folders';
 import type { Folder, ScanList, ScanQuery, ScanSummary } from '../types';
 
 const SORTS = [
@@ -206,6 +206,7 @@ function FolderHead({ folder, onChanged, onDeleted }: { folder: Folder; onChange
         <div className="folder-head-row">
           <h2 className="folder-head-name"><span aria-hidden="true">📁</span> {folder.name}</h2>
           <div className="btn-row">
+            <button type="button" className="btn btn-small" disabled={folder.scanCount === 0} onClick={() => go(`/entrainement?folderId=${encodeURIComponent(folder.folderId)}`)}>{trainLabel(folder.scanCount)}</button>
             <button ref={renameBtn} type="button" className="btn btn-small btn-ghost" onClick={() => { setDraft(folder.name); setMode('rename'); }}>Renommer le dossier</button>
             <button type="button" className="btn btn-small btn-ghost" onClick={() => setMode('delete')}>Supprimer le dossier</button>
           </div>
@@ -450,6 +451,7 @@ function SelectionBar({ chosen, all, pickAll, folders, onCreated, onDone, setErr
 
   return (
     <div className="selbar" role="region" aria-label="Actions sur les cours choisis">
+      {n > 10 && <p className="notice" role="status">Pour s'entraîner, choisis 10 fiches au plus.</p>}
       <p className="selcount"><span role="status">{n} {plural(n, 'choisi', 'choisis')}</span>{n < all && <> · <button type="button" className="link" onClick={pickAll}>Tout choisir ({all})</button></>}</p>
       {panel === 'move' && (
         <div className="selpanel">
@@ -472,6 +474,7 @@ function SelectionBar({ chosen, all, pickAll, folders, onCreated, onDone, setErr
       )}
       {!panel && (
         <div className="btn-row">
+          <button type="button" className="btn btn-small" disabled={!n || n > 10} onClick={() => go(`/entrainement?docIds=${chosen.map((s) => encodeURIComponent(s.docId!)).join(',')}`)}>🎮 S'entraîner sur {n > 1 ? `ces ${n} fiches` : 'cette fiche'}</button>
           <button type="button" className="btn btn-small" disabled={!n} onClick={() => setPanel('move')}>📁 Ranger dans un dossier</button>
           <button type="button" className="btn btn-small btn-ghost" disabled={!inFolders.length || busy} onClick={out}>Sortir du dossier</button>
           <button type="button" className="btn btn-small btn-ghost" disabled={!n} onClick={() => setPanel('delete')}>🗑 Supprimer</button>

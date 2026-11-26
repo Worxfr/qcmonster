@@ -1,7 +1,7 @@
 import { API_URL } from './env';
 import { getToken, signOut } from './auth';
 import type {
-  AnswerResult, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
+  AnswerResult, PracticeRequest, PracticeSession, Dashboard, Doc, DocSummary, Job, Leaderboard, Me, Progress, ReadResult, ScanCreateResponse, Session,
   Student, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
   TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, ExportState,
@@ -67,7 +67,10 @@ export const api = {
   deleteDoc: (id: string) => call<void>('DELETE', `/docs/${e(id)}`),
   report: (id: string, comment: string, claimId?: string) =>
     call<{ reportId: string; status: string }>('POST', `/docs/${e(id)}/report`, { comment, ...(claimId ? { claimId } : {}) }),
-  session: (docId: string) => call<Session>('GET', `/docs/${e(docId)}/session`),
+  /** `size` (v1.7): 5, 10, 15 ou 20 (defaut 10). */
+  session: (docId: string, size?: number) => call<Session>('GET', `/docs/${e(docId)}/session${size ? `?size=${size}` : ''}`),
+  /** S'entrainer sur plusieurs fiches ou un dossier (v1.7). */
+  practice: (b: PracticeRequest) => call<PracticeSession>('POST', '/practice/session', b),
   answer: (questionId: string, choice: string) => call<AnswerResult>('POST', '/answers', { questionId, choice }),
   createStudent: (b: StudentCreateRequest) => call<StudentCreateResponse>('POST', '/students', b),
   activationLink: (sid: string) => call<{ url: string; expiresAt: string }>('POST', `/students/${e(sid)}/activation-link`),

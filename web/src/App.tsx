@@ -27,6 +27,7 @@ import { Docs } from './screens/Docs';
 import { Folders } from './screens/Folders';
 import { Cours } from './screens/Cours';
 import { Quiz } from './screens/Quiz';
+import { Practice } from './screens/Practice';
 import type { Me, Progress } from './types';
 
 export function App() {
@@ -91,6 +92,7 @@ function Shell() {
 
   const parent = me.role === 'parent';
   const [, seg, arg, arg2] = route.split('?')[0].split('/');
+  const query = new URLSearchParams(route.split('?')[1] ?? '');
   const id = arg ? decodeURIComponent(arg) : '';
   const id2 = arg2 ? decodeURIComponent(arg2) : '';
   let body;
@@ -104,7 +106,8 @@ function Shell() {
   else if (seg === 'scan') body = <Scan />;
   else if (seg === 'job' && id) body = <JobView id={id} />;
   else if (seg === 'doc' && id) body = <Doc id={id} claimId={id2 || undefined} />;
-  else if (seg === 'quiz' && id) body = <Quiz docId={id} />;
+  else if (seg === 'quiz' && id) body = <Quiz key={route} docId={id} size={Number(query.get('size')) || undefined} />;
+  else if (seg === 'entrainement') body = <Practice key={route} docIds={query.get('docIds')?.split(',').filter(Boolean)} folderId={query.get('folderId') ?? undefined} />;
   else if (seg === 'jeu') body = <Game />;
   else if (seg === 'tests' && id) body = <TestDetailView id={id} />;
   else if (seg === 'tests') body = <Tests />;
@@ -131,7 +134,7 @@ function Shell() {
       </main>
       {!parent && (
         <nav className="tabs" aria-label="Navigation principale">
-          {tab('/', 'Accueil', '🏠', !seg || seg === 'quiz')}
+          {tab('/', 'Accueil', '🏠', !seg || seg === 'quiz' || seg === 'entrainement')}
           {tab('/docs', 'Cours', '📚', seg === 'docs' || seg === 'doc' || seg === 'folders' || seg === 'cours')}
           {tab('/scan', 'Scanner', '📷', seg === 'scan' || seg === 'job')}
           {tab('/tests', 'Tests', '📝', seg === 'tests')}
