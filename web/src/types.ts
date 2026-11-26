@@ -17,6 +17,7 @@ export type PracticeSession = S['PracticeSession'];
 export type PracticeRequest = S['PracticeRequest'];
 export type AnswerResult = S['AnswerResult'];
 export type Student = S['Student'];
+export type ActivationResponse = S['ActivationResponse'];
 export type StudentCreateRequest = S['StudentCreateRequest'];
 export type InvitationCreated = S['InvitationCreated'];
 export type FamilyCreateRequest = S['FamilyCreateRequest'];

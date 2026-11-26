@@ -1279,7 +1279,7 @@ export interface components {
             displayName?: string;
         };
         ActivationResponse: {
-            /** @description Identifiant de connexion de l'eleve (ex. lila-7k2f), a montrer a l'ecran seulement */
+            /** @description Identifiant de connexion de l'eleve (ex. lila-7k2fm), a montrer a l'ecran seulement */
             loginId: string;
             displayName: string;
             /** @description Vrai si le surnom demande etait devenu indisponible entre-temps et qu'on a garde le surnom de depart */
@@ -1318,7 +1318,7 @@ export interface components {
             studentId: string;
             /** @description Valeur de `loginId` (compatibilite 1.8.0: un ancien site y lit l'identifiant avec lequel l'eleve se connecte). Obsolete. */
             pseudo: string;
-            /** @description Identifiant de connexion fabrique par le serveur (lila-7k2f). Anciens comptes: l'ancien pseudo. */
+            /** @description Identifiant de connexion fabrique par le serveur (lila-7k2fm). Anciens comptes: l'ancien pseudo. */
             loginId: string;
             /** @description Surnom affiche. Anciens comptes: l'ancien pseudo sans le suffixe. */
             displayName: string;
@@ -1682,7 +1682,7 @@ export interface components {
                 /**
                  * @example {
                  *       "code": "pseudo_pris",
-                 *       "message": "Ce surnom est deja pris dans ta famille, essaie-en un autre"
+                 *       "message": "Ce surnom est déjà pris dans ta famille, essaie-en un autre"
                  *     }
                  */
                 "application/json": components["schemas"]["Error"];
@@ -3089,7 +3089,7 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "loginId": "lila-7k2f",
+                     *       "loginId": "lila-7k2fm",
                      *       "displayName": "Lila"
                      *     }
                      */
@@ -3121,7 +3121,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "code": "pseudo_pris",
-                     *       "message": "Ce surnom est deja pris dans ta famille, essaie-en un autre"
+                     *       "message": "Ce surnom est déjà pris dans ta famille, essaie-en un autre"
                      *     }
                      */
                     "application/json": components["schemas"]["Error"];
@@ -3150,8 +3150,8 @@ export interface operations {
                      *       "role": "eleve",
                      *       "familyId": "01JEXAMPLE0FAM0000000000AA",
                      *       "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *       "pseudo": "lila-7k2f",
-                     *       "loginId": "lila-7k2f",
+                     *       "pseudo": "lila-7k2fm",
+                     *       "loginId": "lila-7k2fm",
                      *       "displayName": "Lila"
                      *     }
                      */
@@ -3383,8 +3383,8 @@ export interface operations {
                      * @example {
                      *       "student": {
                      *         "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *         "pseudo": "lila-7k2f",
-                     *         "loginId": "lila-7k2f",
+                     *         "pseudo": "lila-7k2fm",
+                     *         "loginId": "lila-7k2fm",
                      *         "displayName": "Lila",
                      *         "schoolLevel": "seconde",
                      *         "under15": false,
@@ -3626,8 +3626,8 @@ export interface operations {
                      * @example {
                      *       "student": {
                      *         "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *         "pseudo": "lila-7k2f",
-                     *         "loginId": "lila-7k2f",
+                     *         "pseudo": "lila-7k2fm",
+                     *         "loginId": "lila-7k2fm",
                      *         "displayName": "Lila",
                      *         "schoolLevel": "seconde",
                      *         "under15": false,
@@ -3758,8 +3758,8 @@ export interface operations {
                     /**
                      * @example {
                      *       "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *       "pseudo": "lila-7k2f",
-                     *       "loginId": "lila-7k2f",
+                     *       "pseudo": "lila-7k2fm",
+                     *       "loginId": "lila-7k2fm",
                      *       "displayName": "Lila",
                      *       "schoolLevel": "seconde",
                      *       "under15": false,
@@ -3797,8 +3797,8 @@ export interface operations {
                      *         {
                      *           "student": {
                      *             "studentId": "01JEXAMPLE0STU0000000000AA",
-                     *             "pseudo": "lila-7k2f",
-                     *             "loginId": "lila-7k2f",
+                     *             "pseudo": "lila-7k2fm",
+                     *             "loginId": "lila-7k2fm",
                      *             "displayName": "Lila",
                      *             "schoolLevel": "seconde",
                      *             "under15": false,

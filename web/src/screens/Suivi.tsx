@@ -24,9 +24,9 @@ export function Suivi({ sid }: { sid: string }) {
         <div className="hero-row">
           <Mascot stage={p.stage} size={96} label={false} />
           <div className="grow">
-            <h1>Suivi de {s.pseudo}</h1>
+            <h1>Suivi de {s.displayName}</h1>
             <p className="muted">Niveau {p.level} · {p.xp} XP · série de {p.streakDays} jour{p.streakDays > 1 ? 's' : ''} · {s.schoolLevel}</p>
-            <p className="muted">Lecture seule : tu vois les résultats, pas le texte des questions ni les réponses de {s.pseudo}.</p>
+            <p className="muted">Lecture seule : tu vois les résultats, pas le texte des questions ni les réponses de {s.displayName}.</p>
           </div>
         </div>
       </Card>
@@ -91,7 +91,7 @@ export function Suivi({ sid }: { sid: string }) {
         <TestList
           load={(q) => api.studentTests(sid, q)}
           href={(t) => `#/suivi/${encodeURIComponent(sid)}/${encodeURIComponent(t.testId)}`}
-          empty={`${s.pseudo} n'a pas encore fait de test. Les résultats apparaîtront ici dès le premier.`}
+          empty={`${s.displayName} n'a pas encore fait de test. Les résultats apparaîtront ici dès le premier.`}
         />
       </Card>
     </>

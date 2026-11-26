@@ -9,7 +9,7 @@ export const PSEUDO_MAX = 20;
 export const PSEUDO_MAX_DIGITS = 2;
 /** Message unique et neutre (design 4.3). */
 export const PSEUDO_REFUSED_MESSAGE = "Ce surnom n'est pas possible, essaie-en un autre";
-export const PSEUDO_TAKEN_MESSAGE = 'Ce surnom est deja pris dans ta famille, essaie-en un autre';
+export const PSEUDO_TAKEN_MESSAGE = 'Ce surnom est déjà pris dans ta famille, essaie-en un autre';
 
 const stripAccents = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '');
 const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't' };
@@ -31,19 +31,31 @@ function hasBlockedWord(name: string): boolean {
 /** Vrai si `s` n'a que des lettres latines (accents compris), des chiffres, l'espace, le tiret et l'apostrophe, et commence par une lettre latine. */
 const FORM = /^\p{Script=Latin}[\p{Script=Latin}0-9 '’-]*$/u;
 
+const clean = (raw: string): string => raw.normalize('NFC').trim().replace(/\s+/g, ' ');
+
+/** Forme et donnees personnelles evidentes, SANS la liste de mots (le site s'en sert pour guider en direct sans reveler la liste). */
+function formProblem(value: string): 'forme' | 'personnel' | null {
+  const len = [...value].length;
+  if (len < PSEUDO_MIN || len > PSEUDO_MAX) return 'forme';
+  // Cf (largeur nulle, marques de direction), controle, marques combinantes restantes apres NFC, emoji: tout cela sort de FORM.
+  if (!FORM.test(value) || /[\p{Cf}\p{Cc}\p{M}]/u.test(value)) return 'forme';
+  if ((value.match(/[0-9]/g) ?? []).length > PSEUDO_MAX_DIGITS) return 'personnel';
+  if (/@|http|www|\.com|\.fr/.test(value.toLowerCase())) return 'personnel';
+  return null;
+}
+
+/** Vrai si le surnom a une forme acceptable (longueur, lettres latines, au plus 2 chiffres). Ne regarde jamais la liste de mots. */
+export const nicknameFormOk = (raw: string): boolean => formProblem(clean(raw)) === null;
+
 /**
  * Controle un surnom. `parentEmail` (facultatif): refuse le debut de l'e-mail du parent. Renvoie la valeur nettoyee (NFC, espaces reduits).
  * Les chiffres sont comptes apres retrait des espaces: plus de 2 refuses (annee de naissance, telephone, classe).
  */
 export function checkNickname(raw: string, opts: { parentEmail?: string } = {}): PseudoResult {
-  const value = raw.normalize('NFC').trim().replace(/\s+/g, ' ');
-  const len = [...value].length;
-  if (len < PSEUDO_MIN || len > PSEUDO_MAX) return { ok: false, reason: 'forme' };
-  // Cf (largeur nulle, marques de direction), controle, marques combinantes restantes apres NFC, emoji: tout cela sort de FORM.
-  if (!FORM.test(value) || /[\p{Cf}\p{Cc}\p{M}]/u.test(value)) return { ok: false, reason: 'forme' };
-  if ((value.match(/[0-9]/g) ?? []).length > PSEUDO_MAX_DIGITS) return { ok: false, reason: 'personnel' };
+  const value = clean(raw);
+  const bad = formProblem(value);
+  if (bad) return { ok: false, reason: bad };
   const low = value.toLowerCase();
-  if (/@|http|www|\.com|\.fr/.test(low)) return { ok: false, reason: 'personnel' };
   const local = opts.parentEmail?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9]/g, '') ?? '';
   if (local.length >= 3 && stripAccents(low).replace(/[^a-z0-9]/g, '') === local) return { ok: false, reason: 'personnel' };
   if (hasBlockedWord(value)) return { ok: false, reason: 'mot' };

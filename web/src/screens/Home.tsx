@@ -44,7 +44,8 @@ export function Home() {
         <div className="hero-row">
           <Mascot stage={progress?.stage ?? 2} size={120} />
           <div className="grow">
-            <h1>Salut {me.pseudo ?? 'toi'} !</h1>
+            <h1>Salut {me.displayName ?? me.pseudo ?? 'toi'} !</h1>
+            <p><a className="link" href="#/profil">Mon profil</a></p>
             {progress && lp ? (
               <>
                 <p><strong>Niveau {progress.level}</strong> · {progress.xp} XP</p>

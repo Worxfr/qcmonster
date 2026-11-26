@@ -39,7 +39,7 @@ beforeEach(() => {
     }
     if (path === '/me') return json(me);
     if (path === '/me/progress') return json({ xp: 0, level: 0, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 12, pagesLimit: 30, resetDate: '2026-12-01' });
-    if (path === '/family/dashboard') return json({ students: [{ student: { studentId: 's1', pseudo: 'Lila-7k2f', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 }, progress: { xp: 0, level: 0, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 12, pagesLimit: 30, resetDate: '2026-12-01' } }], familyPagesRemaining: 40, familyPagesLimit: 50 });
+    if (path === '/family/dashboard') return json({ students: [{ student: { studentId: 's1', pseudo: 'lila-7k2fm', loginId: 'lila-7k2fm', displayName: 'Lila', schoolLevel: 'seconde', under15: false, status: 'actif', pageQuota: 20 }, progress: { xp: 0, level: 0, streakDays: 0, freezes: 0, stage: 1, pagesRemaining: 12, pagesLimit: 30, resetDate: '2026-12-01' } }], familyPagesRemaining: 40, familyPagesLimit: 50 });
     if (path === '/family/leaderboard') return json({ week: '2026-W48', entries: [] });
     return json({ code: 'introuvable', message: 'Introuvable' }, 404);
   });
@@ -117,7 +117,7 @@ describe('Suivi (parent)', () => {
 
   it('le tableau de bord mène au suivi de chaque élève', async () => {
     await open('/', 'parent');
-    expect(await screen.findByRole('link', { name: /Suivi de Lila-7k2f/ })).toHaveAttribute('href', '#/suivi/s1');
+    expect(await screen.findByRole('link', { name: /Suivi de Lila/ })).toHaveAttribute('href', '#/suivi/s1');
   });
 });
 

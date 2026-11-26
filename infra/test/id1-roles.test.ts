@@ -75,7 +75,7 @@ describe.each(ENVS)('ID1 IAM (%s)', (env) => {
     ['family-admin', ['dynamodb:Query', 'dynamodb:BatchWriteItem'], 'suppression de la famille: liste puis BatchWrite des reservations NAME#'],
     ['me-get', ['dynamodb:GetItem', 'dynamodb:Query'], 'GET /me et classement: lecture seule'],
     ['family-read', ['dynamodb:GetItem', 'dynamodb:Query'], 'tableau de bord et classement: lecture seule'],
-  ] as const)('%s: %s', (handler, needed) => {
+  ] as const)('%s: %s', (handler, needed, _why) => {
     const have = ddbOn(role(handlerRole(handler)), 'FAMILY#*');
     for (const a of needed) expect(have, `${handler} ${a}`).toContain(a);
   });
