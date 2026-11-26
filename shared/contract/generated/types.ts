@@ -731,10 +731,10 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description `cours_plein` (409, ajoute en 1.6.0): le cours depasserait 30 pages ou 20 sections; un client ancien lit le statut HTTP. `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible" | "cours_plein";
             message: string;
             /**
              * Format: date
@@ -759,6 +759,8 @@ export interface components {
             status?: components["schemas"]["ScanStatus"];
             /** @description Fiches du scan, dans l'ordre des sections (v1.3). `docId` = la premiere. Present quand state = termine. */
             docIds?: string[];
+            /** @description Facultatif (v1.6): cours auquel ce scan appartient. Pour un ajout de pages, le cours auquel on ajoute (present des la creation); pour un scan ordinaire, present apres la confirmation. */
+            coursId?: string;
         };
         /**
          * @description Matiere (liste fermee). Libelles affiches: Maths, Physique-chimie, SVT, Histoire-geo, Francais, Autre. Les identifiants `physique` et `histoire_geo` sont ceux de la v1 (donnees existantes).
@@ -848,9 +850,11 @@ export interface components {
             coursId: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Pages du cours (30 au plus depuis la v1.6: un cours peut recevoir des ajouts de pages) */
             pages: number;
             /** @description Facultatif (v1.5): nombre de figures conservees. Les images ne sont jamais dans l'export parent. */
             figureCount?: number;
+            /** @description 20 sections au plus depuis la v1.6 (6 par scan, plusieurs scans par cours). Les sections d'un ajout suivent celles du cours d'origine. */
             sections: {
                 fromSentenceId: string;
                 subject: components["schemas"]["Subject"];
@@ -933,6 +937,8 @@ export interface components {
             contentTypes?: ("image/jpeg" | "image/png")[];
             /** @description Facultatif (v1.3): dossier de l'eleve ou ranger la fiche une fois creee. Dossier inconnu: 404, avant toute reservation de page. */
             folderId?: string;
+            /** @description Facultatif (v1.6): cours existant de l'eleve auquel ajouter ces pages. Les pages sont numerotees a la suite et donnent de nouvelles sections et fiches (un ajout est un scan ordinaire). Inconnu ou d'un autre eleve: 404, avant toute reservation. Un seul ajout ouvert par cours. */
+            coursId?: string;
         };
         UploadTarget: {
             /** Format: uri */
@@ -957,6 +963,8 @@ export interface components {
             pagesRemaining: number;
         };
         Sentence: {
+            /** @description Facultatif (v1.6), `Transcription` seulement (ajout de pages): identifiant de la derniere phrase du cours que cette phrase prolonge (la premiere ligne de l'ajout continue la derniere phrase du cours). La phrase du cours n'est jamais recollee ni reecrite. Absent sinon. */
+            continuesId?: string;
             /** @description Facultatif (v1.5), reponse seulement (`Transcription`), ignore dans `ConfirmRequest.corrections` et absent de `Cours`. true: la lecture de cette phrase est douteuse (ecriture illisible, mot incertain); l'ecran de relecture la signale. C'est une confiance de LECTURE donnee par le modele: ce n'est PAS un resultat de verification des faits (qui n'existe qu'apres la confirmation, voir `Cours.marks`). Absent = pas de doute signale. */
             doubt?: boolean;
             /** @description `p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin. */
@@ -1058,7 +1066,9 @@ export interface components {
             suggestedTopic?: components["schemas"]["Topic"];
             /** @description Decoupage suggere (v1.3), au plus 6 sections; la premiere commence a la premiere phrase. Absent: pas de decoupage suggere (une seule section). */
             suggestedSections?: components["schemas"]["SuggestedSection"][];
-            /** @description Dans l'ordre des pages (1 par page) */
+            /** @description Facultatif (v1.6), ajout de pages seulement: les deux dernieres phrases du cours, en LECTURE SEULE (ni corrigees, ni retirees, ni coupees). Absent hors ajout. Les `pages` de la transcription ne contiennent que les nouvelles pages, numerotees a la suite du cours (cours de 4 pages, ajout de 2: pages 5 et 6). */
+            context?: components["schemas"]["Sentence"][];
+            /** @description Dans l'ordre des pages ENVOYEES (1 par page, la premiere est la photo de la premiere page de `pages`) */
             photoUrls: string[];
             /** Format: date-time */
             photoUrlsExpireAt: string;
@@ -1730,7 +1740,8 @@ export interface operations {
                  *         "image/jpeg",
                  *         "image/png"
                  *       ],
-                 *       "folderId": "01JEXAMPLE0FLD0000000000AA"
+                 *       "folderId": "01JEXAMPLE0FLD0000000000AA",
+                 *       "coursId": "01JEXAMPLE0CRS0000000000AA"
                  *     }
                  */
                 "application/json": components["schemas"]["ScanCreateRequest"];
@@ -1793,7 +1804,17 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Ajout de pages (`coursId`) impossible, AVANT toute reservation de page. `etat_invalide`: le cours est encore en cours de creation, ou un autre ajout est ouvert (il dure jusqu'a la confirmation ou l'annulation, 12 h au plus). `cours_plein` (v1.6): le cours depasserait 30 pages, ou a deja 20 sections. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["QuotaExceeded"];
         };
     };
@@ -2754,6 +2775,21 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Un ajout de pages est ouvert sur ce cours (v1.6, `etat_invalide`): annule-le d'abord. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "etat_invalide",
+                     *       "message": "Un ajout est en cours"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     postAnswer: {

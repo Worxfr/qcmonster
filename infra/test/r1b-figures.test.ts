@@ -110,13 +110,15 @@ for (const env of ENVS) {
       const fig = (name: string) => onFigures(p(name)).flatMap(acts).sort();
       expect(fig('pipeline-role')).toEqual(['s3:DeleteObject', 's3:ListBucket']);
       expect(p('pipeline-role').some((s) => acts(s).includes('s3:PutObject') && text(s.Resource).includes('/scans/*/fig/*'))).toBe(true);
-      expect(fig('pipeline-api-confirm-role')).toEqual(['s3:DeleteObject', 's3:PutObject']);
+      expect(fig('pipeline-api-confirm-role')).toEqual(['s3:DeleteObject', 's3:ListBucket', 's3:PutObject']); // F10: ListBucket du prefixe figures/ pour la restauration d'un ajout
       expect(p('pipeline-api-confirm-role').some((s) => acts(s).includes('s3:GetObject') && text(s.Resource).includes('/scans/*'))).toBe(true);
       expect(fig('pipeline-api-read-role')).toEqual(['s3:GetObject']);
       expect(fig('pipeline-api-cours-read-role')).toEqual(['s3:GetObject']);
       expect(fig('pipeline-api-cours-role')).toEqual(['s3:DeleteObject', 's3:ListBucket']);
-      // scans-delete: aucun droit figures (le recadrage est sous scans/)
-      expect(fig('pipeline-api-scans-delete-role')).toEqual([]);
+      // scans-delete (F10): liste du prefixe et suppression, pour rejouer la restauration d'un ajout; ni lecture ni ecriture
+      expect(fig('pipeline-api-scans-delete-role')).toEqual(['s3:DeleteObject', 's3:ListBucket']);
+      // F10: la restauration lit DOC#<id> (deleteDocTree): le role scans-delete a DOC#* en cle de partition
+      expect(JSON.stringify(p('pipeline-api-scans-delete-role').filter((s) => acts(s).includes('dynamodb:Query')))).toContain('DOC#*');
       for (const r of ['api-write', 'api-delete', 'api-list', 'api-patch', 'api-folders', 'trigger']) expect(fig(`pipeline-${r}-role`), r).toEqual([]);
     });
 

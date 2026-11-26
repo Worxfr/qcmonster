@@ -48,6 +48,7 @@ describe('GET /cours/{coursId} (B2)', () => {
   });
   it('le tri des pages est numerique (page 10 apres la page 2)', async () => {
     const t = await seeded();
+    await t.db.update({ PK: 'STUDENT#s1', SK: 'COURS#C1' }, { set: { pages: 10 } });
     await t.db.put({ PK: 'STUDENT#s1', SK: 'COURS#C1#T10', page: 10, sentences: [] });
     expect((body(await get(t, 's1', 'C1')).texts as { page: number }[]).map((x) => x.page)).toEqual([1, 2, 10]);
   });
@@ -153,11 +154,11 @@ describe('DELETE /cours/{coursId} (B2)', () => {
     expect(await has(t, 'STUDENT#s1', 'COURS#C1')).toBe(true);
     expect((await del(t, 's1', 'C1', 'garder')).statusCode).toBe(204);
   });
-  it('coursMeta borne sections a 6 et topic a 80', async () => {
+  it('coursMeta borne sections a 20 et topic a 80', async () => {
     const { coursMeta } = await import('./meta.js');
-    const sections = Array.from({ length: 9 }, (_, k) => ({ fromSentenceId: `p1-s${k + 1}`, subject: 'svt', topic: 'x'.repeat(200), ignore: false, statut: 'sans_fiche' }));
+    const sections = Array.from({ length: 25 }, (_, k) => ({ fromSentenceId: `p1-s${k + 1}`, subject: 'svt', topic: 'x'.repeat(200), ignore: false, statut: 'sans_fiche' }));
     const m = coursMeta({ SK: 'COURS#C', pages: 1, createdAt: 'x', sections }, new Set());
-    expect(m.sections).toHaveLength(6);
+    expect(m.sections).toHaveLength(20);
     expect(m.sections[0].topic).toHaveLength(80);
   });
 });

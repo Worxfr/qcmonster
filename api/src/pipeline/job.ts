@@ -4,6 +4,7 @@ import { centsFromMicros, iso, jobKey, type Ctx } from './ctx.js';
 import { returnQuotaOnce } from './quota-ops.js';
 import type { Item } from './ports.js';
 import { coursFiguresPrefix } from './figures.js';
+import { restoreAfterFailedAppend } from './append.js';
 
 export type JobState = 'en_attente_envoi' | 'verification_fichier' | 'transcription' | 'a_confirmer' | 'verification' | 'generation' | 'termine' | 'rejete' | 'echec' | 'expire';
 export const TERMINAL: JobState[] = ['termine', 'rejete', 'echec', 'expire'];
@@ -37,6 +38,8 @@ export async function endWithoutDoc(ctx: Ctx, sid: string, jobId: string, from: 
   const results = await Promise.allSettled([returnQuotaOnce(ctx, sid, jobId), ctx.s3.deleteAll(scansPrefix(sid, jobId)), ctx.figures.deleteAll(coursFiguresPrefix(sid, jobId))]);
   const failed = results.find((r) => r.status === 'rejected');
   if (failed) throw (failed as PromiseRejectedResult).reason;
+  // Ajout de pages (F10): le cours d'origine est restaure, jamais supprime; la restauration libere le verrou en dernier.
+  if (job.appendTo) await restoreAfterFailedAppend(ctx, sid, job);
   return true;
 }
 

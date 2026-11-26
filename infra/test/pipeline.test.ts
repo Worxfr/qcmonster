@@ -294,9 +294,9 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
       it('scans-delete: role etroit (ni confirmRole, ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#)', () => {
         expect(fnRole('scans-delete').role).toMatch(/pipelineapiscansdelete/i);
         expect(flat(/pipelineapiscansdelete/i)).toEqual([
-          { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['FAMILY#*', 'STUDENT#*', 'JOB#*'] },
+          { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['FAMILY#*', 'STUDENT#*', 'JOB#*', 'DOC#*'] },
         ]);
-        expect(own(/pipelineapiscansdelete/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket', 'states:SendTaskFailure']);
+        expect(own(/pipelineapiscansdelete/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:DeleteObject', 's3:ListBucket', 's3:ListBucket', 'states:SendTaskFailure']); // scans/ + figures/ (F10)
       });
       it("jobs-confirm: role propre = droits d'ecriture + suppression du cours durable (STUDENT#, JOB#); le role d'ecriture ne supprime rien; l'etape fail supprime", () => {
         expect(fnRole('jobs-confirm').role).toMatch(/pipelineapiconfirm/i);

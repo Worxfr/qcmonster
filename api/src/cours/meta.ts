@@ -1,5 +1,5 @@
 // Cours conserve SANS son texte (`CoursMeta`): structure, sections et liens vers les fiches. Partage par `GET /cours` et l'export famille.
-import { SUBJECTS } from '../../../shared/scans.js';
+import { MAX_COURS_PAGES, MAX_COURS_SECTIONS, SUBJECTS } from '../../../shared/scans.js';
 
 type Rec = Record<string, unknown>;
 type Section = { fromSentenceId: string; subject: (typeof SUBJECTS)[number]; topic?: string; title?: string; folderId?: string; status: 'fiche' | 'ignoree' | 'sans_fiche' | 'supprimee'; docId?: string };
@@ -14,7 +14,7 @@ const str = (x: unknown): string | undefined => (typeof x === 'string' && x ? x 
  */
 export function coursMeta(head: Rec, existingDocIds: ReadonlySet<string>): CoursMeta {
   const raw = Array.isArray(head.sections) ? (head.sections as Rec[]) : [];
-  const sections = raw.slice(0, 6).map((s): Section => {
+  const sections = raw.slice(0, MAX_COURS_SECTIONS).map((s): Section => {
     const docId = str(s.docId);
     let status: Section['status'];
     if (s.ignore === true || s.statut === 'ignoree') status = 'ignoree';
@@ -31,5 +31,5 @@ export function coursMeta(head: Rec, existingDocIds: ReadonlySet<string>): Cours
       ...(status === 'fiche' ? { docId } : {}),
     };
   });
-  return { coursId: String(head.SK).slice('COURS#'.length), createdAt: String(head.createdAt ?? ''), pages: Math.min(10, Math.max(1, Number(head.pages) || 1)), sections };
+  return { coursId: String(head.SK).slice('COURS#'.length), createdAt: String(head.createdAt ?? ''), pages: Math.min(MAX_COURS_PAGES, Math.max(1, Number(head.pages) || 1)), sections };
 }

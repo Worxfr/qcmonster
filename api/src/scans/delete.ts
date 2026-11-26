@@ -7,6 +7,7 @@ import { iso, jobKey, type Ctx } from '../pipeline/ctx.js';
 import { callerOf, fail, noContent, pathId, requireStudent } from '../pipeline/http.js';
 import { endWithoutDoc, scansPrefix, type JobState } from '../pipeline/job.js';
 import { returnQuotaOnce } from '../pipeline/quota-ops.js';
+import { restoreAfterFailedAppend } from '../pipeline/append.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
 
@@ -24,6 +25,7 @@ export async function scansDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   if (!job) return fail('introuvable', 'Introuvable');
   const alreadyGone = isCancelled(job); // supprime ou annule avant cet appel
 
+  if (OPEN.includes(job.state as JobState) && job.confirmStartedAt !== undefined) return fail('etat_invalide', 'La confirmation est en cours, réessaie dans un instant'); // ajout de pages
   if (OPEN.includes(job.state as JobState)) {
     // Le premier qui change l'etat gagne la course contre une confirmation, l'expiration ou une autre suppression.
     await endWithoutDoc(ctx, sid, jobId, OPEN, 'rejete', MESSAGES.cancelled);
@@ -41,6 +43,8 @@ export async function scansDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
   await ctx.s3.deleteAll(scansPrefix(sid, jobId));
   const texts = (await ctx.db.query(`JOB#${jobId}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK })); // TEXT# et BLOCKS (R1)
   if (texts.length) await ctx.db.remove(texts);
+  // Ajout de pages: la restauration est rejouee seulement si le pipeline ne l'a pas faite (`restoredAt` pose = rien a rejouer, pas d'appel superflu).
+  if (job.appendTo && typeof job.restoredAt !== 'string') await restoreAfterFailedAppend(ctx, sid, job);
   for (const token of [job.confirmToken, job.uploadToken]) if (typeof token === 'string') await ctx.sfn.taskFailure(token, 'Cancelled');
 
   // Premiere suppression: 204. Un scan deja supprime ou annule avant cet appel est introuvable (le nettoyage ci-dessus n'a alors rien rendu de plus).

@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { keys } from '../../../shared/ddb/keys.js';
 import { deleteCoursTree, deleteDocTree } from '../../../shared/delete-tree.js';
-import { CONFIRM_TIMEOUT_S, cleanLabel, cleanTopic, MAX_SECTIONS, MAX_TOPIC, planSections, SUBJECTS } from '../../../shared/scans.js';
+import { CONFIRM_TIMEOUT_S, cleanLabel, cleanTopic, MAX_COURS_SECTIONS, MAX_SECTIONS, MAX_TOPIC, planSections, SUBJECTS } from '../../../shared/scans.js';
 import { BEDROCK_MAX_IMAGE_BYTES } from '../../../shared/bedrock.js';
 import { callModel, DAY_S, dayParis, iso, jobKey, mapLimit, ttlIn, type Ctx } from './ctx.js';
 import { ALL_OPEN, endWithoutDoc, isTerminal, scansPrefix, transition } from './job.js';
@@ -15,6 +15,7 @@ import { ModelOutputError, parseModelJson, words } from './text.js';
 import { classifyLines, parseBlocks, type FigureMeta, type RawPage } from './blocks.js';
 import { coursFiguresPrefix, resolveBoxes, type BoxState } from './figures.js';
 import { addVerifyCostOnce } from './steps-cost.js';
+import { appendBaseOf, lastSentences, photoIndex, restoreAfterFailedAppend } from './append.js';
 
 export interface WfInput {
   jobId: string;
@@ -132,7 +133,7 @@ export function readWindows(total: number): { pages: number[]; context?: number 
   return out;
 }
 
-async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }): Promise<RawPage[]> {
+async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }, previous?: string[]): Promise<RawPage[]> {
   const prefix = scansPrefix(i.sid, i.jobId);
   const numbers = w.context ? [w.context, ...w.pages] : w.pages;
   const images = await Promise.all(numbers.map(async (p) => {
@@ -141,7 +142,7 @@ async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: 
   }));
   const raw = await callModel(ctx, i, 'transcription', 'haiku', {
     system: SYSTEM_JSON,
-    prompt: readPrompt(numbers.map((p) => ({ page: p, context: p === w.context })), { figures: figuresOn(ctx) }),
+    prompt: readPrompt(numbers.map((p) => ({ page: p, context: p === w.context })), { figures: figuresOn(ctx), ...(previous?.length ? { previous } : {}) }),
     maxTokens: 8000, // plafond seulement: seuls les jetons produits sont payes
     images,
   });
@@ -154,13 +155,14 @@ async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: 
 }
 
 /** Lecture d'une fenetre; sortie illisible ou tronquee: un seul essai de repli, page par page (une image par appel). */
-async function readWindowWithFallback(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }): Promise<RawPage[]> {
+async function readWindowWithFallback(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }, previous?: string[]): Promise<RawPage[]> {
   try {
-    return await readWindow(ctx, i, w);
+    return await readWindow(ctx, i, w, previous);
   } catch (e) {
     if (!(e instanceof ModelOutputError) || (w.pages.length === 1 && !w.context)) throw e;
     const out: RawPage[] = [];
-    for (const p of w.pages) out.push(...(await readWindow(ctx, i, { pages: [p] })));
+    // Page par page: la page 1 d'un ajout garde le contexte du cours (les autres ne le recoivent pas).
+    for (const p of w.pages) out.push(...(await readWindow(ctx, i, { pages: [p] }, p === 1 ? previous : undefined)));
     return out;
   }
 }
@@ -179,10 +181,10 @@ export function classifyInput(lines: { id: string; text: string }[]): string {
 const subjectOrUndef = (x: unknown) => ((SUBJECTS as readonly string[]).includes(x as string) ? (x as (typeof SUBJECTS)[number]) : undefined);
 
 /** Decoupage propose valide par `planSections` (premiere phrase, ordre, matiere connue); sinon ignore (une seule section). */
-export function suggestedSections(raw: z.infer<typeof ClassifyOut>['sections'], ids: string[], wordCounts: number[], pages: number) {
-  const secs = raw.slice(0, MAX_SECTIONS).map((s) => ({ fromSentenceId: s.fromSentenceId, subject: subjectOrUndef(s.matiere), topic: cleanTopic(s.sujet), title: cleanLabel(s.titre, 200) }));
+export function suggestedSections(raw: z.infer<typeof ClassifyOut>['sections'], ids: string[], wordCounts: number[], pages: number, room: number = MAX_COURS_SECTIONS) {
+  const secs = raw.slice(0, Math.min(MAX_SECTIONS, room)).map((s) => ({ fromSentenceId: s.fromSentenceId, subject: subjectOrUndef(s.matiere), topic: cleanTopic(s.sujet), title: cleanLabel(s.titre, 200) }));
   if (secs.length < 2 || secs.some((s) => !s.subject)) return undefined;
-  const plan = planSections(ids, secs.map((s) => ({ fromSentenceId: s.fromSentenceId })), { wordCounts, pages });
+  const plan = planSections(ids, secs.map((s) => ({ fromSentenceId: s.fromSentenceId })), { wordCounts, pages, room });
   if (!plan.ok) return undefined;
   return secs.map((s) => ({ fromSentenceId: s.fromSentenceId, subject: s.subject!, ...(s.topic ? { topic: s.topic } : {}), ...(s.title ? { title: s.title } : {}) }));
 }
@@ -194,7 +196,11 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
   // Reprenable (une relance ne double ni l'appel de modele ni le compteur du jour): etat deja `transcription` et texte ecrit = fait.
   const job = await transition(ctx, i.sid, i.jobId, ['verification_fichier', 'transcription'], 'transcription', { transcribeStartedAt: iso(ctx) });
   if (!job) return { ok: false };
-  if (await ctx.db.get({ PK: `JOB#${i.jobId}`, SK: 'TEXT#1' })) return { ok: true };
+  // `textDone` marque la fin de l'etape (un ajout n'a pas de `TEXT#1`: ses pages sont numerotees a la suite du cours); `TEXT#1` reste le repli d'un job anterieur.
+  if (job.textDone === true || (await ctx.db.get({ PK: `JOB#${i.jobId}`, SK: 'TEXT#1' }))) return { ok: true };
+  const base = appendBaseOf(job);
+  const offset = base?.pagesBefore ?? 0; // les pages lues sont numerotees a la suite du cours, des la lecture (identifiants definitifs)
+  const before = base ? await lastSentences(ctx, i.sid, job.appendTo as string, offset) : [];
   const reject = async (msg: string) => {
     await endWithoutDoc(ctx, i.sid, i.jobId, ['transcription'], 'rejete', msg);
     return { ok: false };
@@ -209,14 +215,18 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
   // Les fenetres sont independantes (le recollage est fait par le code), 3 en parallele au plus; `readPages` (ensemble) apres chaque fenetre.
   const read = (
     await mapLimit(readWindows(total), TRANSCRIBE_CONCURRENCY, async (w) => {
-      const pages = await readWindowWithFallback(ctx, i, w);
+      const pages = await readWindowWithFallback(ctx, i, w, w.pages[0] === 1 ? before.map((s) => s.text) : undefined);
       await ctx.db.update(jobKey(i.sid, i.jobId), { addSet: { readPages: pages.map((p) => p.page) } });
       return pages;
     })
   ).flat();
 
-  const parsed = parseBlocks(read, { figures: figuresOn(ctx) });
+  const suite = read.find((p) => p.page === 1)?.suite === true;
+  const parsed = parseBlocks(read.map((p) => ({ ...p, page: p.page + offset })), { figures: figuresOn(ctx) });
   const texts = parsed.pages;
+  // La premiere phrase de l'ajout prolonge la derniere phrase du cours: lien d'affichage seulement, le texte du cours n'est jamais recolle (F10 3.3).
+  const first = texts.find((t) => t.page === 1 + offset)?.sentences[0];
+  if (base && suite && first && before.length) (first as { continuesId?: string }).continuesId = before[before.length - 1].id;
   const lines = texts.flatMap((t) => t.sentences);
   const wordCounts = lines.map((s) => words(s.text).length);
   const wordCount = wordCounts.reduce((a, b) => a + b, 0);
@@ -227,7 +237,7 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
 
   const suggestedSubject = subjectOrUndef(verdict.matiere);
   const suggestedTopic = cleanTopic(verdict.sujet);
-  const sections = suggestedSections((verdict.sections ?? []), lines.map((s) => s.id), wordCounts, total);
+  const sections = suggestedSections((verdict.sections ?? []), lines.map((s) => s.id), wordCounts, total, base ? MAX_COURS_SECTIONS - base.sectionsBefore : undefined);
   // Le job porte le type et les suggestions AVANT le texte: la presence de `TEXT#1` marque la fin de l'etape (reprise).
   await ctx.db.update(jobKey(i.sid, i.jobId), { set: { docType: verdict.docType, wordCount, ...(suggestedSubject ? { suggestedSubject } : {}), ...(suggestedTopic ? { suggestedTopic: suggestedTopic.slice(0, MAX_TOPIC) } : {}), ...(sections ? { suggestedSections: sections } : {}) } });
   const ttl = ttlIn(ctx, 7 * DAY_S);
@@ -237,12 +247,13 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
     const figures: FigureMeta[] = [];
     for (const page of [...new Set(parsed.figures.map((f) => f.page))].sort((a, b) => a - b)) {
       const figs = parsed.figures.filter((f) => f.page === page);
-      figures.push(...(await resolveBoxes(ctx, i, state, page, await ctx.s3.getBytes(`${scansPrefix(i.sid, i.jobId)}${page - 1}`), figs)));
+      figures.push(...(await resolveBoxes(ctx, i, state, page, await ctx.s3.getBytes(`${scansPrefix(i.sid, i.jobId)}${photoIndex(job, page)}`), figs)));
     }
     figures.sort((a, b) => Number(a.figureId.slice(1)) - Number(b.figureId.slice(1)));
     await ctx.db.put({ ...keys.jobBlocks(i.jobId), blocks: parsed.blocks, figures, ttl });
   }
-  for (const t of [...texts].reverse()) await ctx.db.put({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}`, page: t.page, sentences: t.sentences, ttl }); // `TEXT#1` en dernier
+  for (const t of [...texts].reverse()) await ctx.db.put({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}`, page: t.page, sentences: t.sentences, ttl }); // premiere page en dernier
+  await ctx.db.update(jobKey(i.sid, i.jobId), { set: { textDone: true }, cond: { exists: true } });
   // Course avec une suppression (DELETE /scans/{id}) pendant la lecture: elle change l'etat PUIS efface les `TEXT#`; ici on ecrit PUIS relit l'etat.
   // Quel que soit l'ordre, un des deux voit l'autre et le texte ne survit pas. Job plus a l'etape `transcription`: on efface ce qu'on vient d'ecrire et la machine s'arrete.
   if ((await ctx.db.get(jobKey(i.sid, i.jobId)))?.state !== 'transcription') {
@@ -273,6 +284,8 @@ export async function expire(ctx: Ctx, i: WfInput & { phase: 'upload' | 'confirm
  * copie de travail `TEXT#`). Idempotent. Un echec supprime tout, sans cas particulier: le texte corrige est perdu avec la photo, l'eleve rescanne.
  */
 export async function purgeScan(ctx: Ctx, sid: string, jobId: string, job: Item): Promise<void> {
+  // Ajout de pages (F10): le cours existait avant ce job. On le restaure depuis la base ecrite a la creation, on ne le supprime JAMAIS.
+  if (job.appendTo) return restoreAfterFailedAppend(ctx, sid, job);
   const ids = new Set<string>();
   if (typeof job.docId === 'string') ids.add(job.docId);
   for (const d of (job.docIds as string[] | undefined) ?? []) ids.add(d);

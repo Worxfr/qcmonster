@@ -32,6 +32,16 @@ export const sentenceOrder = (texts: Item[]): Map<string, number> => {
 };
 
 /**
+ * Rang d'une fiche parmi les sections non ignorees du COURS (F10): le `sectionIndex` d'une fiche d'ajout est local a son scan, alors que
+ * `figuresOfSection` compte sur tout le cours. On retrouve la section par le `docId` de la fiche; sans lien (cours ancien), le `sectionIndex` de la fiche.
+ */
+export function sectionRank(head: Rec, docId: string, fallback: number): number {
+  const kept = (Array.isArray(head.sections) ? (head.sections as { docId?: string; ignore?: boolean }[]) : []).filter((s) => s.ignore !== true);
+  const k = kept.findIndex((s) => s.docId === docId);
+  return k >= 0 ? k : fallback;
+}
+
+/**
  * Figures de la section `sectionIndex` (rang parmi les sections avec fiche): toutes les figures des blocs de la section, de sa premiere phrase a la
  * phrase qui precede la section suivante. Une figure est rattachee a la section qui contient le bloc de texte precedent.
  */

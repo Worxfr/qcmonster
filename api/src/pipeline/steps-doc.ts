@@ -13,6 +13,7 @@ import { consumeQuotaOnce } from './quota-ops.js';
 import { extractPrompt, generatePrompt, solvePrompt, SYSTEM_JSON } from './prompts.js';
 import type { Item } from './ports.js';
 import { MSG, purgeScan, type WfInput } from './steps.js';
+import { isAppend, lastSentences, releaseLock, sectionOffset, appendBaseOf } from './append.js';
 import { addVerifyCostOnce, currentAttempt, draftKey } from './steps-cost.js';
 import { sanitizeLatex, splitMath } from '../../../shared/latex.js';
 import { validFiche, type FicheParagraph, type RecallItem } from './blocks.js';
@@ -111,12 +112,15 @@ async function setCoursStatus(ctx: Ctx, sid: string, job: Item, planIndex: numbe
   if (typeof job.coursId !== 'string') return;
   const head = await ctx.db.get(keys.cours(sid, job.coursId));
   if (!head) return;
+  const at = sectionOffset(job) + planIndex; // un ajout: ses sections suivent celles du cours d'origine
   const sections = (head.sections as Record<string, unknown>[]).map((s, n) => {
-    if (n !== planIndex) return s;
+    if (n !== at) return s;
     const { docId, ...rest } = s;
     return statut === 'fiche' ? { ...rest, statut, docId } : { ...rest, statut };
   });
-  await ctx.db.put({ ...head, sections });
+  // Un ajout: un seul ecrivain sous verrou, ecriture conditionnelle (jamais d'ecrasement d'un cours restaure ou repris par un autre job).
+  if (isAppend(job)) await ctx.db.update(keys.cours(sid, job.coursId), { set: { sections }, cond: { exists: true, eq: { appendJobId: job.SK.slice('JOB#'.length) } } });
+  else await ctx.db.put({ ...head, sections });
 }
 
 /** Phrases de contexte donnees avec une tranche (deja traitees par la tranche precedente: aucune affirmation n'en est gardee). */
@@ -163,7 +167,7 @@ function parseExtractPart(raw: string): ExtractPart {
  * illisible, on garde ce qui est lu (si rien n'est lu, l'erreur est levee) et un journal sans texte donne le nombre de phrases non couvertes.
  * shortcut: au-dela de 360 phrases dans UNE section la fin n'est pas lue; a revoir si de telles sections existent (le plan de sections les coupe d'ordinaire).
  */
-async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text: string }[]): Promise<{ titre: string; matiere: string; claims: RawClaim[] }> {
+async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text: string }[], lead: { id: string; text: string }[] = []): Promise<{ titre: string; matiere: string; claims: RawClaim[] }> {
   const total = sentences.length;
   const at = new Map(sentences.map((s, n) => [s.id, n]));
   const all = sliceRanges(sentences.map((s) => s.text.length));
@@ -196,11 +200,13 @@ async function extractSlices(ctx: Ctx, i: WfInput, sentences: { id: string; text
     }
     calls++;
     const from = Math.max(0, r.start - CONTEXT_SENTENCES);
-    const numbered = sentences.slice(from, r.end).map((s) => `[${s.id}] ${s.text}`).join('\n');
+    // Premiere section d'un ajout: les dernieres phrases du cours completent le contexte (lecture seule, aucune affirmation n'en est gardee).
+    const ahead = lead.slice(Math.max(0, lead.length - (CONTEXT_SENTENCES - (r.start - from))));
+    const numbered = [...(r.start - from < CONTEXT_SENTENCES ? ahead : []), ...sentences.slice(from, r.end)].map((s) => `[${s.id}] ${s.text}`).join('\n');
     const quota = Math.min(SLICE_MAX_CLAIMS, Math.max(3, Math.ceil((MAX_CLAIMS * (r.end - r.start)) / total)));
     let raw: string;
     try {
-      raw = await callModel(ctx, i, 'extraction', 'haiku', { system: SYSTEM_JSON, prompt: extractPrompt(numbered, quota, r.start - from), maxTokens: SLICE_MAX_TOKENS });
+      raw = await callModel(ctx, i, 'extraction', 'haiku', { system: SYSTEM_JSON, prompt: extractPrompt(numbered, quota, (r.start - from < CONTEXT_SENTENCES ? ahead.length : 0) + (r.start - from)), maxTokens: SLICE_MAX_TOKENS });
     } catch (e) {
       // Plafond du scan atteint en cours de route: on garde ce qui est deja extrait plutot que de tout perdre.
       if ((e instanceof JobBudgetExceededError || e instanceof CostBlockedError) && claims.length > 0) {
@@ -258,7 +264,9 @@ export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
   await clearDoc(ctx, docId, ['CLAIM#', 'VERDICT#', 'QCM#', 'GAP#']); // restes d'une tentative precedente
 
   const sentences = new Map(sec.sentences.map((s) => [s.id, s.text]));
-  const out = await extractSlices(ctx, i, sec.sentences);
+  const base = appendBaseOf(job0);
+  const lead = base && sec.rank === 0 ? await lastSentences(ctx, i.sid, job0.appendTo as string, base.pagesBefore, CONTEXT_SENTENCES) : [];
+  const out = await extractSlices(ctx, i, sec.sentences, lead);
   const kept = thinEvenly(anchorClaims(out.claims, sentences, Infinity).kept, MAX_CLAIMS); // plafond de la section, reparti sur tout le cours
   const sectionsDone = sec.plan ? (await ctx.db.update(jobKey(i.sid, i.jobId), { addSet: { extractedSections: [sec.rank] } }))?.extractedSections ?? [] : [];
 
@@ -268,7 +276,7 @@ export async function extract(ctx: Ctx, i: WfInput): Promise<ExtractResult> {
       await ctx.db.put({ ...draftKey(docId), attempt: attempt + 1 });
       await setCoursStatus(ctx, i.sid, job0, sec.planIndex, 'sans_fiche');
       const head = typeof job0.coursId === 'string' ? await ctx.db.get(keys.cours(i.sid, job0.coursId)) : undefined;
-      const all = (head?.sections as { ignore?: boolean; statut?: string }[] | undefined) ?? [];
+      const all = ((head?.sections as { ignore?: boolean; statut?: string }[] | undefined) ?? []).slice(sectionOffset(job0)); // les sections de l'ajout seulement
       if ((sectionsDone as number[]).length >= sec.kept.length && all.filter((s) => !s.ignore).every((s) => s.statut === 'sans_fiche')) {
         await endWithoutDoc(ctx, i.sid, i.jobId, ['verification'], 'rejete', MSG.noClaims);
         await purgeScan(ctx, i.sid, i.jobId, job0);
@@ -431,7 +439,7 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
     // Reprise: la fiche existe deja (publiee en dernier) = rien a refaire. Section sans affirmation: pas de fiche.
     if (await ctx.db.get(keys.doc(i.sid, docId))) return { docId, qcm: 0, gaps: 0, doublon: false };
     const head = typeof job.coursId === 'string' ? await ctx.db.get(keys.cours(i.sid, job.coursId)) : undefined;
-    if ((head?.sections as { statut?: string }[] | undefined)?.[slot.planIndex]?.statut === 'sans_fiche') return { docId, qcm: 0, gaps: 0, doublon: false, skipped: true };
+    if ((head?.sections as { statut?: string }[] | undefined)?.[sectionOffset(job) + slot.planIndex]?.statut === 'sans_fiche') return { docId, qcm: 0, gaps: 0, doublon: false, skipped: true };
   }
   if (job.state === 'termine') return { docId, qcm: (job.nbQcm as number) ?? 0, gaps: (job.nbTrous as number) ?? 0, doublon: job.doublon === true };
   const part = await ctx.db.query(`DOC#${docId}`);
@@ -485,7 +493,7 @@ export async function generate(ctx: Ctx, i: WfInput): Promise<{ docId: string; q
   let firstFiche = true;
   if (plan && slot) {
     const head = typeof job.coursId === 'string' ? await ctx.db.get(keys.cours(i.sid, job.coursId)) : undefined;
-    const st = (head?.sections as { ignore?: boolean; statut?: string }[] | undefined) ?? [];
+    const st = ((head?.sections as { ignore?: boolean; statut?: string }[] | undefined) ?? []).slice(sectionOffset(job));
     firstFiche = st.slice(0, slot.planIndex).every((s) => s.ignore === true || s.statut === 'sans_fiche');
   }
   const createdAt = iso(ctx);
@@ -529,5 +537,7 @@ export async function finalize(ctx: Ctx, i: WfInput): Promise<{ docIds: string[]
   if (docIds.length === 0) throw new Error('aucune fiche creee');
   const micros = (job.coutMicros as number | undefined) ?? 0;
   await transition(ctx, i.sid, i.jobId, ['generation'], 'termine', { finishedAt: iso(ctx), coutCentimes: centsFromMicros(micros), doublon, docId: docIds[0], docIds });
+  // Ajout de pages: le cours est complet (pages, phrases et sections ecrites a la confirmation); le verrou est libere en dernier pas. Rejouable.
+  if (isAppend(job) && (await ctx.db.get(jobKey(i.sid, i.jobId)))?.state === 'termine') await releaseLock(ctx, i.sid, job.appendTo as string, i.jobId);
   return { docIds };
 }
