@@ -6,7 +6,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
 import type { Construct } from 'constructs';
-import { COST_ALERT_EUR, METRIC_COST_MONTH, METRIC_NAMESPACE, processingRoleNames, type Env } from '../../shared/names.js';
+import { costThresholdsFor, METRIC_COST_MONTH, METRIC_NAMESPACE, processingRoleNames, type Env } from '../../shared/names.js';
 import { USD_PER_EUR } from '../../shared/pricing.js';
 
 export interface BudgetStackProps extends StackProps {
@@ -104,11 +104,12 @@ export class BudgetStack extends Stack {
       }
     }
 
-    // Alarme sur le compteur applicatif (publie par shared/cost.ts): e-mail des 10 EUR.
+    // Alarme sur le compteur applicatif (publie par shared/cost.ts): e-mail a 10 EUR en prod, 80 EUR en dev (plafond cumule dev 100 EUR).
+    const COST_ALERT_EUR = costThresholdsFor(envName).alertEur;
     const topic = new sns.Topic(this, 'CostAlerts', { topicName: `qcm-${envName}-cost-alerts` });
     topic.addSubscription(new subs.EmailSubscription(alertEmail));
     new cw.Alarm(this, 'CostCounter10', {
-      alarmName: `qcm-${envName}-cout-mensuel-10`,
+      alarmName: `qcm-${envName}-cout-mensuel-${COST_ALERT_EUR}`,
       alarmDescription: `Compteur de cout applicatif >= ${COST_ALERT_EUR} EUR ce mois-ci`,
       metric: new cw.Metric({
         namespace: METRIC_NAMESPACE,

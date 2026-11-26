@@ -505,11 +505,11 @@ describe('plafond de cout proportionnel aux pages', () => {
       }
     }
   });
-  it('le plafond d essais de 50 EUR prime', async () => {
+  it('le plafond d essais de 100 EUR prime', async () => {
     const k2 = await makeCtx(goodScript());
     const u2 = await toConfirm(k2, 3);
     await confirm(k2, u2.jobId);
-    k2.costStore.totals.totalEur = 50;
+    k2.costStore.totals.totalEur = 100;
     await expect(extract(k2.ctx, u2.i)).rejects.toThrow(/garde de cout/);
   });
   it('verify-run: le budget transmis fait foi jusqu a jobCapEur(10); 0,25 ne bride plus un scan de 3 pages', async () => {

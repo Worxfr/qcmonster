@@ -30,4 +30,4 @@ Quota: `QUOTAOP#<job>#<release|consume|refund>` ecrit dans la meme transaction q
 
 ## Cout
 
-Chaque appel passe par `shared/bedrock.ts` (garde 50 EUR en dev, plafond 0,25 EUR par job). `Job.coutMicros` est incremente par ADD atomique des la reponse. `verify-run` recoit `budgetRestantCentimes` = plafond - depense - 6 centimes gardes pour la generation. Plafond atteint pendant la generation: la fiche est publiee sans questions.
+Chaque appel passe par `shared/bedrock.ts` (garde 100 EUR en dev, plafond 0,25 EUR par job). `Job.coutMicros` est incremente par ADD atomique des la reponse. `verify-run` recoit `budgetRestantCentimes` = plafond - depense - 6 centimes gardes pour la generation. Plafond atteint pendant la generation: la fiche est publiee sans questions.

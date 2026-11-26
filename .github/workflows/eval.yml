@@ -3,7 +3,7 @@ name: eval
 # - oracle / mock: aucun appel Bedrock, aucun cout (pour essayer l'outil, mesures sans valeur).
 # - deploy-eval / destroy-eval: cree / supprime la stack DEV `qcm-dev-eval` (Lambda eval-run + role QCMonster-Eval-dev), jamais en prod.
 # - lambda: invoque eval-run en dev (pipeline reel, Claude via Bedrock, pages synthetiques PUBLIQUES du depot). Garde de cout: le compteur
-#   COST#dev bloque tout appel au-dela de 50 EUR (shared/bedrock.ts, docs/cost-guard.md); le lancement s'arrete en plus a `max_eur`.
+#   COST#dev bloque tout appel au-dela de 100 EUR (shared/bedrock.ts, docs/cost-guard.md); le lancement s'arrete en plus a `max_eur`.
 # Lancement explicite seulement, jamais sur push ni sur pull request. Les pages cachees et privees ne sont JAMAIS evaluees ici.
 # Aucun contenu de cours dans les journaux: l'outil n'affiche que des identifiants de page et des nombres.
 on:

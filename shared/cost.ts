@@ -2,26 +2,26 @@
 import { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
 import { keys, type Key } from './ddb/keys.js';
-import { COST_BLOCK_NEW_EUR, COST_STOP_ALL_EUR, DEV_TRIAL_CAP_EUR, METRIC_COST_MONTH, METRIC_NAMESPACE, type Env } from './names.js';
+import { COST_BLOCK_NEW_EUR, COST_STOP_ALL_EUR, DEV_TRIAL_CAP_EUR, costThresholdsFor, METRIC_COST_MONTH, METRIC_NAMESPACE, type Env } from './names.js';
 
 export type CostGate = 'ok' | 'block_new' | 'stop_all';
 
-/** >= 15 EUR: POST /scans repond 429 budget_epuise. >= 18 EUR: tout traitement s'arrete a l'etape suivante. */
-export function costGate(totalEur: number): CostGate {
-  if (totalEur >= COST_STOP_ALL_EUR) return 'stop_all';
-  if (totalEur >= COST_BLOCK_NEW_EUR) return 'block_new';
+/** Prod: >= 15 EUR, POST /scans repond 429 budget_epuise; >= 18 EUR, tout traitement s'arrete a l'etape suivante. Dev: 95/100 EUR (costThresholdsFor). */
+export function costGate(totalEur: number, t = { blockNewEur: COST_BLOCK_NEW_EUR, stopAllEur: COST_STOP_ALL_EUR }): CostGate {
+  if (totalEur >= t.stopAllEur) return 'stop_all';
+  if (totalEur >= t.blockNewEur) return 'block_new';
   return 'ok';
 }
 
 /**
- * Garde par environnement. En dev, le plafond d essais (DEV_TRIAL_CAP_EUR, 50 EUR) s applique au CUMUL depuis le debut de la phase dev
- * (decision du proprietaire), pas au mois. Les seuils 15/18 EUR restent mensuels.
+ * Garde par environnement. En dev, le plafond d essais (DEV_TRIAL_CAP_EUR, 100 EUR) s applique au CUMUL depuis le debut de la phase dev
+ * (decision du proprietaire), pas au mois. Les seuils mensuels (prod 15/18 EUR, dev 95/100 EUR) restent mensuels.
  */
 export function costGateFor(env: Env, c: CostTotals | number): CostGate {
   const { monthEur, totalEur } = typeof c === 'number' ? { monthEur: c, totalEur: c } : c;
   if (!Number.isFinite(monthEur) || !Number.isFinite(totalEur)) return 'stop_all'; // fail-closed
   if (env === 'dev' && totalEur >= DEV_TRIAL_CAP_EUR) return 'stop_all';
-  return costGate(monthEur);
+  return costGate(monthEur, costThresholdsFor(env));
 }
 
 export const MICROS_PER_EUR = 1_000_000;

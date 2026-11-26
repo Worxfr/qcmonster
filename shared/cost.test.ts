@@ -3,12 +3,17 @@ import { TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-
 import { addCost, costGate, costGateFor, readCost, toMicros } from './cost.js';
 import { costEur } from './pricing.js';
 
-describe('plafond cumule des essais dev: 50 EUR (decision du proprietaire, 2026-11-25)', () => {
-  it('valeur litterale: 49,99 passe, 50 bloque, meme si le mois est a 0; la prod n\'est pas concernee', () => {
-    expect(costGateFor('dev', { monthEur: 0, totalEur: 49.99 })).toBe('ok');
-    expect(costGateFor('dev', { monthEur: 0, totalEur: 50 })).toBe('stop_all');
+describe('plafond cumule des essais dev: 100 EUR (decision du proprietaire, 2026-11-26)', () => {
+  it('valeur litterale: 99,99 passe, 100 bloque, meme si le mois est a 0; la prod n\'est pas concernee', () => {
+    expect(costGateFor('dev', { monthEur: 0, totalEur: 99.99 })).toBe('ok');
+    expect(costGateFor('dev', { monthEur: 0, totalEur: 100 })).toBe('stop_all');
     expect(costGateFor('dev', { monthEur: 0, totalEur: 12 })).toBe('ok'); // l'ancien plafond ne bloque plus
-    expect(costGateFor('prod', { monthEur: 0, totalEur: 50 })).toBe('ok');
+    expect(costGateFor('prod', { monthEur: 0, totalEur: 100 })).toBe('ok');
+    expect(costGateFor('dev', { monthEur: 50, totalEur: 50 })).toBe('ok'); // les seuils mensuels prod 15/18 ne s'appliquent plus en dev
+    expect(costGateFor('dev', { monthEur: 94.99, totalEur: 94.99 })).toBe('ok');
+    expect(costGateFor('dev', { monthEur: 95, totalEur: 95 })).toBe('block_new');
+    expect(costGateFor('prod', { monthEur: 15, totalEur: 15 })).toBe('block_new');
+    expect(costGateFor('prod', { monthEur: 18, totalEur: 18 })).toBe('stop_all');
     expect(costGateFor('dev', { monthEur: 0, totalEur: Number.NaN })).toBe('stop_all');
   });
 });
