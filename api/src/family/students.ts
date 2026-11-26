@@ -100,6 +100,8 @@ export async function purgeStudent(deps: FamilyDeps, fid: string, s: Item): Prom
   const sid = s.SK.slice('STUDENT#'.length);
   await deps.identity.deleteUser(sid);
   await deps.photos.deleteForStudent(sid); // toutes les photos scans/<eleve>/..., meme sans fiche JOB# restante
+  await deps.archives.deleteFamily(sid); // archives de l'eleve `exports/<eleve>/` (R1 3.6; le prefixe est celui de l'identifiant, comme pour une famille)
+  await deps.photos.deleteFiguresForStudent(sid); // figures/<eleve>/ AVANT l'arbre DynamoDB (R1 3.2): une suppression interrompue se reprend
   if (typeof s.activationHash === 'string') await deps.store.remove({ PK: `ACTIVATION#${s.activationHash}`, SK: 'META' });
   await deleteStudentTree(deps.tree, fid, sid);
 }

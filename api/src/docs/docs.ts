@@ -5,10 +5,11 @@ import { deleteDocTree } from '../../../shared/delete-tree.js';
 import { VerdictItemSchema, SignalementItemSchema } from '../../../shared/items.js';
 import { keys } from '../../../shared/ddb/keys.js';
 import { cleanTopic } from '../../../shared/scans.js';
-import { iso, type Ctx } from '../pipeline/ctx.js';
+import { ID_RE, iso, type Ctx } from '../pipeline/ctx.js';
 import { bodyOf, callerOf, fail, json, noContent, pathId, requireStudent, type Caller } from '../pipeline/http.js';
 import { treeDbFrom, type Item } from '../pipeline/ports.js';
 import { claimStatus } from '../pipeline/steps-doc.js';
+import { figuresOfSection, loadCoursBlocks, sentenceOrder, signFigures } from '../cours/view.js';
 import { ALLOWED_HOSTS } from '../verify/fetch.js';
 
 type Res = Promise<APIGatewayProxyStructuredResultV2>;
@@ -59,7 +60,7 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
     const docs = (await visibleDocs(ctx, c)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return json(200, { items: docs.map(summary) });
   }
-  const { doc } = await findDoc(ctx, c, pathId(event, 'docId'));
+  const { sid, doc } = await findDoc(ctx, c, pathId(event, 'docId'));
   const part = await ctx.db.query(`DOC#${docId}`);
   const verdicts = new Map(part.filter((x) => x.SK.startsWith('VERDICT#')).map((x) => [x.SK.slice('VERDICT#'.length), x]));
   const claims = part
@@ -75,12 +76,32 @@ export async function docsRead(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
         text: cl.texte,
         status: claimStatus(cl, ok ? v : undefined),
         aRisque: cl.aRisque === true,
+        ...(c.role === 'eleve' && typeof doc.coursId === 'string' && typeof (cl.origine as { phraseId?: unknown } | undefined)?.phraseId === 'string' ? { sentenceId: (cl.origine as { phraseId: string }).phraseId } : {}),
         sources: ok ? ok.sources.filter((src) => sourceAllowed(src.url)) : [],
       };
     })
     .sort((a, b) => a.claimId.localeCompare(b.claimId));
   // Aucune cle de QCM ni mot attendu: ces elements ne sont jamais lus ici.
-  return json(200, { ...summary(doc), summary: typeof doc.resume === 'string' ? doc.resume : '', claims });
+  // R1, ELEVE SEULEMENT: le parent ne recoit ni paragraphes, ni rappel, ni figures (il ne lit pas le texte du cours).
+  const mine = c.role === 'eleve' && c.studentId === sid;
+  let figures: Awaited<ReturnType<typeof signFigures>> = [];
+  const coursId = typeof doc.coursId === 'string' && ID_RE.test(doc.coursId) ? doc.coursId : undefined;
+  if (mine && coursId && typeof doc.sectionIndex === 'number') {
+    const head = await ctx.db.get(keys.cours(sid, coursId));
+    const cb = head ? await loadCoursBlocks(ctx, sid, coursId) : undefined;
+    if (head && cb) {
+      const texts = (await ctx.db.query(`STUDENT#${sid}`, `COURS#${coursId}#T`)).filter((t) => t.SK.startsWith(`COURS#${coursId}#T`));
+      figures = await signFigures(ctx, sid, coursId, figuresOfSection(head, sentenceOrder(texts), cb.blocks, cb.figures, doc.sectionIndex));
+    }
+  }
+  return json(200, {
+    ...summary(doc),
+    summary: typeof doc.resume === 'string' ? doc.resume : '',
+    claims,
+    ...(mine && Array.isArray(doc.body) && doc.body.length ? { body: doc.body } : {}),
+    ...(mine && Array.isArray(doc.recall) && doc.recall.length ? { recall: doc.recall } : {}),
+    ...(figures.length ? { figures } : {}),
+  });
 }
 
 export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
@@ -90,7 +111,7 @@ export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   if (n === 0) return fail('introuvable', 'Introuvable');
   // Le texte du cours (TEXT#, TTL 7 jours) part avec la fiche: une suppression demandee efface aussi la transcription.
   if (typeof doc.jobId === 'string') {
-    const texts = (await ctx.db.query(`JOB#${doc.jobId}`, 'TEXT#')).map((t) => ({ PK: t.PK, SK: t.SK }));
+    const texts = (await ctx.db.query(`JOB#${doc.jobId}`)).filter((t) => t.SK.startsWith('TEXT#') || t.SK === 'BLOCKS').map((t) => ({ PK: t.PK, SK: t.SK }));
     if (texts.length) await ctx.db.remove(texts);
   }
   // N6: le commentaire libre d'un signalement ne survit pas a sa fiche (les signalements sont sous la famille, avec le docId).

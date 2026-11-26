@@ -12,6 +12,7 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Quota mensuel (famille) | `FAMILY#<fid>` | `QUOTA#<aaaa-mm>#FAMILY` | memes attributs, `limite` = plafond famille | `shared/quota.ts` (L1) |
 | Job | `STUDENT#<sid>` | `JOB#<jobId>` | etat, `stage` fin (`fiche`, `verification`), `readPages`, `contentTypes`, `folderId`, choix et suggestions de matiere/sujet (voir FEAT-A), nb de pages, `coutCentimes` (somme mesuree L2a + L2b, expose par le contrat), horodatages, erreur. TTL 7 jours | L2a |
 | Transcription | `JOB#<jobId>` | `TEXT#<page>` | phrases numerotees. TTL 7 jours | L2a |
+| Blocs et figures du job (R1) | `JOB#<jobId>` | `BLOCKS` | `blocks[]`, `figures[]` (metadonnees, sans URL). TTL 7 jours, supprime EXPLICITEMENT partout ou `TEXT#` l'est | `transcribe` |
 | Fiche | `STUDENT#<sid>` | `DOC#<docId>` | titre, matiere, `sujet`, `dossierId`, `pages` (FEAT-A), `empreinteMinHash` (64 entiers), `pagesConsommees`, `doublon`, date, GSI1 | L2a |
 | Dossier (FEAT-A) | `STUDENT#<sid>` | `FOLDER#<folderId>` | `nom`, `nomCle` (`labelKey(nom)`), `createdAt`. Aucune liste de fiches: l'appartenance est portee par `DOC#.dossierId` | `api/src/folders/` (lot back B2) seul |
 | Affirmation | `DOC#<docId>` | `CLAIM#<nn>` | texte, origine (page, `phrase_id`, extrait), type, `a_risque`. Jamais modifiee ensuite | L2a (seul) |
@@ -132,3 +133,16 @@ A la relecture l'eleve decoupe le texte en **sections par sujet**; chaque sectio
 - Une section sans affirmation exploitable n'echoue pas le scan: son `statut` est `sans_fiche`; si **aucune** section ne donne de fiche, le job est `rejete` (`noClaims`, quota rendu).
 
 **Archives d'export (H1-B).** Objets prives `exports/<familyId>/<id>.zip` du bucket des scans (pas de bucket nouveau). Le bucket expire tout objet apres 1 jour (regle `expire-1-day`, suppression effective sous 2 jours); `DELETE /family` efface aussi le prefixe. Le lien est une URL signee de 10 minutes, jamais enregistree. La limite de 3 archives par heure et par famille se compte en listant le prefixe de la famille (aucune ecriture DynamoDB).
+
+### Blocs, figures et export de l'eleve (contrat 1.5, R1-A)
+
+| Type | PK | SK | Attributs | Ecrit par |
+|---|---|---|---|---|
+| Blocs et figures du job | `JOB#<jobId>` | `BLOCKS` | `blocks[]` (400 au plus; absent si plus de 400), `figures[]` (`figureId`, `page`, `kind`, `alt`, `caption?`, `box?`; absence de `box` = page entiere). TTL 7 jours | `transcribe` |
+| Blocs et figures du cours | `STUDENT#<sid>` | `COURS#<coursId>#B` | `blocks[]`, `figures[]` (8 au plus, seulement celles gardees par l'eleve). Pas de TTL; pas de `doubt` | `jobs-confirm` |
+| Demande d'export de l'eleve | `STUDENT#<sid>` | `EXPORT#<exportId>` | `state` (`en_cours`, `pret`, `echec`), `key`, `sizeBytes`, `courses`, `figures`, `truncated`, `omittedCourses`, `ttl` (1 jour, comme la regle d'expiration du bucket des scans) | `me-export-archive`, fonction de construction |
+
+- Le drapeau `doubt` vit dans `JOB#/TEXT#` (avant confirmation). Le cours durable n'ecrit que `id`, `text`, `pages` (schema Zod qui retire le reste).
+- Une figure conservee: S3 `figures/<sid>/<coursId>/<figureId>.jpg` (bucket `figures`, lot B). Recadrage temporaire: `scans/<sid>/<jobId>/fig/<figureId>.jpg` (part avec la photo).
+- Suppression, dans l'ordre: S3 `figures/` d'abord, puis DynamoDB. `deleteCoursTree` supprime `COURS#<id>#B` et `JOB#<jobId>/BLOCKS` avec `TEXT#`. L'IAM ne change pas pour DynamoDB (cles `STUDENT#*` et `JOB#*` deja couvertes).
+- Lecture des marques (`Cours.marks`): `CLAIM#` et `VERDICT#` sous `DOC#<docId>` des fiches de l'en-tete du cours, 2 requetes par fiche au plus.

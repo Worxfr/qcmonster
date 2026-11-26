@@ -22,9 +22,11 @@ export interface LogFields {
   /** Audit sans contenu: evenement et auteur (hache du `sub`, 16 caracteres hexadecimaux). */
   audit?: 'invitation_creee';
   actor?: string;
+  /** Figures (R1), sans contenu: reprise par le modele plus gros (`retry`) ou page entiere (`page`). */
+  fallback?: 'page' | 'retry';
 }
 
-const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode', 'outputReadable', 'claimsExpected', 'verdictsReceived', 'citationsRejected', 'retried', 'sentencesUncovered', 'stopReason', 'audit', 'actor'] as const;
+const ALLOWED = ['jobId', 'step', 'durationMs', 'status', 'tokensIn', 'tokensOut', 'costEur', 'errorCode', 'outputReadable', 'claimsExpected', 'verdictsReceived', 'citationsRejected', 'retried', 'sentencesUncovered', 'stopReason', 'audit', 'actor', 'fallback'] as const;
 
 /** Ecrit une ligne JSON. Les champs hors liste blanche sont ignores (jamais de texte libre). */
 export function log(fields: LogFields): void {

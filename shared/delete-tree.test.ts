@@ -1,7 +1,7 @@
 import { BatchWriteCommand, QueryCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { describe, expect, it } from 'vitest';
 import { keys } from './ddb/keys.js';
-import { deleteDocTree, deleteFamilyTree, deleteStudentTree, dynamoTreeDb, memoryTreeDb } from './delete-tree.js';
+import { deleteCoursTree, deleteDocTree, deleteFamilyTree, deleteStudentTree, dynamoTreeDb, memoryTreeDb } from './delete-tree.js';
 
 const k = (PK: string, SK: string) => ({ PK, SK });
 const seed = () => [
@@ -42,6 +42,25 @@ describe('suppression en cascade', () => {
     const db = memoryTreeDb([k('FAMILY#f9', 'META')]);
     expect(await deleteFamilyTree(db, 'f9')).toBe(1);
     expect(await deleteFamilyTree(db, 'f9')).toBe(0);
+  });
+});
+
+describe('cours: blocs et figures (R1)', () => {
+  const cours = () => [keys.cours('s1', 'c1'), keys.coursText('s1', 'c1', 1), keys.coursBlocks('s1', 'c1'), keys.cours('s1', 'c10'), keys.coursBlocks('s1', 'c10'), keys.jobBlocks('j1'), keys.text('j1', 1)];
+  it('deleteCoursTree supprime COURS#<id>#B et JOB#<jobId>/BLOCKS (comptes avant/apres), pas le cours voisin c10', async () => {
+    const db = memoryTreeDb(cours());
+    expect(await deleteCoursTree(db, 's1', 'c1', { jobId: 'j1' })).toBe(5);
+    expect(db.keys().map((x) => x.SK).sort()).toEqual(['COURS#c10', 'COURS#c10#B']);
+  });
+  it('un cours d\'un autre eleve n\'est pas touche', async () => {
+    const db = memoryTreeDb(cours());
+    expect(await deleteCoursTree(db, 's2', 'c1', { jobId: 'j1' })).toBe(0);
+    expect(db.keys()).toHaveLength(7);
+  });
+  it('deleteStudentTree emporte aussi les blocs du cours et du job', async () => {
+    const db = memoryTreeDb([keys.family('f1'), keys.student('f1', 's1'), keys.job('s1', 'j1'), ...cours()]);
+    await deleteStudentTree(db, 'f1', 's1');
+    expect(db.keys().map((x) => x.PK)).toEqual(['FAMILY#f1']);
   });
 });
 

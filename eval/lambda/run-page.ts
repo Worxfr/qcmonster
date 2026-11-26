@@ -12,7 +12,7 @@ import { toMicros } from '../../shared/cost.js';
 import { costEur, type Usage } from '../../shared/pricing.js';
 import { memoryQuotaDb } from '../../shared/quota.js';
 import { jobKey, type Ctx } from '../../api/src/pipeline/ctx.js';
-import { memoryDb, memoryScanStore, memorySfn } from '../../api/src/pipeline/ports.js';
+import { memoryCrop, memoryDb, memoryFigureStore, memoryScanStore, memorySfn } from '../../api/src/pipeline/ports.js';
 import { imageFormat, scanCheck, transcribe } from '../../api/src/pipeline/steps.js';
 import { claimStatus, extract, generate } from '../../api/src/pipeline/steps-doc.js';
 import { scansPrefix, transition } from '../../api/src/pipeline/job.js';
@@ -140,7 +140,7 @@ export async function runPage(deps: EvalDeps, input: { pageId: string; image: Ui
   const db = memoryDb(quota.items);
   const s3 = memoryScanStore();
   let n = 0;
-  const ctx: Ctx = { env: 'dev', db, quota, s3, sfn: memorySfn(), models: deps.models, port, costStore, now: deps.now ?? (() => new Date()), newId: () => `EVALdoc${String(++n).padStart(19, '0')}` };
+  const ctx: Ctx = { env: 'dev', db, quota, s3, sfn: memorySfn(), figures: memoryFigureStore(s3), crop: memoryCrop(), cfg: { figuresEnabled: false }, models: deps.models, port, costStore, now: deps.now ?? (() => new Date()), newId: () => `EVALdoc${String(++n).padStart(19, '0')}` };
 
   const costBefore = await costStore.read();
   const fmt = imageFormat(input.image)!;

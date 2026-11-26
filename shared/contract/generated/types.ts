@@ -600,6 +600,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/export/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * L'eleve demande l'archive de TOUTES ses donnees, figures comprises (contract-v1.5.1, R1; handler me-export)
+         * @description Reserve a l'eleve (un parent recoit 403: l'export du parent ne contient aucun contenu de cours). Pas de corps. La construction est **asynchrone**: la reponse est `202` avec un `exportId`, puis `GET /me/export/archive/{exportId}` donne l'etat et, quand l'archive est prete, un lien signe de 10 minutes.
+         *     Contenu du zip: `export.json` (profil, dossiers, cours avec texte, blocs et sections, fiches avec affirmations, sources, resume, paragraphes et rappel), `tests/<studentId>.jsonl` (historique des tests AVEC les reponses donnees) et `figures/<coursId>/<figureId>.jpg`. Le zip est ecrit en flux et ne depasse pas 150 Mo de figures: au-dela, les cours les plus anciens perdent leurs images (le texte reste complet), `truncated` vaut vrai et `omittedCourses` donne leur nombre.
+         *     Limite: 3 demandes par heure et par eleve (429 `quota_epuise`). La demande et son lien expirent apres 1 jour (`GET` renvoie alors 404); le fichier est supprime par la regle d'expiration du stockage (1 a 2 jours) et avec l'eleve.
+         */
+        post: operations["createMyExportArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/export/archive/{exportId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Etat d'une archive de l'eleve; le lien signe est re-signe a chaque lecture (contract-v1.5.1, R1; handler me-export)
+         * @description Eleve seulement, et seulement SES demandes (404 sinon, y compris pour l'`exportId` d'un autre eleve). `state`: `en_cours`, `pret` (avec `archive`) ou `echec` (relancer une demande).
+         */
+        get: operations["getMyExportArchive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/family/export/archive": {
         parameters: {
             query?: never;
@@ -689,10 +731,10 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
+             * @description `indisponible` (503, ajoute en 1.5.1): erreur de stockage reessayable, l'etat n'a pas change (confirmation avec figures). `dossier_nom_pris` (409) et `dossiers_limite` (400) ajoutes en 1.3 pour les dossiers; un client 1.2 qui ne les connait pas lit le statut HTTP.
              * @enum {string}
              */
-            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite";
+            code: "requete_invalide" | "interdit" | "introuvable" | "etat_invalide" | "quota_epuise" | "budget_epuise" | "dossier_nom_pris" | "dossiers_limite" | "indisponible";
             message: string;
             /**
              * Format: date
@@ -919,7 +961,7 @@ export interface components {
             doubt?: boolean;
             /** @description `p<page de depart>-s<n>`: l'identifiant porte la PREMIERE page de la phrase, meme si elle se termine plus loin. */
             id: string;
-            /** @description Texte de la phrase. Depuis la v1.5 il peut contenir du LaTeX: une formule dans une phrase est entouree de `$...$` (`\$` pour un dollar litteral); dans un bloc `formule`, le texte est le LaTeX sans delimiteurs. Le serveur controle le LaTeX (longueur, accolades, commandes interdites comme href, url, input, def) et laisse en texte simple ce qui ne passe pas; le site l'affiche en MathML via KaTeX (trust: false). */
+            /** @description Texte de la phrase. Depuis la v1.5 il peut contenir du LaTeX: une formule dans une phrase est entouree de `$...$` (hors formule, `\$` pour un dollar litteral et `\\` pour un antislash litteral); dans un bloc `formule`, le texte est le LaTeX sans delimiteurs. Le serveur controle le LaTeX (longueur, accolades, commandes interdites comme href, url, input, def) et laisse en texte simple ce qui ne passe pas; le site l'affiche en MathML via KaTeX (trust: false). */
             text: string;
             /** @description Facultatif (v1.3). Pages d'origine d'une phrase recollee: une phrase coupee par un saut de page est UNE phrase, `pages: [2, 3]`. Pages consecutives, croissantes, la premiere = celle de l'id. Absent: la phrase tient sur la page de son id. La phrase n'est listee que sous sa premiere page dans `Transcription.pages`; la page suivante ne la repete pas. Dans `ConfirmRequest.corrections`, `pages` est ignore (seuls `id` et `text` comptent). */
             pages?: number[];
@@ -1362,6 +1404,15 @@ export interface components {
             courses?: number;
             /** @description Facultatif (v1.5, archive de l'eleve): nombre de figures (fichiers JPEG) dans l'archive */
             figures?: number;
+            /** @description Facultatif (v1.5.1, archive de l'eleve): cours les plus anciens dont les figures ont ete omises pour tenir dans 150 Mo (leur texte est dans l'archive). `truncated` vaut alors vrai. */
+            omittedCourses?: number;
+        };
+        /** @description Demande d'archive de l'eleve (v1.5.1). `archive` est present quand `state` vaut `pret`. */
+        ExportStatus: {
+            exportId: string;
+            /** @enum {string} */
+            state: "en_cours" | "pret" | "echec";
+            archive?: components["schemas"]["ExportArchive"];
         };
         DocProgress: {
             docId: string;
@@ -1981,6 +2032,22 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            /** @description Erreur de stockage pendant la copie des figures gardees (`indisponible`, v1.5.1): rien n'a change, l'eleve renvoie la meme confirmation. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "indisponible",
+                     *       "message": "Service momentanément indisponible",
+                     *       "réessaie": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     cancelJob: {
@@ -3524,6 +3591,90 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    createMyExportArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Demande acceptee */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "exportId": "01JF5EXP0RT00000000000AAAA",
+                     *       "state": "en_cours"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExportStatus"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description Plus de 3 demandes dans l'heure (`quota_epuise`), ou limite de debit de la route (corps API Gateway) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "quota_epuise",
+                     *       "message": "Trop d'archives demandées, réessaie dans une heure"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyExportArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Etat */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "exportId": "01JF5EXP0RT00000000000AAAA",
+                     *       "state": "pret",
+                     *       "archive": {
+                     *         "url": "https://example.invalid/exports/archive.zip?signature=exemple",
+                     *         "expiresAt": "2026-12-01T10:10:00Z",
+                     *         "format": "zip",
+                     *         "sizeBytes": 48211300,
+                     *         "students": 1,
+                     *         "tests": 120,
+                     *         "truncated": false,
+                     *         "courses": 12,
+                     *         "figures": 31,
+                     *         "omittedCourses": 0
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExportStatus"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     createExportArchive: {

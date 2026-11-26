@@ -39,7 +39,7 @@ export async function deleteDocTree(db: TreeDb, sid: string, docId: string): Pro
 }
 
 /**
- * Cours conserve (contrat 1.3): son en-tete `COURS#<coursId>` et ses textes `COURS#<coursId>#T<nn>`, dans la partition de l'eleve.
+ * Cours conserve (contrat 1.3): son en-tete `COURS#<coursId>`, ses textes `COURS#<coursId>#T<nn>` et ses blocs `COURS#<coursId>#B` (R1), dans la partition de l'eleve.
  * Controle d'appartenance: si l'en-tete n'est pas dans `STUDENT#<sid>`, ne supprime RIEN et renvoie 0. Les cles sont comparees EXACTEMENT
  * (`COURS#<id>`) ou avec le prefixe `COURS#<id>#T` (jamais `COURS#<id>x`). `jobId` (lu dans l'en-tete par le handler) supprime aussi la copie
  * de travail `JOB#<jobId>/TEXT#` (7 jours), pour que supprimer le cours n'en laisse pas de copie. Ne touche pas aux fiches.
@@ -50,8 +50,12 @@ export async function deleteCoursTree(db: TreeDb, sid: string, coursId: string, 
   const head = (await db.list(`STUDENT#${sid}`, `COURS#${coursId}`)).filter((k) => k.SK === `COURS#${coursId}`);
   if (head.length === 0) return 0;
   const texts = (await db.list(`STUDENT#${sid}`, `COURS#${coursId}#T`)).filter((k) => k.SK.startsWith(`COURS#${coursId}#T`));
-  let n = await removeAll(db, [...texts, ...head]);
-  if (opts.jobId !== undefined) n += await removeAll(db, (await db.list(`JOB#${opts.jobId}`, 'TEXT#')).filter((k) => k.SK.startsWith('TEXT#')));
+  const blocks = (await db.list(`STUDENT#${sid}`, `COURS#${coursId}#B`)).filter((k) => k.SK === `COURS#${coursId}#B`); // blocs et figures (R1)
+  let n = await removeAll(db, [...texts, ...blocks, ...head]);
+  if (opts.jobId !== undefined) {
+    n += await removeAll(db, (await db.list(`JOB#${opts.jobId}`, 'TEXT#')).filter((k) => k.SK.startsWith('TEXT#')));
+    n += await removeAll(db, (await db.list(`JOB#${opts.jobId}`, 'BLOCKS')).filter((k) => k.SK === 'BLOCKS'));
+  }
   return n;
 }
 

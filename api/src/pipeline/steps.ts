@@ -11,7 +11,9 @@ import { ALL_OPEN, endWithoutDoc, isTerminal, scansPrefix, transition } from './
 import { returnQuotaOnce } from './quota-ops.js';
 import { classifyPrompt, readPrompt, SYSTEM_JSON } from './prompts.js';
 import { treeDbFrom, type Item } from './ports.js';
-import { assemblePages, ModelOutputError, parseModelJson, type ReadPage, words } from './text.js';
+import { ModelOutputError, parseModelJson, words } from './text.js';
+import { classifyLines, parseBlocks, type FigureMeta, type RawPage } from './blocks.js';
+import { coursFiguresPrefix, resolveBoxes, type BoxState } from './figures.js';
 import { addVerifyCostOnce } from './steps-cost.js';
 
 export interface WfInput {
@@ -100,7 +102,14 @@ export async function scanCheck(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }> 
 
 // ---------------------------------------------------------------- 3. transcription: le scan est lu comme UN document
 const ReadOut = z.object({
-  pages: z.array(z.object({ page: z.number().int().min(1).max(10), lines: z.array(z.string().max(2000)).max(400), suite: z.boolean().default(false) })).max(10),
+  pages: z.array(z.object({
+    page: z.number().int().min(1).max(10),
+    // R1: `md` (Markdown restreint) est la sortie attendue; `lines` reste accepte (ancien format, repli).
+    md: z.string().max(60_000).optional(),
+    lines: z.array(z.string().max(2000)).max(400).default([]),
+    suite: z.boolean().default(false),
+    figures: z.array(z.object({ id: z.string().max(20), box: z.array(z.number()).max(8).optional(), kind: z.string().max(20).optional(), alt: z.string().max(2000).optional(), caption: z.string().max(2000).optional() })).max(40).optional(),
+  })).max(10),
 });
 const ClassifyOut = z.object({
   docType: z.enum(['cours', 'exercice', 'autre']),
@@ -123,7 +132,7 @@ export function readWindows(total: number): { pages: number[]; context?: number 
   return out;
 }
 
-async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }): Promise<ReadPage[]> {
+async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }): Promise<RawPage[]> {
   const prefix = scansPrefix(i.sid, i.jobId);
   const numbers = w.context ? [w.context, ...w.pages] : w.pages;
   const images = await Promise.all(numbers.map(async (p) => {
@@ -132,7 +141,7 @@ async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: 
   }));
   const raw = await callModel(ctx, i, 'transcription', 'haiku', {
     system: SYSTEM_JSON,
-    prompt: readPrompt(numbers.map((p) => ({ page: p, context: p === w.context }))),
+    prompt: readPrompt(numbers.map((p) => ({ page: p, context: p === w.context })), { figures: figuresOn(ctx) }),
     maxTokens: 8000, // plafond seulement: seuls les jetons produits sont payes
     images,
   });
@@ -141,16 +150,16 @@ async function readWindow(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: 
   // Toutes les pages demandees doivent etre rendues (la page de contexte est ignoree si le modele la transcrit quand meme).
   const got = w.pages.map((p) => byPage.get(p));
   if (got.some((g) => !g)) throw new ModelOutputError('sortie du modele: page manquante');
-  return got as ReadPage[];
+  return got as RawPage[];
 }
 
 /** Lecture d'une fenetre; sortie illisible ou tronquee: un seul essai de repli, page par page (une image par appel). */
-async function readWindowWithFallback(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }): Promise<ReadPage[]> {
+async function readWindowWithFallback(ctx: Ctx, i: WfInput, w: { pages: number[]; context?: number }): Promise<RawPage[]> {
   try {
     return await readWindow(ctx, i, w);
   } catch (e) {
     if (!(e instanceof ModelOutputError) || (w.pages.length === 1 && !w.context)) throw e;
-    const out: ReadPage[] = [];
+    const out: RawPage[] = [];
     for (const p of w.pages) out.push(...(await readWindow(ctx, i, { pages: [p] })));
     return out;
   }
@@ -178,6 +187,9 @@ export function suggestedSections(raw: z.infer<typeof ClassifyOut>['sections'], 
   return secs.map((s) => ({ fromSentenceId: s.fromSentenceId, subject: s.subject!, ...(s.topic ? { topic: s.topic } : {}), ...(s.title ? { title: s.title } : {}) }));
 }
 
+/** Interrupteur d'exploitation `FIGURES_ENABLED` (defaut vrai). */
+const figuresOn = (ctx: Ctx): boolean => ctx.cfg?.figuresEnabled !== false;
+
 export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }> {
   // Reprenable (une relance ne double ni l'appel de modele ni le compteur du jour): etat deja `transcription` et texte ecrit = fait.
   const job = await transition(ctx, i.sid, i.jobId, ['verification_fichier', 'transcription'], 'transcription', { transcribeStartedAt: iso(ctx) });
@@ -203,13 +215,14 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
     })
   ).flat();
 
-  const texts = assemblePages(read);
+  const parsed = parseBlocks(read, { figures: figuresOn(ctx) });
+  const texts = parsed.pages;
   const lines = texts.flatMap((t) => t.sentences);
   const wordCounts = lines.map((s) => words(s.text).length);
   const wordCount = wordCounts.reduce((a, b) => a + b, 0);
   // Une seule decision pour tout le scan, par un appel de texte seul (jamais un vote entre pages).
   if (wordCount < MIN_WORDS) return reject(MSG.tooShort); // seuil sur l'ensemble du scan, sans appel de plus
-  const verdict = parseModelJson(await callModel(ctx, i, 'classement', 'haiku', { system: SYSTEM_JSON, prompt: classifyPrompt(classifyInput(lines)), maxTokens: 1500 }), ClassifyOut);
+  const verdict = parseModelJson(await callModel(ctx, i, 'classement', 'haiku', { system: SYSTEM_JSON, prompt: classifyPrompt(classifyInput(classifyLines(texts, parsed.blocks))), maxTokens: 1500 }), ClassifyOut);
   if (verdict.docType === 'autre') return reject(MSG.notCourse);
 
   const suggestedSubject = subjectOrUndef(verdict.matiere);
@@ -218,11 +231,22 @@ export async function transcribe(ctx: Ctx, i: WfInput): Promise<{ ok: boolean }>
   // Le job porte le type et les suggestions AVANT le texte: la presence de `TEXT#1` marque la fin de l'etape (reprise).
   await ctx.db.update(jobKey(i.sid, i.jobId), { set: { docType: verdict.docType, wordCount, ...(suggestedSubject ? { suggestedSubject } : {}), ...(suggestedTopic ? { suggestedTopic: suggestedTopic.slice(0, MAX_TOPIC) } : {}), ...(sections ? { suggestedSections: sections } : {}) } });
   const ttl = ttlIn(ctx, 7 * DAY_S);
+  // Cadres des figures (reprise par le modele plus gros, puis page entiere), puis blocs: ecrits AVANT `TEXT#1`, qui marque la fin de l'etape.
+  if (parsed.blocks) {
+    const state: BoxState = { budgetHit: false };
+    const figures: FigureMeta[] = [];
+    for (const page of [...new Set(parsed.figures.map((f) => f.page))].sort((a, b) => a - b)) {
+      const figs = parsed.figures.filter((f) => f.page === page);
+      figures.push(...(await resolveBoxes(ctx, i, state, page, await ctx.s3.getBytes(`${scansPrefix(i.sid, i.jobId)}${page - 1}`), figs)));
+    }
+    figures.sort((a, b) => Number(a.figureId.slice(1)) - Number(b.figureId.slice(1)));
+    await ctx.db.put({ ...keys.jobBlocks(i.jobId), blocks: parsed.blocks, figures, ttl });
+  }
   for (const t of [...texts].reverse()) await ctx.db.put({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}`, page: t.page, sentences: t.sentences, ttl }); // `TEXT#1` en dernier
   // Course avec une suppression (DELETE /scans/{id}) pendant la lecture: elle change l'etat PUIS efface les `TEXT#`; ici on ecrit PUIS relit l'etat.
   // Quel que soit l'ordre, un des deux voit l'autre et le texte ne survit pas. Job plus a l'etape `transcription`: on efface ce qu'on vient d'ecrire et la machine s'arrete.
   if ((await ctx.db.get(jobKey(i.sid, i.jobId)))?.state !== 'transcription') {
-    await ctx.db.remove(texts.map((t) => ({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}` })));
+    await ctx.db.remove([...texts.map((t) => ({ PK: `JOB#${i.jobId}`, SK: `TEXT#${t.page}` })), keys.jobBlocks(i.jobId)]);
     return { ok: false };
   }
   return { ok: true };
@@ -259,7 +283,11 @@ export async function purgeScan(ctx: Ctx, sid: string, jobId: string, job: Item)
     const rest = await ctx.db.query(`DOC#${docId}`); // fiche jamais ecrite: restes de l'extraction (dont le brouillon)
     if (rest.length) await ctx.db.remove(rest.map((o) => ({ PK: o.PK, SK: o.SK })));
   }
-  if (typeof job.coursId === 'string') await deleteCoursTree(tree, sid, job.coursId, { jobId });
+  if (typeof job.coursId === 'string') {
+    await ctx.figures.deleteAll(coursFiguresPrefix(sid, job.coursId)); // S3 avant DynamoDB: tant qu'une image existe, l'element qui la retrouve existe
+    await deleteCoursTree(tree, sid, job.coursId, { jobId });
+  }
+  await ctx.db.remove([keys.jobBlocks(jobId)]); // blocs du job, meme sans cours (echec avant la confirmation)
 }
 
 /** Toute erreur d'etape: etat `echec`, quota rendu s'il est encore reserve, photos, fiches et cours supprimes. */

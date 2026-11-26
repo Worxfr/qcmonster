@@ -84,8 +84,8 @@ describe('aleatoire', () => {
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
-  it('17 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(17);
+  it('18 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
+    expect(files).toHaveLength(18);
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT

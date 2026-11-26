@@ -56,8 +56,22 @@ export interface ScanStore {
   /** Premiers octets de l'objet (controle sur le contenu) et sa taille. Undefined si absent. */
   head(key: string, bytes: number): Promise<{ bytes: Uint8Array; size: number } | undefined>;
   getBytes(key: string): Promise<Uint8Array>;
+  /** Ecrit un objet (recadrage temporaire `scans/<eleve>/<job>/fig/<id>.jpg`, R1). */
+  put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   list(prefix: string): Promise<string[]>;
   deleteAll(prefix: string): Promise<void>;
+}
+/** Bucket des figures conservees (R1): `figures/<eleve>/<cours>/<figure>.jpg`, URL pre-signee de 5 minutes, jamais d'acces public. */
+export interface FigureStore {
+  /** Copie un recadrage temporaire du bucket des scans vers `dest`. Renvoie false si la source n'existe pas; toute autre erreur est levee. */
+  copyFromScans(srcKey: string, destKey: string): Promise<boolean>;
+  presignGet(key: string, expiresSec: number): Promise<string>;
+  list(prefix: string): Promise<string[]>;
+  deleteAll(prefix: string): Promise<void>;
+}
+/** Rognage d'une page (R1, `sharp` en couche Lambda): JPEG de 1200 px au plus, sans metadonnees. `box` absent: page entiere. */
+export interface CropPort {
+  crop(image: Uint8Array, box?: { x: number; y: number; w: number; h: number }): Promise<Uint8Array>;
 }
 export interface Sfn {
   start(name: string, input: unknown): Promise<void>;
@@ -276,11 +290,55 @@ export function memoryScanStore(): ScanStore & { objects: Map<string, Uint8Array
       if (!b) throw new Error('objet absent');
       return b;
     },
+    async put(key, bytes) {
+      objects.set(key, bytes);
+    },
     async list(prefix) {
       return [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
     },
     async deleteAll(prefix) {
       for (const k of [...objects.keys()]) if (k.startsWith(prefix)) objects.delete(k);
+    },
+  };
+}
+
+/** Bucket des figures en memoire (tests): la source de `copyFromScans` est le faux bucket des scans. */
+export function memoryFigureStore(scans: { objects: Map<string, Uint8Array> }): FigureStore & { objects: Map<string, Uint8Array>; failCopy: { on: boolean } } {
+  const objects = new Map<string, Uint8Array>();
+  const failCopy = { on: false };
+  return {
+    objects,
+    failCopy,
+    async copyFromScans(src, dest) {
+      if (failCopy.on) throw new Error('S3 indisponible');
+      const b = scans.objects.get(src);
+      if (!b) return false;
+      objects.set(dest, b);
+      return true;
+    },
+    async presignGet(key, expiresSec) {
+      return `https://figures.example.invalid/${key}?exp=${expiresSec}`;
+    },
+    async list(prefix) {
+      return [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
+    },
+    async deleteAll(prefix) {
+      for (const k of [...objects.keys()]) if (k.startsWith(prefix)) objects.delete(k);
+    },
+  };
+}
+
+/** Rognage factice (tests): renvoie un JPEG minimal qui dit s'il a ete rogne. */
+export function memoryCrop(): CropPort & { calls: { box?: unknown }[]; fail: { on: boolean } } {
+  const calls: { box?: unknown }[] = [];
+  const fail = { on: false };
+  return {
+    calls,
+    fail,
+    async crop(_image, box) {
+      if (fail.on) throw new Error('sharp indisponible');
+      calls.push({ box });
+      return new Uint8Array([0xff, 0xd8, 0xff, box ? 1 : 0]);
     },
   };
 }

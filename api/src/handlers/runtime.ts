@@ -42,7 +42,7 @@ export function familyDeps(): FamilyDeps {
   return {
     ...base,
     identity: cognitoIdentity(need('USER_POOL_ID'), new CognitoIdentityProviderClient({})),
-    photos: process.env.SCANS_BUCKET ? s3Photos(process.env.SCANS_BUCKET) : { deleteForStudent: () => Promise.reject(new Error('SCANS_BUCKET manquant')) },
+    photos: process.env.SCANS_BUCKET ? s3Photos(process.env.SCANS_BUCKET, undefined, process.env.FIGURES_BUCKET) : { deleteForStudent: () => Promise.reject(new Error('SCANS_BUCKET manquant')), deleteFiguresForStudent: () => Promise.reject(new Error('SCANS_BUCKET manquant')) },
     archives: archivesOf(),
     tree: dynamoTreeDb(client(), need('TABLE_NAME')),
     webOrigin: process.env.WEB_ORIGIN ?? '',
