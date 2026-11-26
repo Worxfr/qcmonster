@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArnFormat, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
@@ -13,7 +15,7 @@ import { buildSync } from 'esbuild';
 import type { Construct } from 'constructs';
 import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { CONFIRM_TIMEOUT_S, MACHINE_TIMEOUT_MIN_S, MAX_SECTIONS, machineTimeoutNeededS } from '../../shared/scans.js';
-import { fn, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
+import { fn, FIGURES_BUCKET_PARAM, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
 
 export interface PipelineStackProps extends StackProps {
   envName: Env;
@@ -22,7 +24,11 @@ export interface PipelineStackProps extends StackProps {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CONFIRM_TIMEOUT = Duration.seconds(CONFIRM_TIMEOUT_S); // 12 h, source unique: shared/scans.ts
 /** Delai par tache (secondes): chaque etape de traitement a le sien, plus court que le delai global de la machine. */
-export const TASK_TIMEOUT_S = { scanCheck: 60, transcribe: 360, sectionsPlan: 60, extract: 180, verify: 960, sectionCost: 60, consume: 60, generate: 240, finalize: 60, fail: 60, expire: 60 } as const;
+/**
+ * `transcribe` (R1): 660 s pour la tache et 10 min pour la fonction. Au pire, la lecture de 10 pages (5 min deja) ajoute une reprise Sonnet par page,
+ * 3 en parallele, soit 4 vagues d'environ 30 s: 5 min + 2 min + marge. `cropFigures`: 2 min (fonction), 150 s (tache, avec la marge de demarrage).
+ */
+export const TASK_TIMEOUT_S = { scanCheck: 60, transcribe: 660, cropFigures: 150, sectionsPlan: 60, extract: 180, verify: 960, sectionCost: 60, consume: 60, generate: 240, finalize: 60, fail: 60, expire: 60 } as const;
 export const UPLOAD_TIMEOUT_S = 20 * 60;
 /** Marge ajoutee au chemin le plus long (transitions, demarrages a froid). */
 const MACHINE_MARGIN_S = 3600;
@@ -35,7 +41,7 @@ export function machineTimeoutS(confirmS: number = CONFIRM_TIMEOUT_S): number {
   const T = TASK_TIMEOUT_S;
   const needed = machineTimeoutNeededS({
     uploadS: UPLOAD_TIMEOUT_S,
-    transcribeS: T.scanCheck + T.transcribe + T.sectionsPlan + T.consume + T.finalize,
+    transcribeS: T.scanCheck + T.transcribe + T.cropFigures * 3 + T.sectionsPlan + T.consume + T.finalize,
     confirmS,
     sections: MAX_SECTIONS,
     perSectionS: T.extract + T.verify + T.sectionCost + T.generate,
@@ -58,9 +64,27 @@ function bundle(): string {
     format: 'cjs',
     legalComments: 'none',
     logLevel: 'error',
+    external: ['sharp'], // binaire natif: fourni par la couche de `cropFigures` seulement (R1-B), jamais dans ce paquet commun
   });
   bundleDir = out;
   return out;
+}
+
+/**
+ * Dossier de la couche `sharp` (arm64). Synthese reelle: fabrique par scripts/build-sharp-layer.mjs (npm ci verrouille, reseau requis, ~20 Mo).
+ * Tests (bundling saute, voir no-bundling.setup.ts): dossier factice, sans reseau.
+ */
+function sharpLayerDir(scope: Construct): string {
+  const out = join(ROOT, 'node_modules', '.cache', 'qcm-sharp-layer');
+  if ((scope.node.tryGetContext('aws:cdk:bundling-stacks') as string[] | undefined)?.length === 0) {
+    const stub = join(ROOT, 'node_modules', '.cache', 'qcm-sharp-layer-stub');
+    if (!existsSync(stub)) {
+      mkdirSync(join(stub, 'nodejs'), { recursive: true });
+      writeFileSync(join(stub, 'nodejs', 'README'), 'couche factice (tests de synthese)\n');
+    }
+    return stub;
+  }
+  return execFileSync(process.execPath, [join(ROOT, 'scripts', 'build-sharp-layer.mjs'), out], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim().split('\n').pop()!;
 }
 
 /** Fonctions HTTP (routes owner=pipeline dans api-stack) et etapes du workflow: nom de fonction -> export de entry.ts. */
@@ -82,11 +106,16 @@ export const API_FUNCTIONS = {
   // Meme export `coursHandler`, autre fonction: seule la route DELETE /cours/{coursId} y passe, avec le seul role qui peut supprimer (GET reste en lecture seule).
   'cours-delete': 'coursHandler',
 } as const;
+/** Export de l'eleve (R1, design 3.6): la fonction de la route et la fonction de construction (asynchrone, 15 min). Exports de entry.ts: lot A. */
+export const EXPORT_FUNCTIONS = { 'me-export-archive': 'meExportArchiveHandler', 'student-export-build': 'studentExportBuildHandler' } as const;
+/** Fonction (et seule) qui recoit la couche `sharp`. */
+export const CROP_FUNCTION = 'crop-figures';
 export const STEP_FUNCTIONS = {
   scanStart: ['scan-start', 'scanStartHandler'],
   awaitUpload: ['upload-await', 'awaitUploadHandler'],
   scanCheck: [WORKFLOW_HANDLERS.scanCheck, 'scanCheckHandler'],
   transcribe: ['transcribe', 'transcribeHandler'],
+  cropFigures: [CROP_FUNCTION, 'cropFiguresHandler'],
   awaitConfirm: ['confirm-await', 'awaitConfirmHandler'],
   expire: ['expire', 'expireHandler'],
   sectionsPlan: ['sections-plan', 'sectionsPlanHandler'],
@@ -117,9 +146,15 @@ export class PipelineStack extends Stack {
 
     const scansBucket = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'data/scansBucket'));
     const haikuArn = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'models/haiku'));
+    const sonnetArn = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'models/sonnet'));
+    const figuresBucket = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, FIGURES_BUCKET_PARAM));
     const apiId = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'api/id'));
     const tableArn = this.formatArn({ service: 'dynamodb', resource: 'table', resourceName: tableName(envName) });
     const bucketArn = `arn:${this.partition}:s3:::${scansBucket}`;
+    const figuresArn = `arn:${this.partition}:s3:::${figuresBucket}`;
+    const figureObjects = `${figuresArn}/figures/*`;
+    // Interrupteur d'exploitation (design 3.4): `-c figures=false` desactive la detection de figures sans retirer l'etape.
+    const figuresEnabled = String(this.node.tryGetContext('figures') ?? 'true') === 'false' ? 'false' : 'true';
     const smArn = this.formatArn({ service: 'states', resource: 'stateMachine', resourceName: stateMachineName(envName), arnFormat: ArnFormat.COLON_RESOURCE_NAME });
 
     // --- Roles de moindre privilege. Seul `pipeline-role` appelle Bedrock (liste `processingRoleNames`, action du budget securite-40).
@@ -137,6 +172,9 @@ export class PipelineStack extends Stack {
     const coursRole = mkRole('pipeline-api-cours-role');
     const scansDeleteRole = mkRole('pipeline-api-scans-delete-role');
     const triggerRole = mkRole('pipeline-trigger-role');
+    // Export de l'eleve (design 3.6): la fonction de la route (demande, etat, lien) et la fonction de construction (zip en flux).
+    const exportApiRole = mkRole('pipeline-api-export-role');
+    const exportRole = mkRole('pipeline-export-role');
     const procRole = mkRole('pipeline-role');
     const ddb = (actions: string[]) => new iam.PolicyStatement({ actions, resources: [tableArn, `${tableArn}/index/GSI1`] });
     const rw = ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:BatchWriteItem'];
@@ -202,6 +240,36 @@ export class PipelineStack extends Stack {
     // cours-delete: supprime le cours (STUDENT#), l'arbre de chaque fiche (DOC#), la copie de travail (JOB#), retire coursId (UpdateItem) et supprime les signalements (FAMILY#: Query + BatchWriteItem). Pas de PutItem, S3, Bedrock.
     coursRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'STUDENT#*', 'DOC#*', 'JOB#*'));
     coursRole.addToPolicy(leading(['dynamodb:Query', 'dynamodb:BatchWriteItem'], 'FAMILY#*'));
+    // --- R1-B: bucket des figures (docs/R1-design.md 12). Jamais de joker de bucket; l'isolation par eleve est faite par le handler (cle construite avec le sid du jeton), pas par IAM.
+    const listFigures = new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [figuresArn], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } });
+    const figureGet = new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [figureObjects] });
+    const figureDelete = new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [figureObjects] });
+    // jobs-confirm: lit le recadrage temporaire (scans/), ecrit la figure gardee, la supprime si la confirmation perd la course.
+    confirmRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [objects] }));
+    confirmRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:DeleteObject'], resources: [figureObjects] }));
+    // Signature des URL de figures (jobs-get, jobs-transcription, docs-read; cours-api): GetObject seulement.
+    readRole.addToPolicy(figureGet);
+    coursReadRole.addToPolicy(figureGet);
+    // cours-api lit aussi les marques (CLAIM#, VERDICT# sous DOC#<id>): GetItem/Query sur DOC#* en plus de STUDENT#. Isolation: le handler ne lit que les docId du cours de l'eleve.
+    coursReadRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query'], 'DOC#*'));
+    // cours-delete: supprime les figures du cours (liste du prefixe, puis suppression).
+    coursRole.addToPolicy(listFigures);
+    coursRole.addToPolicy(figureDelete);
+
+    // --- Export de l'eleve. Route: ecrit l'etat (EXPORT# sous STUDENT#), lit l'etat, signe le lien (GetObject exports/*), lance la construction (appel asynchrone). Aucun droit sur figures/.
+    const exportFnArn = this.formatArn({ service: 'lambda', resource: 'function', resourceName: fn(envName, 'student-export-build'), arnFormat: ArnFormat.COLON_RESOURCE_NAME });
+    exportApiRole.addToPolicy(familyQuery());
+    exportApiRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:PutItem'], 'STUDENT#*'));
+    exportApiRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [`${bucketArn}/exports/*`] }));
+    exportApiRole.addToPolicy(new iam.PolicyStatement({ actions: ['lambda:InvokeFunction'], resources: [exportFnArn] }));
+    // Construction: lit le cours de l'eleve (STUDENT#, FAMILY#, DOC#), met a jour l'etat; lit les figures (GetObject + liste du prefixe pour additionner les tailles);
+    // ecrit le zip par parties sous exports/ seulement. Pas de suppression, pas de Bedrock, pas d'autre prefixe.
+    exportRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query'], 'FAMILY#*', 'STUDENT#*', 'DOC#*'));
+    exportRole.addToPolicy(leading(['dynamodb:UpdateItem'], 'STUDENT#*'));
+    exportRole.addToPolicy(figureGet);
+    exportRole.addToPolicy(listFigures);
+    exportRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject', 's3:AbortMultipartUpload', 's3:ListMultipartUploadParts'], resources: [`${bucketArn}/exports/*`] }));
+
     // Declencheur S3: compte les fichiers recus, lit le job, reprend la machine.
     triggerRole.addToPolicy(ddb(['dynamodb:GetItem', 'dynamodb:UpdateItem']));
     triggerRole.addToPolicy(sendTask);
@@ -209,6 +277,10 @@ export class PipelineStack extends Stack {
     procRole.addToPolicy(ddb(rw));
     procRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:GetObject', 's3:DeleteObject'], resources: [objects] }));
     procRole.addToPolicy(listScans);
+    // R1-B: cropFigures ecrit les recadrages temporaires (scans/<...>/fig/, supprimes avec la photo); fail et expire nettoient aussi figures/.
+    procRole.addToPolicy(new iam.PolicyStatement({ actions: ['s3:PutObject'], resources: [`${bucketArn}/${SCAN_EVENT_PREFIX}*/fig/*`] }));
+    procRole.addToPolicy(listFigures);
+    procRole.addToPolicy(figureDelete);
     // Alarme de cout de 10 EUR (budget-stack): `costStoreFromDynamo` publie le total du mois. PutMetricData n'accepte pas de ressource: la condition fixe l'espace de noms.
     // Seuls les deux roles qui ecrivent le compteur de cout (celui-ci et verify-run) l'ont.
     procRole.addToPolicy(new iam.PolicyStatement({ actions: ['cloudwatch:PutMetricData'], resources: ['*'], conditions: { StringEquals: { 'cloudwatch:namespace': METRIC_NAMESPACE } } }));
@@ -225,6 +297,17 @@ export class PipelineStack extends Stack {
         conditions: { StringEquals: { 'bedrock:InferenceProfileArn': [haikuArn, systemProfileArn] } },
       }),
     );
+    // R1-B: reprise des cadres de figures par Sonnet (design 3.5), meme forme que Haiku: profil d'application, profil systeme UE, modele de base sous condition de profil.
+    const sonnetSystemArn = this.formatArn({ service: 'bedrock', resource: 'inference-profile', resourceName: SYSTEM_PROFILES.sonnet });
+    const sonnetBaseId = SYSTEM_PROFILES.sonnet.replace(/^eu\./, '');
+    procRole.addToPolicy(new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [sonnetArn, sonnetSystemArn] }));
+    procRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:InvokeModel'],
+        resources: EU_REGIONS.map((region) => this.formatArn({ service: 'bedrock', region, account: '', resource: 'foundation-model', resourceName: sonnetBaseId })),
+        conditions: { StringEquals: { 'bedrock:InferenceProfileArn': [sonnetArn, sonnetSystemArn] } },
+      }),
+    );
 
     // --- Fonctions
     const code = lambda.Code.fromAsset(bundle());
@@ -233,10 +316,13 @@ export class PipelineStack extends Stack {
       QCM_TABLE: tableName(envName),
       QCM_SCANS_BUCKET: scansBucket,
       QCM_MODEL_HAIKU: haikuArn,
+      QCM_MODEL_SONNET: sonnetArn,
+      QCM_FIGURES_BUCKET: figuresBucket,
+      FIGURES_ENABLED: figuresEnabled,
       QCM_STATE_MACHINE_ARN: smArn,
       QCM_BEDROCK: ctxBedrock === 'real' ? 'real' : 'mock',
     };
-    const mk = (name: string, exportName: string, role: iam.Role, o: { memory?: number; timeout?: Duration } = {}) => {
+    const mk = (name: string, exportName: string, role: iam.Role, o: { memory?: number; timeout?: Duration; layers?: lambda.ILayerVersion[] } = {}) => {
       const logGroup = new logs.LogGroup(this, `Logs-${name}`, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
       logGroup.grantWrite(role);
       return new lambda.Function(this, `Fn-${name}`, {
@@ -249,6 +335,7 @@ export class PipelineStack extends Stack {
         memorySize: o.memory ?? 256,
         timeout: o.timeout ?? Duration.seconds(15),
         environment: baseEnv,
+        layers: o.layers,
         logGroup,
       });
     };
@@ -269,12 +356,29 @@ export class PipelineStack extends Stack {
     for (const f of apiFns) {
       f.addPermission('ApiGateway', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: this.formatArn({ service: 'execute-api', resource: apiId, resourceName: '*/*' }) });
     }
+    const sharpLayer = new lambda.LayerVersion(this, 'SharpLayer', {
+      layerVersionName: `qcm-${envName}-sharp`,
+      description: 'sharp (libvips) pour cropFigures, arm64',
+      code: lambda.Code.fromAsset(sharpLayerDir(this)),
+      compatibleArchitectures: [lambda.Architecture.ARM_64],
+      compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    // Export de l'eleve: la construction dure jusqu'a 15 min (zip en flux, 512 Mo); la route ne fait que demander et lire.
+    const exportFns = {
+      'me-export-archive': mk('me-export-archive', EXPORT_FUNCTIONS['me-export-archive'], exportApiRole, { timeout: Duration.seconds(10) }),
+      'student-export-build': mk('student-export-build', EXPORT_FUNCTIONS['student-export-build'], exportRole, { memory: 512, timeout: Duration.minutes(15) }),
+    };
+    exportFns['me-export-archive'].addEnvironment('QCM_EXPORT_FUNCTION', fn(envName, 'student-export-build'));
+    exportFns['me-export-archive'].addPermission('ApiGateway', { principal: new iam.ServicePrincipal('apigateway.amazonaws.com'), sourceArn: this.formatArn({ service: 'execute-api', resource: apiId, resourceName: '*/*' }) });
     const S = STEP_FUNCTIONS;
     const fns = {
       scanStart: mk(...S.scanStart, triggerRole),
       awaitUpload: mk(...S.awaitUpload, procRole),
       scanCheck: mk(...S.scanCheck, procRole),
-      transcribe: mk(...S.transcribe, procRole, { memory: 512, timeout: Duration.minutes(5) }),
+      transcribe: mk(...S.transcribe, procRole, { memory: 512, timeout: Duration.minutes(10) }),
+      // Seule fonction avec `sharp` (couche arm64). Aucun appel de modele: reprise automatique permise.
+      cropFigures: mk(...S.cropFigures, procRole, { memory: 1024, timeout: Duration.minutes(2), layers: [sharpLayer] }),
       awaitConfirm: mk(...S.awaitConfirm, procRole),
       expire: mk(...S.expire, procRole, { timeout: Duration.seconds(60) }),
       sectionsPlan: mk(...S.sectionsPlan, procRole, { timeout: Duration.seconds(60) }),
@@ -319,6 +423,9 @@ export class PipelineStack extends Stack {
     const awaitUpload = waitToken('AttenteEnvoi', fns.awaitUpload, Duration.seconds(UPLOAD_TIMEOUT_S));
     const scanCheck = call('ControleFichier', fns.scanCheck, ids, '$.check', TASK_TIMEOUT_S.scanCheck, true);
     const transcribe = call('Transcription', fns.transcribe, ids, '$.tr', TASK_TIMEOUT_S.transcribe);
+    // Rognage (R1): aucun appel de modele, donc rejouable. Deux reprises avec attente (en plus des reprises de service), puis le filet `pipeline-fail`.
+    const cropFigures = call('RognageFigures', fns.cropFigures, ids, undefined, TASK_TIMEOUT_S.cropFigures, true);
+    cropFigures.addRetry({ errors: ['States.ALL'], maxAttempts: 2, interval: Duration.seconds(5), backoffRate: 2 });
     const awaitConfirm = waitToken('AttenteConfirmation', fns.awaitConfirm, CONFIRM_TIMEOUT);
     // Sections (FEAT-A): `sectionsPlan` liste les sections gardees; un premier `Map` (une a la fois, pour que le plafond de cout s'additionne dans l'ordre)
     // extrait, verifie et compte le cout; apres le quota (une seule fois), un second `Map` genere une fiche par section; `finalize` ferme le job.
@@ -348,7 +455,7 @@ export class PipelineStack extends Stack {
 
     // Toute erreur d'etape (hors annulation et delais prevus) finit par le filet `pipeline-fail`; pas de Retry sur un appel de modele.
     // Les etapes des deux Map sont couvertes par le Catch du Map lui-meme (un Catch ne sort pas d'un Map).
-    for (const t of [scanCheck, transcribe, sectionsPlan, extractAll, consume, generateAll, finalize]) t.addCatch(markFailed, { errors: ['States.ALL'], resultPath: '$.error' });
+    for (const t of [scanCheck, transcribe, cropFigures, sectionsPlan, extractAll, consume, generateAll, finalize]) t.addCatch(markFailed, { errors: ['States.ALL'], resultPath: '$.error' });
     awaitUpload.addCatch(expired('ExpirationEnvoi', 'upload'), { errors: ['States.Timeout'], resultPath: sfn.JsonPath.DISCARD });
     awaitUpload.addCatch(cancelled, { errors: ['Cancelled'], resultPath: sfn.JsonPath.DISCARD });
     awaitUpload.addCatch(markFailed, { errors: ['States.ALL'], resultPath: '$.error' });
@@ -359,7 +466,7 @@ export class PipelineStack extends Stack {
     const definition = awaitUpload
       .next(scanCheck)
       .next(new sfn.Choice(this, 'FichierValide').when(ok('$.check.ok'), transcribe).otherwise(cancelled));
-    transcribe.next(new sfn.Choice(this, 'CoursAccepte').when(ok('$.tr.ok'), awaitConfirm.next(sectionsPlan).next(extractAll).next(consume)).otherwise(cancelled));
+    transcribe.next(new sfn.Choice(this, 'CoursAccepte').when(ok('$.tr.ok'), cropFigures.next(awaitConfirm).next(sectionsPlan).next(extractAll).next(consume)).otherwise(cancelled));
     consume.next(new sfn.Choice(this, 'FichesAPublier').when(sfn.Condition.and(sfn.Condition.isPresent('$.consume.ok'), ok('$.consume.ok')), generateAll.next(finalize).next(new sfn.Succeed(this, 'Fiche-publiee'))).otherwise(cancelled));
 
     const smLogs = new logs.LogGroup(this, 'SmLogs', { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });

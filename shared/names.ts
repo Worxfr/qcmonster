@@ -8,6 +8,8 @@ export type Env = (typeof ENVS)[number];
 export const tableName = (env: Env) => `qcm-${env}`;
 export const stackName = (env: Env, stack: string) => `qcm-${env}-${stack}`;
 export const ssmParam = (env: Env, path: string) => `/qcm/${env}/${path}`;
+/** Parametre SSM du bucket des figures conservees (R1-B). */
+export const FIGURES_BUCKET_PARAM = 'data/figuresBucket';
 
 /** Roles IAM des Lambda de traitement (crees par L2a/L2b); l'action du budget securite-40 les cible. */
 export const processingRoleNames = (env: Env) => [`qcm-${env}-pipeline-role`, `qcm-${env}-verify-role`];

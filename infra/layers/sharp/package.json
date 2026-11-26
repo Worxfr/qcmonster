@@ -1,0 +1,7 @@
+{
+  "name": "qcm-sharp-layer",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Couche Lambda arm64 de sharp (etape cropFigures seulement). Fabriquee par scripts/build-sharp-layer.mjs.",
+  "dependencies": { "sharp": "0.35.5" }
+}

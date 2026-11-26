@@ -3,7 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
 process.env.CDK_CONTEXT_JSON = JSON.stringify({ webOrigin: 'https://front.example.invalid' });
 const { buildApp } = await import('../bin/app.js');
-const { API_FUNCTIONS, STEP_FUNCTIONS, TASK_TIMEOUT_S, UPLOAD_TIMEOUT_S, machineTimeoutS, MACHINE_TIMEOUT } = await import('../lib/pipeline-stack.js');
+const { API_FUNCTIONS, EXPORT_FUNCTIONS, STEP_FUNCTIONS, TASK_TIMEOUT_S, UPLOAD_TIMEOUT_S, machineTimeoutS, MACHINE_TIMEOUT } = await import('../lib/pipeline-stack.js');
 import { readFileSync } from 'node:fs';
 import { run, type Def, type Handlers } from './sfn-sim.js';
 import { ENVS, METRIC_NAMESPACE, processingRoleNames, stackName } from '../../shared/names.js';
@@ -33,7 +33,7 @@ describe('Pipeline (L2a)', () => {
       const t = stack(env);
       it('une fonction par route et par etape, nommees qcm-<env>-<handler>', () => {
         const names = Object.values(t.findResources('AWS::Lambda::Function')).map((f) => (f as { Properties: { FunctionName: string } }).Properties.FunctionName);
-        const expected = [...Object.keys(API_FUNCTIONS), ...Object.values(STEP_FUNCTIONS).map((s) => s[0])].map((h) => `qcm-${env}-${h}`);
+        const expected = [...Object.keys(API_FUNCTIONS), ...Object.keys(EXPORT_FUNCTIONS), ...Object.values(STEP_FUNCTIONS).map((s) => s[0])].map((h) => `qcm-${env}-${h}`);
         expect(names.sort()).toEqual(expected.sort());
         expect(names).toContain(`qcm-${env}-quota-consume`);
         expect(names).toContain(`qcm-${env}-scan-check`);
@@ -44,7 +44,7 @@ describe('Pipeline (L2a)', () => {
       it('seul le role de traitement peut appeler Bedrock, et il est dans processingRoleNames', () => {
         expect(processingRoleNames(env)).toContain(`qcm-${env}-pipeline-role`);
         const roles = Object.values(t.findResources('AWS::IAM::Role')).map((r) => (r as { Properties: { RoleName?: string } }).Properties.RoleName).filter(Boolean); // la machine d'etats a son role genere (sans Bedrock)
-        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-scans-delete', 'api-confirm', 'api-list'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
+        expect(roles.sort()).toEqual(['api-read', 'api-write', 'api-delete', 'api-patch', 'api-folders', 'api-cours-read', 'api-cours', 'api-scans-delete', 'api-confirm', 'api-list', 'api-export', 'export'].map((r) => `qcm-${env}-pipeline-${r}-role`).concat([`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`]).sort());
         const bedrock = (re: RegExp) => actions(statements(t, re)).filter((a) => a.startsWith('bedrock:'));
         expect(bedrock(/pipelineapi/i)).toEqual([]);
         expect(bedrock(/pipelinetriggerrole/i)).toEqual([]);
@@ -75,7 +75,10 @@ describe('Pipeline (L2a)', () => {
       it('aucune action avec joker, pas de s3:PutObject hors role API', () => {
         const all = (Object.values(t.findResources('AWS::IAM::Policy')) as Pol[]).flatMap((p) => p.Properties.PolicyDocument.Statement);
         expect(actions(all).filter((a) => a.includes('*'))).toEqual([]);
-        expect(actions(statements(t, /^pipelinerole/i)).filter((a) => a === 's3:PutObject')).toEqual([]);
+        // R1-B: le seul PutObject de pipeline-role est le recadrage temporaire scans/*/fig/*
+        const puts = statements(t, /^pipelinerole/i).filter((x) => actions([x]).includes('s3:PutObject'));
+        expect(puts).toHaveLength(1);
+        expect(JSON.stringify(puts[0].Resource)).toContain('/scans/*/fig/*');
       });
       it("machine Standard: journal ERROR sans donnees d'execution, attentes de 20 minutes et 12 h, verify puis quota", () => {
         t.hasResourceProperties('AWS::StepFunctions::StateMachine', {
@@ -97,7 +100,7 @@ describe('Pipeline (L2a)', () => {
       });
       it("API Gateway peut invoquer les fonctions de route, limitee a l'API", () => {
         const perms = Object.values(t.findResources('AWS::Lambda::Permission')).filter((p) => (p as { Properties: { Principal: string } }).Properties.Principal === 'apigateway.amazonaws.com');
-        expect(perms).toHaveLength(Object.keys(API_FUNCTIONS).length);
+        expect(perms).toHaveLength(Object.keys(API_FUNCTIONS).length + 1); // + me-export-archive (R1-B); la construction n'est jamais appelee par l'API
       });
     });
   }
@@ -173,16 +176,18 @@ describe('Pipeline (L2a): relecture PR #14', () => {
 
       it('M2 ressources: Bedrock limite aux profils du projet et aux modeles de base UE sous condition de profil', () => {
         const st = statements(t, /^pipelinerole/i).filter((x) => actions([x]).some((a) => a.startsWith('bedrock:')));
-        expect(st).toHaveLength(2);
+        expect(st).toHaveLength(4); // Haiku et Sonnet (R1-B): profil d'application + profil systeme, puis modele de base
         const flat = JSON.stringify(st);
         expect(flat).not.toMatch(/"Resource":"\*"|"Resource":\["\*"\]/);
         expect(flat).not.toContain('"*"');
         expect(flat).toContain('bedrock:InferenceProfileArn');
-        const base = st.find((x) => JSON.stringify(x.Resource).includes('foundation-model'))!;
+        for (const model of ['haiku', 'sonnet']) {
+        const base = st.find((x) => JSON.stringify(x.Resource).includes('foundation-model') && JSON.stringify(x.Resource).includes(`${model}-5-5`))!;
         const regions = (base.Resource as unknown[]).map((r) => JSON.stringify(r));
         expect(regions.every((r) => /eu-[a-z]+-\d/.test(r))).toBe(true);
         expect(regions.some((r) => /us-|ap-|"\*"/.test(r))).toBe(false);
-        expect(JSON.stringify(base.Resource)).not.toMatch(/haiku-5-5\*|haiku\*/); // identifiant exact, pas de prefixe
+        expect(JSON.stringify(base.Resource)).not.toMatch(/-5-5\*|haiku\*|sonnet\*/); // identifiant exact, pas de prefixe
+        }
       });
       it('M2 ressources: DynamoDB limite a la table et a GSI1, S3 au prefixe scans/', () => {
         const all = (Object.values(t.findResources('AWS::IAM::Policy')) as Pol[]).flatMap((p) => p.Properties.PolicyDocument.Statement);
@@ -197,8 +202,9 @@ describe('Pipeline (L2a): relecture PR #14', () => {
             expect(Array.isArray(x.Resource) ? x.Resource.length : 1).toBe(costRead ? 1 : 2);
             if (!costRead) expect(res).toContain('index/GSI1');
           }
-          if (as.some((a) => a.startsWith('s3:GetObject') || a === 's3:PutObject' || a === 's3:DeleteObject')) expect(res).toContain('/scans/*');
-          if (as.includes('s3:ListBucket')) expect(JSON.stringify(x)).toContain('scans/*');
+          // R1-B: trois prefixes seulement, jamais un bucket entier: scans/ et exports/ (bucket des photos), figures/ (bucket des figures)
+          if (as.some((a) => a.startsWith('s3:') && a !== 's3:ListBucket')) expect(res).toMatch(/\/(scans|exports|figures)\/\*/);
+          if (as.includes('s3:ListBucket')) expect(JSON.stringify(x)).toMatch(/(scans|figures)\/\*/);
           if (as.some((a) => a.startsWith('bedrock:'))) expect(res).not.toContain('"*"');
         }
       });
@@ -274,12 +280,16 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
         expect(flat(/pipelineapicoursread/i)).toEqual([
           { actions: ['dynamodb:Query'], keys: ['FAMILY#*'] },
           { actions: ['dynamodb:GetItem', 'dynamodb:Query'], keys: ['STUDENT#*'] },
+          { actions: ['dynamodb:GetItem', 'dynamodb:Query'], keys: ['DOC#*'] }, // R1-B: marques (CLAIM#, VERDICT#) sous DOC#<id>
         ]);
         expect(flat(/^pipelineapicoursrole/i)).toEqual([
           { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['STUDENT#*', 'DOC#*', 'JOB#*'] },
           { actions: ['dynamodb:BatchWriteItem', 'dynamodb:Query'], keys: ['FAMILY#*'] },
         ]);
-        for (const re of [/pipelineapicoursread/i, /^pipelineapicoursrole/i]) expect(own(re).filter((a) => !a.startsWith('dynamodb:') || a === 'dynamodb:PutItem')).toEqual([]);
+        // R1-B: hors DynamoDB, la lecture signe des figures (GetObject) et la suppression liste et efface le prefixe figures/; jamais d'ecriture
+        expect(own(/pipelineapicoursread/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual(['s3:GetObject']);
+        expect(own(/^pipelineapicoursrole/i).filter((a) => !a.startsWith('dynamodb:')).sort()).toEqual(['s3:DeleteObject', 's3:ListBucket']);
+        for (const re of [/pipelineapicoursread/i, /^pipelineapicoursrole/i]) expect(own(re).filter((a) => a === 'dynamodb:PutItem')).toEqual([]);
       });
       it('scans-delete: role etroit (ni confirmRole, ni PutObject, ni StartExecution, ni SendTaskSuccess, ni COST#)', () => {
         expect(fnRole('scans-delete').role).toMatch(/pipelineapiscansdelete/i);
@@ -373,14 +383,16 @@ describe('FEAT-A (lot I): assemblage', () => {
 describe('FEAT-A (lot I): exports de entry.ts', () => {
   const entry = readFileSync(new URL('../../api/src/pipeline/entry.ts', import.meta.url), 'utf8');
   const exported = new Set([...entry.matchAll(/export const (\w+)\s*=/g)].map((m) => m[1]));
-  const wanted = [...new Set([...Object.values(API_FUNCTIONS), ...Object.values(STEP_FUNCTIONS).map((x) => x[1])])];
+  // R1-B: exports ajoutes par le lot A (cropFigures, export de l'eleve); verifies des qu'ils existent, et ceux de A ne sont tolere absents que dans cette liste.
+  const PENDING_LOT_A = ['cropFiguresHandler', 'meExportArchiveHandler', 'studentExportBuildHandler'];
+  const wanted = [...new Set([...Object.values(API_FUNCTIONS), ...Object.values(EXPORT_FUNCTIONS), ...Object.values(STEP_FUNCTIONS).map((x) => x[1])])];
   const b2Merged = ['coursHandler', 'scansListHandler', 'foldersHandler', 'docsPatchHandler'].some((n) => exported.has(n));
   it('la liste attendue contient les 12 exports de FEAT-A et du pipeline', () => {
     expect(wanted).toEqual(expect.arrayContaining(['scansListHandler', 'docsPatchHandler', 'foldersHandler', 'coursHandler', 'sectionsPlanHandler', 'sectionCostHandler', 'finalizeHandler']));
-    expect(wanted.length).toBe(Object.keys(API_FUNCTIONS).length + Object.keys(STEP_FUNCTIONS).length - 1); // coursHandler sert deux fonctions
+    expect(wanted.length).toBe(Object.keys(API_FUNCTIONS).length + Object.keys(EXPORT_FUNCTIONS).length + Object.keys(STEP_FUNCTIONS).length - 1); // coursHandler sert deux fonctions
   });
   it.skipIf(!b2Merged)('chaque fonction de API_FUNCTIONS et STEP_FUNCTIONS a son export dans entry.ts', () => {
-    expect(wanted.filter((n) => !exported.has(n))).toEqual([]);
+    expect(wanted.filter((n) => !exported.has(n) && !PENDING_LOT_A.includes(n))).toEqual([]);
   });
 });
 
@@ -393,7 +405,7 @@ describe('FEAT-A (lot I): machine rejouee avec des handlers simules', () => {
     AttenteEnvoi: () => undefined, ControleFichier: () => ({ ok: true }), Transcription: () => ({ ok: true }), AttenteConfirmation: () => undefined,
     PlanSections: () => ({ indices: [0, 1] }),
     Extraction: (i: In) => ({ ok: true, docId: `d${i.index}`, claims: 5, budgetRestantCentimes: 40 }),
-    Verification: () => ({ coutCentimes: 3 }), CoutSection: () => ({ addedMicros: 1 }),
+    RognageFigures: () => undefined, Verification: () => ({ coutCentimes: 3 }), CoutSection: () => ({ addedMicros: 1 }),
     ConsommationQuota: () => ({ ok: true }), Generation: () => undefined, Finalisation: () => ({ docIds: ['d0', 'd1'] }), MarquerEchec: () => undefined,
     ...over,
   });
@@ -403,7 +415,7 @@ describe('FEAT-A (lot I): machine rejouee avec des handlers simules', () => {
   it('2 sections avec fiche: extraction, verification, cout par section, quota une fois, generation par section, finalisation', async () => {
     const r = await go(base());
     expect(r.end).toBe('Fiche-publiee');
-    expect(names(r)).toEqual(['AttenteEnvoi', 'ControleFichier', 'Transcription', 'AttenteConfirmation', 'PlanSections', 'Extraction', 'Verification', 'CoutSection', 'Extraction', 'Verification', 'CoutSection', 'ConsommationQuota', 'Generation', 'Generation', 'Finalisation']);
+    expect(names(r)).toEqual(['AttenteEnvoi', 'ControleFichier', 'Transcription', 'RognageFigures', 'AttenteConfirmation', 'PlanSections', 'Extraction', 'Verification', 'CoutSection', 'Extraction', 'Verification', 'CoutSection', 'ConsommationQuota', 'Generation', 'Generation', 'Finalisation']);
     expect(r.calls.filter((c) => c.state === 'Extraction').map((c) => c.input.index)).toEqual([0, 1]);
     expect(r.calls.filter((c) => c.state === 'Generation').map((c) => c.input.index)).toEqual([0, 1]);
     expect(r.calls.find((c) => c.state === 'Verification')!.input).toEqual({ jobId: 'j1', docId: 'd0', budgetRestantCentimes: 40 });

@@ -7,7 +7,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
 import { webOriginFor } from './data-stack.js';
-import { fn, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
+import { fn, FIGURES_BUCKET_PARAM, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
 
 export interface GameStackProps extends StackProps {
   envName: Env;
@@ -18,7 +18,7 @@ interface HandlerDef {
   name: string;
   role: RoleKey;
   /** Variables d'environnement en plus de TABLE_NAME et QCM_ENV. */
-  needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET')[];
+  needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET' | 'FIGURES_BUCKET')[];
   /** Memoire (Mo) et delai (s) si differents du defaut (256 Mo, 10 s; 30 s pour le role admin). */
   memoryMb?: number;
   timeoutS?: number;
@@ -45,8 +45,8 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'family-create', role: 'account', needs: ['USER_POOL_ID'] },
   { name: 'students-link', role: 'manage', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
   { name: 'students-update', role: 'manage', needs: ['USER_POOL_ID'] },
-  { name: 'students-delete', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET'] },
-  { name: 'family-admin', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET'] },
+  { name: 'students-delete', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET', 'FIGURES_BUCKET'] },
+  { name: 'family-admin', role: 'admin', needs: ['USER_POOL_ID', 'SCANS_BUCKET', 'FIGURES_BUCKET'] },
   { name: 'activation-post', role: 'activation', needs: ['USER_POOL_ID', 'WEB_ORIGIN'] },
   // contract-v1.2 (A1): codes d'invitation parent par un administrateur (groupe Cognito `admin`)
   { name: 'admin-invitations', role: 'invite' },
@@ -73,6 +73,7 @@ export class GameStack extends Stack {
     const userPoolId = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'auth/userPoolId'));
     const apiId = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'api/id'));
     const scansBucket = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, 'data/scansBucket'));
+    const figuresBucket = ssm.StringParameter.valueForStringParameter(this, ssmParam(envName, FIGURES_BUCKET_PARAM));
     const poolArn = this.formatArn({ service: 'cognito-idp', resource: 'userpool', resourceName: userPoolId });
     const webOrigin = webOriginFor(this, envName);
 
@@ -122,6 +123,9 @@ export class GameStack extends Stack {
         cognito(['AdminDeleteUser']),
         new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*', 'exports/*'] } } }),
         new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`, `arn:${this.partition}:s3:::${scansBucket}/exports/*`] }),
+        // R1-B: figures conservees de l'eleve ou de la famille supprimee (liste du prefixe figures/ puis suppression). Pas de lecture.
+        new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${figuresBucket}`], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } }),
+        new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${figuresBucket}/figures/*`] }),
       ],
       // Route publique: lit l'eleve et le jeton (hache), consomme le jeton, pose le mot de passe. Rien d'autre.
       activation: [ddb([...READ, 'PutItem', 'DeleteItem'], ['ACTIVATION#*', ...FAM]), cognito(['AdminSetUserPassword'])],
@@ -138,7 +142,7 @@ export class GameStack extends Stack {
       for (const st of policies[key]) roles[key].addToPolicy(st);
     }
 
-    const extra = { USER_POOL_ID: userPoolId, WEB_ORIGIN: webOrigin, SCANS_BUCKET: scansBucket };
+    const extra = { USER_POOL_ID: userPoolId, WEB_ORIGIN: webOrigin, SCANS_BUCKET: scansBucket, FIGURES_BUCKET: figuresBucket };
     for (const h of GAME_HANDLERS) {
       const logGroup = new logs.LogGroup(this, `Logs-${h.name}`, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
       logGroup.grantWrite(roles[h.role]); // journaux de CETTE fonction seulement
