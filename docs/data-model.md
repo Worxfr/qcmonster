@@ -22,7 +22,8 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Compteur de transcriptions | `STUDENT#<sid>` | `TRANSCR#<aaaa-mm-jj>` | nombre du jour (plafond 10). TTL 2 jours | L2a |
 | Passage | `PASSAGE#<hash>` | `META` | `texte` (brut, nettoye), `url`, `site`, `titre`, `niveau`, `date`, `ttl`. `<hash>` = 24 premiers caracteres hex de SHA-256(`url` + saut de ligne + `texte`). TTL 30 jours | L2b |
 | Verdict en cache | `CLAIMCACHE#<empreinte>` | `META` | `statut` (`verifiee` ou `erreur` seulement), `niveau`, `secondeLecture`, `passageIds`, `sources[]` (memes champs que le verdict), `date`, `ttl`. `<empreinte>` = SHA-256 du texte normalise (minuscules, sans accents ni ponctuation). Reutilise seulement si les passages cites existent encore. TTL 30 jours | L2b |
-| Profil de jeu | `STUDENT#<sid>` | `PROFILE` | XP total, niveau, serie, gels, badges, stade | L3 |
+| Profil de jeu | `STUDENT#<sid>` | `PROFILE` | XP total, niveau, serie, gels, badges, stade. H1: `currentTest` (`testId`, `sk`, `docId`, `openedAt`, `total`, `mode`: pointeur du passage ouvert, pose par `session-get`) et `anneesScolaires` (annees `2026-2027` ayant des passages, completee par `answers-post`) | L3 |
+| Passage de test (H1) | `STUDENT#<sid>` | `TEST#<aaaa-mm-jjThh:mm:ssZ>#<testId>` | `docId`, `titre` (copie, 200 car.), `matiere`, `mode`, `anneeScolaire` (1er sept. au 31 aout, Europe/Paris, calculee a l'ecriture), `startedAt`, `endedAt`, `total` (au plus 20), `answered`, `correct`, `firstTry`, `xpGained`, `items[]` (`q`, `r`, `k`, `ok`, `n`, `f`, `xp`, `at`, `c` reponse donnee 300 car. au plus; jamais de texte de question). `testId` = ULID, son temps redonne la cle. **Pas de `ttl`**: conserve jusqu'a la suppression de la fiche, de l'eleve ou de la famille (`shared/delete-tree.ts`). Lu par `tests-read` (eleve seul); `c` n'est jamais renvoye au parent (docs/H1-design.md) | `answers-post` (seul) |
 | XP du jour | `STUDENT#<sid>` | `DAY#<aaaa-mm-jj>` | XP gagne, pages payees, jour valide | L3 |
 | Tentative | `STUDENT#<sid>` | `ATT#<questionId>#<aaaa-mm-jj>` | `attempts` (essais du jour), `done` (plus de recompense possible ce jour), `rewarded` (cette tentative a gagne la recompense unique). **Une recompense par question pour toujours**: L3 lit les `ATT#<questionId>#` des autres jours (prefixe) et ne paie que si aucun n'a `rewarded`. Le moment d'affichage n'est pas stocke ici (voir `PROFILE.tick`) | L3 |
 | Classement | `FAMILY#<fid>` | `WEEK#<aaaa-Www>#<sid>` | XP de la semaine, jours actifs | L3 |
@@ -31,7 +32,7 @@ Cle de partition `PK`, cle de tri `SK`. **Chaque type d'element a un seul lot qu
 | Audit d'invitation (A1) | `INVITE#AUDIT#<auteur>#<aaaa-mm-jj>` | `N#01`..`N#20` | `evenement`, `actor`, `creeLe`, `ttl` | `api/src/admin/invitations.ts` (compteur quotidien et audit, sans code) |
 | Activation | `ACTIVATION#<hache>` | `META` | `sid`, expiration. TTL 24 h | L3 |
 
-Index secondaire `GSI1`: `GSI1PK = FAMILY#<fid>`, `GSI1SK = DOC#<date>` pour lister les fiches de la famille cote parent (sans le texte du cours). Pas d'autre index en v1. Pas de PITR (suppression effective immediatement). Facturation a la demande. Attribut TTL: `ttl` (secondes epoch), pose sur Job, Transcription, Passage, Verdict en cache et Activation.
+Index secondaire `GSI1`: `GSI1PK = FAMILY#<fid>`, `GSI1SK = DOC#<date>` pour lister les fiches de la famille cote parent (sans le texte du cours). Pas d'autre index en v1. Pas de PITR (suppression effective immediatement). Facturation a la demande. Attribut TTL: `ttl` (secondes epoch), pose sur Job, Transcription, Passage, Verdict en cache et Activation (pas sur les passages de test `TEST#`).
 
 ## Buckets S3 (stack Data)
 

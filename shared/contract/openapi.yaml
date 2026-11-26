@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: QCMonster API
-  version: 1.3.0
+  version: 1.4.0
   description: |
-    Contrat d'API QCMonster (contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
+    Contrat d'API QCMonster (contract-v1.4, additif par rapport a v1.3: historique des tests de l'eleve (`/me/tests`, regroupe par annee scolaire), vue parent en lecture seule (`/students/{sid}/progress`, `/students/{sid}/tests`, resultat par question), archive d'export (`POST /family/export/archive`); contract-v1.3, additif par rapport a v1.2: scans de plusieurs pages (`uploads`, `contentTypes`), liste de scans filtrable et triable (GET /scans), statut detaille (`status`), matiere et sujet modifiables (PATCH /docs/{docId}), dossiers de l'eleve (/folders); contract-v1.2: ajoute POST /admin/invitations, reserve au groupe Cognito `admin`; v1.1, additif par rapport a v1.0: activation eleve publique, creation de famille, lecture de fiche, badges, cout par job). Fixe par L1c (design-v2 section 6).
     Les schemas Zod et les types TypeScript sont GENERES dans shared/contract/generated/ (npm run gen).
     Ne jamais editer les fichiers generes. Une demande de changement = PR sur ce fichier, relue par le proprietaire de L1c (shared/**, contrat).
 servers:
@@ -622,6 +622,166 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Progress' }
               example: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 1, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01' }
+  /me/tests:
+    get:
+      operationId: listMyTests
+      tags: [game]
+      summary: "Historique des tests de l'eleve connecte, du plus recent au plus ancien, pagine (contract-v1.4, H1; handler tests-read)"
+      description: |
+        Une entree par passage de test (voir docs/H1-design.md). Reserve a l'eleve: un parent recoit 403. L'eleve ne lit jamais l'historique d'un autre eleve, meme de sa famille (la cle de partition vient du jeton).
+        Pagination par curseur opaque: renvoyer `nextCursor` tel quel dans `cursor`. Le curseur ne contient qu'une position de tri; la partition est toujours reconstruite depuis le jeton, un curseur ne peut donc pas lire ailleurs. Un curseur invalide donne 400.
+        Les passages sont conserves jusqu'a la suppression de la fiche, de l'eleve ou de la famille. Ils se regroupent par **annee scolaire** (1er septembre au 31 aout, fuseau Europe/Paris): `schoolYear` dans chaque passage, filtre `schoolYear` en requete, liste `schoolYears` sur la premiere page.
+      parameters:
+        - { $ref: '#/components/parameters/TestLimit' }
+        - { $ref: '#/components/parameters/TestCursor' }
+        - { $ref: '#/components/parameters/SchoolYear' }
+        - { name: docId, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 64 }, description: Seulement les passages sur cette fiche }
+        - { name: from, in: query, required: false, schema: { type: string, format: date }, description: "Premier jour inclus (fuseau Europe/Paris)" }
+        - { name: to, in: query, required: false, schema: { type: string, format: date }, description: "Dernier jour inclus (fuseau Europe/Paris)" }
+      responses:
+        '200':
+          description: Page de passages
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestPage' }
+              example:
+                items:
+                  - { testId: 01JF5T3ST0000000000000AAAA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
+                  - { testId: 01JF5T3ST0000000000000ABAA, docId: 01JEXAMPLE0DOC0000000000AB, titre: La Revolution francaise, matiere: histoire_geo, mode: qcm, schoolYear: 2026-2027, startedAt: '2026-11-30T18:30:00Z', endedAt: '2026-11-30T18:32:05Z', total: 10, answered: 4, correct: 3, firstTry: 3, scorePct: 30, xpGained: 15, status: incomplet }
+                schoolYears: ['2026-2027', '2025-2026']
+                nextCursor: VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpGNVQzU1QwMDAwMDAwMDAwMDAwQUJBQQ
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /me/tests/{testId}:
+    get:
+      operationId: getMyTest
+      tags: [game]
+      summary: "Detail d'un passage de test: resultat de chaque question (contract-v1.4, H1; handler tests-read)"
+      description: |
+        Reserve a l'eleve proprietaire. `prompt` et `choices` sont relus dans la fiche au moment de la lecture (rien du cours n'est copie dans l'historique). `correctAnswer` n'est present que pour une question terminee (juste, ou 2 essais, ou texte a trous repondu): c'est ce que l'eleve a deja eu le droit de voir.
+        Un passage d'un autre eleve donne 404.
+      parameters: [{ $ref: '#/components/parameters/TestId' }]
+      responses:
+        '200':
+          description: Passage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestDetail' }
+              example:
+                testId: 01JF5T3ST0000000000000AAAA
+                docId: 01JEXAMPLE0DOC0000000000AA
+                titre: La photosynthese
+                matiere: svt
+                mode: mixte
+                schoolYear: 2026-2027
+                startedAt: '2026-12-01T17:02:11Z'
+                endedAt: '2026-12-01T17:06:40Z'
+                total: 2
+                answered: 2
+                correct: 1
+                firstTry: 1
+                scorePct: 50
+                xpGained: 5
+                status: complet
+                questions:
+                  - { questionId: 'qcm-01', rank: 1, kind: qcm, correct: true, attempts: 1, firstTry: true, xpGained: 5, answeredAt: '2026-12-01T17:02:40Z', choice: Du dioxygene, prompt: Que produit la photosynthese ?, choices: [Du dioxygene, Du dioxyde de carbone, De l'azote, De l'eau], correctAnswer: Du dioxygene }
+                  - { questionId: 'gap-01', rank: 2, kind: gap, correct: false, attempts: 1, firstTry: false, xpGained: 0, answeredAt: '2026-12-01T17:06:40Z', choice: azote, prompt: La photosynthese produit du ____., correctAnswer: dioxygene }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /students/{sid}/progress:
+    get:
+      operationId: getStudentProgress
+      tags: [family]
+      summary: "Vue parent, lecture seule: avancement d'un eleve de la famille (contract-v1.4, H1; handler family-progress)"
+      description: |
+        Reserve au parent. L'eleve doit etre de la famille du jeton, sinon **404** (pas 403: on ne revele pas l'existence d'un eleve d'une autre famille). Un eleve qui appelle recoit 403.
+        Contenu: progression de jeu, une ligne par fiche (titre, matiere, pages, resultats des tests), tendance par semaine, scores par matiere, derniers tests. Jamais le texte d'un cours ni d'une question, jamais une reponse donnee ni la bonne reponse. Le resultat (juste ou faux) de chaque question se lit par `GET /students/{sid}/tests/{testId}`.
+      parameters: [{ $ref: '#/components/parameters/StudentId' }]
+      responses:
+        '200':
+          description: Avancement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentProgressView' }
+              example:
+                student: { studentId: 01JEXAMPLE0STU0000000000AA, pseudo: Lila-7k2f, schoolLevel: seconde, under15: false, status: actif, pageQuota: 50 }
+                progress: { xp: 110, level: 2, streakDays: 3, freezes: 1, stage: 2, pagesRemaining: 18, pagesLimit: 20, resetDate: '2027-01-01', badges: [premier_scan] }
+                docs:
+                  - { docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, pages: 2, createdAt: '2026-11-28T16:00:00Z', tests: 3, bestScorePct: 90, lastScorePct: 80, lastTestAt: '2026-12-01T17:06:40Z' }
+                scans:
+                  - { scanId: 01JEXAMPLE0JOB0000000000AA, stage: verification, pages: 3, createdAt: '2026-12-01T18:00:00Z' }
+                weeks:
+                  - { week: 2026-W48, tests: 4, avgScorePct: 72, activeDays: 3 }
+                subjects:
+                  - { matiere: svt, tests: 3, avgScorePct: 83 }
+                schoolYears: ['2026-2027']
+                recentTests:
+                  - { testId: 01JF5T3ST0000000000000AAAA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /students/{sid}/tests:
+    get:
+      operationId: listStudentTests
+      tags: [family]
+      summary: "Vue parent, lecture seule: historique pagine des tests d'un eleve, sans detail par question (contract-v1.4, H1; handler family-progress)"
+      description: "Memes regles d'acces que `GET /students/{sid}/progress` (404 hors famille, 403 pour un eleve). Meme pagination et memes filtres que `GET /me/tests`. Renvoie des resumes `TestSummary` uniquement."
+      parameters:
+        - { $ref: '#/components/parameters/StudentId' }
+        - { $ref: '#/components/parameters/TestLimit' }
+        - { $ref: '#/components/parameters/TestCursor' }
+        - { $ref: '#/components/parameters/SchoolYear' }
+        - { name: docId, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Page de resumes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestPage' }
+              example:
+                items:
+                  - { testId: 01JF5T3ST0000000000000AAAA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /students/{sid}/tests/{testId}:
+    get:
+      operationId: getStudentTest
+      tags: [family]
+      summary: "Vue parent, lecture seule: resultat de chaque question d'un passage, sans texte (contract-v1.4, H1; handler family-progress)"
+      description: |
+        Memes regles d'acces que `GET /students/{sid}/progress` (404 hors famille ou passage inconnu, 403 pour un eleve).
+        Chaque question est identifiee par son `questionId` et son `rank` (position dans la session) avec juste ou faux, essais et XP. **Ni texte de question, ni choix, ni reponse donnee, ni bonne reponse.**
+      parameters:
+        - { $ref: '#/components/parameters/StudentId' }
+        - { $ref: '#/components/parameters/TestId' }
+      responses:
+        '200':
+          description: Passage, par question
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestParentDetail' }
+              example:
+                testId: 01JF5T3ST0000000000000AAAA
+                docId: 01JEXAMPLE0DOC0000000000AA
+                titre: La photosynthese
+                matiere: svt
+                mode: mixte
+                schoolYear: 2026-2027
+                startedAt: '2026-12-01T17:02:11Z'
+                endedAt: '2026-12-01T17:06:40Z'
+                total: 2
+                answered: 2
+                correct: 1
+                firstTry: 1
+                scorePct: 50
+                xpGained: 5
+                status: complet
+                questions:
+                  - { questionId: 'qcm-01', rank: 1, kind: qcm, correct: true, attempts: 1, firstTry: true, xpGained: 5, answeredAt: '2026-12-01T17:02:40Z' }
+                  - { questionId: 'gap-01', rank: 2, kind: gap, correct: false, attempts: 1, firstTry: false, xpGained: 0, answeredAt: '2026-12-01T17:06:40Z' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /students:
     post:
       operationId: createStudent
@@ -756,6 +916,24 @@ paths:
               schema: { $ref: '#/components/schemas/FamilyExport' }
               example: { familyId: 01JEXAMPLE0FAM0000000000AA, exportedAt: '2026-12-01T10:00:00Z', parentEmail: parent@example.invalid, students: [], docs: [], reports: [] }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /family/export/archive:
+    post:
+      operationId: createExportArchive
+      tags: [family]
+      summary: "Archive telechargeable de l'export, avec tout l'historique des tests (contract-v1.4, H1; handler family-export-archive)"
+      description: |
+        Reserve au parent. Construit une archive **zip** et renvoie un **lien de telechargement court** (10 minutes). Contenu: `export.json` (meme contenu que `GET /family/export`), et pour chaque eleve `tests/<studentId>.jsonl` (un passage par ligne, schema `TestParentDetail`, toutes les annees scolaires).
+        Comme l'export JSON: **aucun texte de cours** et aucun texte de question. Les reponses donnees par l'eleve (`choice`) ne sont **pas** dans l'archive (l'eleve seul les lit dans l'application).
+        Le lien ne porte aucune donnee: c'est une URL signee vers un fichier prive, valable 10 minutes. Le fichier est supprime par une regle d'expiration du stockage au plus tard 2 jours apres (et avec la famille).
+        Borne: 50 000 passages au plus par archive (environ 9 ans pour 5 eleves a 3 passages par jour); au-dela, les annees scolaires les plus anciennes sont omises et `truncated` vaut vrai.
+      responses:
+        '200':
+          description: Archive prete
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportArchive' }
+              example: { url: 'https://example.invalid/exports/archive.zip?signature=exemple', expiresAt: '2026-12-01T10:10:00Z', format: zip, sizeBytes: 482113, students: 2, tests: 1840, truncated: false }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /family:
     post:
       operationId: createFamily
@@ -812,6 +990,10 @@ components:
     DocId: { name: docId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     CoursId: { name: coursId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
     FolderId: { name: folderId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    TestId: { name: testId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+    SchoolYear: { name: schoolYear, in: query, required: false, schema: { type: string, pattern: '^[0-9]{4}-[0-9]{4}$' }, description: "Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027" }
+    TestLimit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+    TestCursor: { name: cursor, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 512 }, description: "Curseur opaque renvoye par la page precedente (`nextCursor`)" }
     StudentId: { name: sid, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
   responses:
     BadRequest:
@@ -1345,6 +1527,8 @@ components:
               description: Profil de jeu (XP, serie, badges, signalements valides)
               additionalProperties: true
             activeDays: { type: array, items: { type: string }, description: Jours (Paris) ou l'eleve a joue }
+            testsCount: { type: integer, minimum: 0, description: "Nombre de passages de test conserves (v1.4). Le detail est dans l'archive `POST /family/export/archive`." }
+
             attempts:
               type: array
               items:
@@ -1354,6 +1538,137 @@ components:
                   questionId: { type: string }
                   date: { type: string }
                   attempts: { type: integer }
+    TestSummary:
+      type: object
+      description: "Un passage de test. `scorePct` = round(100 x correct / total); `total` = questions de la session ouverte, meme non repondues."
+      required: [testId, docId, titre, matiere, mode, schoolYear, startedAt, total, answered, correct, firstTry, scorePct, xpGained, status]
+      properties:
+        testId: { type: string }
+        docId: { type: string }
+        titre: { type: string, maxLength: 200, description: "Titre de la fiche au moment du test (copie courte, supprimee avec la fiche)" }
+        matiere: { type: string }
+        mode: { type: string, description: "Valeurs connues: `mixte`, `qcm`, `gap`. Un client traite une valeur inconnue comme `autre` (des modes s'ajouteront, par exemple le tirage de l'issue #42)." }
+        schoolYear: { type: string, pattern: '^[0-9]{4}-[0-9]{4}$', description: "Annee scolaire de `startedAt` (Europe/Paris): du 1er septembre au 31 aout. Septembre a decembre de l'annee Y donne `Y-(Y+1)`, janvier a aout de l'annee Y donne `(Y-1)-Y`. Calculee a l'ecriture, jamais modifiee." }
+        startedAt: { type: string, format: date-time, description: Ouverture de la session }
+        endedAt: { type: string, format: date-time, description: "Derniere reponse du passage (absent si aucune)" }
+        total: { type: integer, minimum: 1 }
+        answered: { type: integer, minimum: 0 }
+        correct: { type: integer, minimum: 0, description: Questions finalement justes }
+        firstTry: { type: integer, minimum: 0, description: Questions justes du premier coup }
+        scorePct: { type: integer, minimum: 0, maximum: 100 }
+        xpGained: { type: integer, minimum: 0 }
+        status: { type: string, enum: [complet, incomplet], description: "`complet` quand `answered` = `total`" }
+    TestQuestionStatus:
+      type: object
+      description: "Resultat d'une question dans un passage, sans aucun texte."
+      required: [questionId, rank, kind, correct, attempts, firstTry, xpGained, answeredAt]
+      properties:
+        questionId: { type: string }
+        rank: { type: integer, minimum: 1, description: Position de la question dans la session }
+        kind: { type: string, enum: [qcm, gap] }
+        correct: { type: boolean }
+        attempts: { type: integer, minimum: 1, maximum: 2 }
+        firstTry: { type: boolean }
+        xpGained: { type: integer, minimum: 0 }
+        answeredAt: { type: string, format: date-time }
+    TestQuestionResult:
+      allOf:
+        - $ref: '#/components/schemas/TestQuestionStatus'
+        - type: object
+          properties:
+            choice: { type: string, maxLength: 300, description: Derniere reponse donnee par l'eleve. Visible de l'eleve seul. }
+    TestDetail:
+      allOf:
+        - $ref: '#/components/schemas/TestSummary'
+        - type: object
+          required: [questions]
+          properties:
+            questions:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/TestQuestionResult'
+                  - type: object
+                    properties:
+                      prompt: { type: string, maxLength: 1000, description: "Relu dans la fiche (absent si la question n'existe plus)" }
+                      choices: { type: array, items: { type: string, maxLength: 300 } }
+                      correctAnswer: { type: string, description: Present seulement si la question est terminee }
+    TestPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/TestSummary' } }
+        nextCursor: { type: string, maxLength: 512, description: Absent sur la derniere page }
+        schoolYears: { type: array, items: { type: string, pattern: '^[0-9]{4}-[0-9]{4}$' }, description: "Annees scolaires ayant des passages, la plus recente d'abord. Present sur la premiere page seulement." }
+    TestParentDetail:
+      description: "Passage vu par le parent et ecrit dans l'archive: resultat par question, sans texte ni reponse donnee."
+      allOf:
+        - $ref: '#/components/schemas/TestSummary'
+        - type: object
+          required: [questions]
+          properties:
+            questions: { type: array, items: { $ref: '#/components/schemas/TestQuestionStatus' } }
+    ExportArchive:
+      type: object
+      required: [url, expiresAt, format, sizeBytes, students, tests, truncated]
+      properties:
+        url: { type: string, format: uri, description: Lien signe, valable 10 minutes }
+        expiresAt: { type: string, format: date-time }
+        format: { type: string, enum: [zip] }
+        sizeBytes: { type: integer, minimum: 0 }
+        students: { type: integer, minimum: 0 }
+        tests: { type: integer, minimum: 0 }
+        truncated: { type: boolean }
+    DocProgress:
+      type: object
+      required: [docId, titre, matiere, pages, createdAt, tests]
+      properties:
+        docId: { type: string }
+        titre: { type: string }
+        matiere: { type: string }
+        sujet: { type: string }
+        pages: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        tests: { type: integer, minimum: 0 }
+        bestScorePct: { type: integer, minimum: 0, maximum: 100 }
+        lastScorePct: { type: integer, minimum: 0, maximum: 100 }
+        lastTestAt: { type: string, format: date-time }
+    ScanProgress:
+      type: object
+      description: "Scan en cours ou recent: etape et nombre de pages seulement."
+      required: [scanId, stage, pages, createdAt]
+      properties:
+        scanId: { type: string }
+        stage: { type: string, description: "Etape du traitement, meme vocabulaire que `status` de GET /scans" }
+        pages: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+    WeekStat:
+      type: object
+      required: [week, tests, avgScorePct, activeDays]
+      properties:
+        week: { type: string, pattern: '^[0-9]{4}-W[0-9]{2}$' }
+        tests: { type: integer, minimum: 0 }
+        avgScorePct: { type: integer, minimum: 0, maximum: 100 }
+        activeDays: { type: integer, minimum: 0, maximum: 7 }
+    SubjectStat:
+      type: object
+      required: [matiere, tests, avgScorePct]
+      properties:
+        matiere: { type: string }
+        tests: { type: integer, minimum: 0 }
+        avgScorePct: { type: integer, minimum: 0, maximum: 100 }
+    StudentProgressView:
+      type: object
+      required: [student, progress, docs, scans, weeks, subjects, schoolYears, recentTests]
+      properties:
+        student: { $ref: '#/components/schemas/Student' }
+        progress: { $ref: '#/components/schemas/Progress' }
+        docs: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DocProgress' }, description: Fiches les plus recentes d'abord }
+        scans: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/ScanProgress' } }
+        weeks: { type: array, maxItems: 12, items: { $ref: '#/components/schemas/WeekStat' }, description: "Douze dernieres semaines, la plus recente d'abord" }
+        subjects: { type: array, items: { $ref: '#/components/schemas/SubjectStat' } }
+        schoolYears: { type: array, items: { type: string, pattern: '^[0-9]{4}-[0-9]{4}$' }, description: "Annees scolaires ayant des passages, la plus recente d'abord" }
+        recentTests: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/TestSummary' } }
     ExportQuestion:
       type: object
       required: [questionId, kind, prompt, answer]

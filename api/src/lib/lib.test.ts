@@ -84,8 +84,8 @@ describe('aleatoire', () => {
 describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts');
-  it('14 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(14);
+  it('15 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
+    expect(files).toHaveLength(15);
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
       if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT
@@ -96,7 +96,11 @@ describe('garde: chaque handler verifie l\'identite du jeton', () => {
   it('aucun handler ne lit la famille ou l\'eleve ailleurs que dans le jeton (ni requete, ni corps brut)', () => {
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
-      expect(src, f).not.toMatch(/queryStringParameters|rawQueryString|\be\.body\b|event\.body\b|headers/);
+      // tests-read (H1-A) lit des FILTRES de liste (fiche, annee, curseur, limite) dans la requete; l'eleve et la famille viennent du jeton seul.
+      if (f === 'tests-read.ts') {
+        expect(src, f).not.toMatch(/rawQueryString|\be\.body\b|event\.body\b|headers|familyId|studentId|\bsid\b/);
+        expect(src, f).toMatch(/requireStudent\(authOf\(e\)\)/);
+      } else expect(src, f).not.toMatch(/queryStringParameters|rawQueryString|\be\.body\b|event\.body\b|headers/);
     }
   });
 });

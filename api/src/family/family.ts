@@ -52,7 +52,7 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
     const sid = s.SK.slice('STUDENT#'.length);
     const part = await deps.store.query(`STUDENT#${sid}`);
     const profile: Record<string, unknown> = { ...part.find((i) => i.SK === 'PROFILE') };
-    for (const k of ['PK', 'SK', 'v']) delete profile[k];
+    for (const k of ['PK', 'SK', 'v', 'currentTest']) delete profile[k]; // currentTest: pointeur interne (H1), sans valeur pour le parent
     const c = consent(s);
     // Dossiers et cours de l'eleve (contrat 1.3). Les cours sortent SANS leur texte (`COURS#<id>#T<nn>` n'est jamais copie): le parent ne lit pas le texte.
     const partDocs = part.filter((i) => i.SK.startsWith('DOC#'));
@@ -69,6 +69,7 @@ export async function exportFamily(deps: FamilyDeps, ctx: ParentCtx) {
       folders,
       cours,
       profile,
+      testsCount: part.filter((i) => i.SK.startsWith('TEST#')).length, // le detail est dans l'archive (POST /family/export/archive)
       activeDays: part.filter((i) => i.SK.startsWith('DAY#') && Number(i.xp ?? 0) > 0).map((i) => i.SK.slice('DAY#'.length)).sort(),
       attempts: part
         .filter((i) => i.SK.startsWith('ATT#'))

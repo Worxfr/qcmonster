@@ -13,7 +13,7 @@ export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite';
+type RoleKey = 'read' | 'readDocs' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite';
 interface HandlerDef {
   name: string;
   role: RoleKey;
@@ -28,6 +28,8 @@ interface HandlerDef {
 export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'me-get', role: 'read' },
   { name: 'family-read', role: 'read' },
+  // contract-v1.4 (H1-A): historique des tests de l'eleve. Role dedie `readDocs`: lit aussi les questions (DOC#*), GetItem seul; aucun droit d'ecriture ni de suppression.
+  { name: 'tests-read', role: 'readDocs' },
   { name: 'session-get', role: 'play' },
   { name: 'answers-post', role: 'play' },
   { name: 'docs-mark-read', role: 'play' },
@@ -89,6 +91,9 @@ export class GameStack extends Stack {
     const policies: Record<RoleKey, iam.PolicyStatement[]> = {
       // Lectures seules (profil, tableau de bord, classement).
       read: [ddb(READ, [...FAM, ...STU])],
+      // Historique des tests (H1-A): profil, eleve, passages (STUDENT#, FAMILY#) et questions des fiches (DOC#). Lecture seule; GetItem et Query seulement.
+      // Role distinct de `read`: DOC#* n'est pas donne a me-get ni a family-read.
+      readDocs: [ddb(READ, [...FAM, ...STU]), ddb(['GetItem'], ['DOC#*'])], // DOC#: GetItem seul (pas de Query)
       // Jeu: lit fiches/questions/verdicts (DOC#), ecrit PROFILE, DAY, ATT (STUDENT#), WEEK, quotas, bonus, signalements (FAMILY#).
       play: [ddb(READ, [...FAM, ...STU, 'DOC#*']), ddb(WRITE, [...FAM, ...STU])],
       // Creation: famille (groupe parent, famille_id) et eleve (utilisateur Cognito sans message), lien d'activation.

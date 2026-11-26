@@ -23,7 +23,7 @@ async function removeAll(db: TreeDb, ks: Key[]): Promise<number> {
 }
 
 /**
- * Fiche: elle-meme, ses CLAIM, VERDICT, QCM, GAP. Renvoie le nombre d'elements supprimes.
+ * Fiche: elle-meme, ses CLAIM, VERDICT, QCM, GAP, et les passages de test (TEST#) de l'eleve sur cette fiche. Renvoie le nombre d'elements supprimes.
  * Controle d'appartenance: si la fiche n'est pas liee a l'eleve (`STUDENT#<sid>` / `DOC#<docId>`), ne supprime RIEN et renvoie 0
  * (un handler qui passe un docId pris dans l'URL ne peut pas effacer la fiche d'un autre eleve).
  */
@@ -32,6 +32,8 @@ export async function deleteDocTree(db: TreeDb, sid: string, docId: string): Pro
   const link = (await db.list(`STUDENT#${sid}`, `DOC#${docId}`)).filter((k) => k.SK === `DOC#${docId}`);
   if (link.length === 0) return 0;
   let n = await removeAll(db, await db.list(`DOC#${docId}`));
+  // Historique des tests (H1, decision P2): les passages sur cette fiche partent avec elle (`docId` est porte par chaque element TEST#).
+  n += await removeAll(db, (await db.list(`STUDENT#${sid}`, 'TEST#')).filter((k) => k.docId === docId).map(({ PK, SK }) => ({ PK, SK })));
   n += await removeAll(db, link);
   return n;
 }

@@ -30,6 +30,9 @@ const EXPECTED = [
   'GET /scans', 'PATCH /docs/{docId}', 'GET /folders', 'POST /folders', 'PATCH /folders/{folderId}', 'DELETE /folders/{folderId}',
   'POST /folders/{folderId}/scans', 'DELETE /folders/{folderId}/scans/{docId}',
   'DELETE /scans/{scanId}', 'GET /cours/{coursId}', 'DELETE /cours/{coursId}',
+  // contract-v1.4 (H1)
+  'GET /me/tests', 'GET /me/tests/{testId}', 'GET /students/{sid}/progress', 'GET /students/{sid}/tests',
+  'GET /students/{sid}/tests/{testId}', 'POST /family/export/archive',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -80,7 +83,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.3.0');
+    expect(spec.info.version).toBe('1.4.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
@@ -199,5 +202,23 @@ describe('contrat OpenAPI', () => {
     expect(spec.paths['/cours/{coursId}'].delete.summary).toMatch(/sectionCount/);
     expect(spec.paths['/cours/{coursId}'].get.summary).toMatch(/parent a 403/);
     expect(zodSchemas.CoursSchema.safeParse(spec.paths['/cours/{coursId}'].get.responses['200'].content['application/json'].example).success).toBe(true);
+  });
+});
+
+describe('contrat v1.4 (H1): historique des tests et vue parent', () => {
+  const schemas = spec.components.schemas as Record<string, { properties?: Record<string, unknown>; allOf?: unknown[] }>;
+  const BANNED = ['prompt', 'choices', 'choice', 'correctAnswer'];
+  it("la vue parent et l'archive donnent le resultat par question mais ni texte, ni reponse donnee", () => {
+    const names = ['StudentProgressView', 'TestSummary', 'TestQuestionStatus', 'TestParentDetail', 'DocProgress', 'ScanProgress'];
+    const json = JSON.stringify(names.map((n) => schemas[n]));
+    for (const banned of BANNED) expect(json).not.toContain(`"${banned}"`);
+    expect(Object.keys(schemas.TestQuestionStatus.properties ?? {})).toEqual(expect.arrayContaining(['questionId', 'rank', 'correct']));
+  });
+  it("seul l'eleve lit la reponse donnee (TestQuestionResult.choice)", () => {
+    expect(JSON.stringify(schemas.TestQuestionResult)).toContain('"choice"');
+  });
+  it('les passages portent une annee scolaire', () => {
+    expect(schemas.TestSummary.properties).toHaveProperty('schoolYear');
+    expect(zodSchemas.TestSummarySchema.safeParse({}).success).toBe(false);
   });
 });

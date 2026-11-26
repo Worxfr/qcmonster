@@ -375,6 +375,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historique des tests de l'eleve connecte, du plus recent au plus ancien, pagine (contract-v1.4, H1; handler tests-read)
+         * @description Une entree par passage de test (voir docs/H1-design.md). Reserve a l'eleve: un parent recoit 403. L'eleve ne lit jamais l'historique d'un autre eleve, meme de sa famille (la cle de partition vient du jeton).
+         *     Pagination par curseur opaque: renvoyer `nextCursor` tel quel dans `cursor`. Le curseur ne contient qu'une position de tri; la partition est toujours reconstruite depuis le jeton, un curseur ne peut donc pas lire ailleurs. Un curseur invalide donne 400.
+         *     Les passages sont conserves jusqu'a la suppression de la fiche, de l'eleve ou de la famille. Ils se regroupent par **annee scolaire** (1er septembre au 31 aout, fuseau Europe/Paris): `schoolYear` dans chaque passage, filtre `schoolYear` en requete, liste `schoolYears` sur la premiere page.
+         */
+        get: operations["listMyTests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/tests/{testId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Detail d'un passage de test: resultat de chaque question (contract-v1.4, H1; handler tests-read)
+         * @description Reserve a l'eleve proprietaire. `prompt` et `choices` sont relus dans la fiche au moment de la lecture (rien du cours n'est copie dans l'historique). `correctAnswer` n'est present que pour une question terminee (juste, ou 2 essais, ou texte a trous repondu): c'est ce que l'eleve a deja eu le droit de voir.
+         *     Un passage d'un autre eleve donne 404.
+         */
+        get: operations["getMyTest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{sid}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vue parent, lecture seule: avancement d'un eleve de la famille (contract-v1.4, H1; handler family-progress)
+         * @description Reserve au parent. L'eleve doit etre de la famille du jeton, sinon **404** (pas 403: on ne revele pas l'existence d'un eleve d'une autre famille). Un eleve qui appelle recoit 403.
+         *     Contenu: progression de jeu, une ligne par fiche (titre, matiere, pages, resultats des tests), tendance par semaine, scores par matiere, derniers tests. Jamais le texte d'un cours ni d'une question, jamais une reponse donnee ni la bonne reponse. Le resultat (juste ou faux) de chaque question se lit par `GET /students/{sid}/tests/{testId}`.
+         */
+        get: operations["getStudentProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{sid}/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vue parent, lecture seule: historique pagine des tests d'un eleve, sans detail par question (contract-v1.4, H1; handler family-progress)
+         * @description Memes regles d'acces que `GET /students/{sid}/progress` (404 hors famille, 403 pour un eleve). Meme pagination et memes filtres que `GET /me/tests`. Renvoie des resumes `TestSummary` uniquement.
+         */
+        get: operations["listStudentTests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{sid}/tests/{testId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vue parent, lecture seule: resultat de chaque question d'un passage, sans texte (contract-v1.4, H1; handler family-progress)
+         * @description Memes regles d'acces que `GET /students/{sid}/progress` (404 hors famille ou passage inconnu, 403 pour un eleve).
+         *     Chaque question est identifiee par son `questionId` et son `rank` (position dans la session) avec juste ou faux, essais et XP. **Ni texte de question, ni choix, ni reponse donnee, ni bonne reponse.**
+         */
+        get: operations["getStudentTest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/students": {
         parameters: {
             query?: never;
@@ -489,6 +594,29 @@ export interface paths {
         get: operations["exportFamily"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/family/export/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive telechargeable de l'export, avec tout l'historique des tests (contract-v1.4, H1; handler family-export-archive)
+         * @description Reserve au parent. Construit une archive **zip** et renvoie un **lien de telechargement court** (10 minutes). Contenu: `export.json` (meme contenu que `GET /family/export`), et pour chaque eleve `tests/<studentId>.jsonl` (un passage par ligne, schema `TestParentDetail`, toutes les annees scolaires).
+         *     Comme l'export JSON: **aucun texte de cours** et aucun texte de question. Les reponses donnees par l'eleve (`choice`) ne sont **pas** dans l'archive (l'eleve seul les lit dans l'application).
+         *     Le lien ne porte aucune donnee: c'est une URL signee vers un fichier prive, valable 10 minutes. Le fichier est supprime par une regle d'expiration du stockage au plus tard 2 jours apres (et avec la famille).
+         *     Borne: 50 000 passages au plus par archive (environ 9 ans pour 5 eleves a 3 passages par jour); au-dela, les annees scolaires les plus anciennes sont omises et `truncated` vaut vrai.
+         */
+        post: operations["createExportArchive"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1006,11 +1134,148 @@ export interface components {
             };
             /** @description Jours (Paris) ou l'eleve a joue */
             activeDays: string[];
+            /** @description Nombre de passages de test conserves (v1.4). Le detail est dans l'archive `POST /family/export/archive`. */
+            testsCount?: number;
             attempts: {
                 questionId: string;
                 date: string;
                 attempts: number;
             }[];
+        };
+        /** @description Un passage de test. `scorePct` = round(100 x correct / total); `total` = questions de la session ouverte, meme non repondues. */
+        TestSummary: {
+            testId: string;
+            docId: string;
+            /** @description Titre de la fiche au moment du test (copie courte, supprimee avec la fiche) */
+            titre: string;
+            matiere: string;
+            /** @description Valeurs connues: `mixte`, `qcm`, `gap`. Un client traite une valeur inconnue comme `autre` (des modes s'ajouteront, par exemple le tirage de l'issue #42). */
+            mode: string;
+            /** @description Annee scolaire de `startedAt` (Europe/Paris): du 1er septembre au 31 aout. Septembre a decembre de l'annee Y donne `Y-(Y+1)`, janvier a aout de l'annee Y donne `(Y-1)-Y`. Calculee a l'ecriture, jamais modifiee. */
+            schoolYear: string;
+            /**
+             * Format: date-time
+             * @description Ouverture de la session
+             */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description Derniere reponse du passage (absent si aucune)
+             */
+            endedAt?: string;
+            total: number;
+            answered: number;
+            /** @description Questions finalement justes */
+            correct: number;
+            /** @description Questions justes du premier coup */
+            firstTry: number;
+            scorePct: number;
+            xpGained: number;
+            /**
+             * @description `complet` quand `answered` = `total`
+             * @enum {string}
+             */
+            status: "complet" | "incomplet";
+        };
+        /** @description Resultat d'une question dans un passage, sans aucun texte. */
+        TestQuestionStatus: {
+            questionId: string;
+            /** @description Position de la question dans la session */
+            rank: number;
+            /** @enum {string} */
+            kind: "qcm" | "gap";
+            correct: boolean;
+            attempts: number;
+            firstTry: boolean;
+            xpGained: number;
+            /** Format: date-time */
+            answeredAt: string;
+        };
+        TestQuestionResult: components["schemas"]["TestQuestionStatus"] & {
+            /** @description Derniere reponse donnee par l'eleve. Visible de l'eleve seul. */
+            choice?: string;
+        };
+        TestDetail: components["schemas"]["TestSummary"] & {
+            questions: (components["schemas"]["TestQuestionResult"] & {
+                /** @description Relu dans la fiche (absent si la question n'existe plus) */
+                prompt?: string;
+                choices?: string[];
+                /** @description Present seulement si la question est terminee */
+                correctAnswer?: string;
+            })[];
+        };
+        TestPage: {
+            items: components["schemas"]["TestSummary"][];
+            /** @description Absent sur la derniere page */
+            nextCursor?: string;
+            /** @description Annees scolaires ayant des passages, la plus recente d'abord. Present sur la premiere page seulement. */
+            schoolYears?: string[];
+        };
+        /** @description Passage vu par le parent et ecrit dans l'archive: resultat par question, sans texte ni reponse donnee. */
+        TestParentDetail: components["schemas"]["TestSummary"] & {
+            questions: components["schemas"]["TestQuestionStatus"][];
+        };
+        ExportArchive: {
+            /**
+             * Format: uri
+             * @description Lien signe
+             */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            format: "zip";
+            sizeBytes: number;
+            students: number;
+            tests: number;
+            truncated: boolean;
+        };
+        DocProgress: {
+            docId: string;
+            titre: string;
+            matiere: string;
+            sujet?: string;
+            pages: number;
+            /** Format: date-time */
+            createdAt: string;
+            tests: number;
+            bestScorePct?: number;
+            lastScorePct?: number;
+            /** Format: date-time */
+            lastTestAt?: string;
+        };
+        /** @description Scan en cours ou recent: etape et nombre de pages seulement. */
+        ScanProgress: {
+            scanId: string;
+            /** @description Etape du traitement, meme vocabulaire que `status` de GET /scans */
+            stage: string;
+            pages: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        WeekStat: {
+            week: string;
+            tests: number;
+            avgScorePct: number;
+            activeDays: number;
+        };
+        SubjectStat: {
+            matiere: string;
+            tests: number;
+            avgScorePct: number;
+        };
+        StudentProgressView: {
+            student: components["schemas"]["Student"];
+            progress: components["schemas"]["Progress"];
+            /** @description Fiches les plus recentes d'abord */
+            docs: components["schemas"]["DocProgress"][];
+            scans: components["schemas"]["ScanProgress"][];
+            /** @description Douze dernieres semaines, la plus recente d'abord */
+            weeks: components["schemas"]["WeekStat"][];
+            subjects: components["schemas"]["SubjectStat"][];
+            /** @description Annees scolaires ayant des passages, la plus recente d'abord */
+            schoolYears: string[];
+            recentTests: components["schemas"]["TestSummary"][];
         };
         ExportQuestion: {
             questionId: string;
@@ -1137,6 +1402,12 @@ export interface components {
         DocId: string;
         CoursId: string;
         FolderId: string;
+        TestId: string;
+        /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
+        SchoolYear: string;
+        TestLimit: number;
+        /** @description Curseur opaque renvoye par la page precedente (`nextCursor`) */
+        TestCursor: string;
         StudentId: string;
     };
     requestBodies: never;
@@ -2332,6 +2603,391 @@ export interface operations {
             };
         };
     };
+    listMyTests: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["TestLimit"];
+                /** @description Curseur opaque renvoye par la page precedente (`nextCursor`) */
+                cursor?: components["parameters"]["TestCursor"];
+                /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
+                schoolYear?: components["parameters"]["SchoolYear"];
+                /** @description Seulement les passages sur cette fiche */
+                docId?: string;
+                /** @description Premier jour inclus (fuseau Europe/Paris) */
+                from?: string;
+                /** @description Dernier jour inclus (fuseau Europe/Paris) */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page de passages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "testId": "01JF5T3ST0000000000000AAAA",
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "titre": "La photosynthese",
+                     *           "matiere": "svt",
+                     *           "mode": "mixte",
+                     *           "schoolYear": "2026-2027",
+                     *           "startedAt": "2026-12-01T17:02:11Z",
+                     *           "endedAt": "2026-12-01T17:06:40Z",
+                     *           "total": 10,
+                     *           "answered": 10,
+                     *           "correct": 8,
+                     *           "firstTry": 7,
+                     *           "scorePct": 80,
+                     *           "xpGained": 63,
+                     *           "status": "complet"
+                     *         },
+                     *         {
+                     *           "testId": "01JF5T3ST0000000000000ABAA",
+                     *           "docId": "01JEXAMPLE0DOC0000000000AB",
+                     *           "titre": "La Revolution francaise",
+                     *           "matiere": "histoire_geo",
+                     *           "mode": "qcm",
+                     *           "schoolYear": "2026-2027",
+                     *           "startedAt": "2026-11-30T18:30:00Z",
+                     *           "endedAt": "2026-11-30T18:32:05Z",
+                     *           "total": 10,
+                     *           "answered": 4,
+                     *           "correct": 3,
+                     *           "firstTry": 3,
+                     *           "scorePct": 30,
+                     *           "xpGained": 15,
+                     *           "status": "incomplet"
+                     *         }
+                     *       ],
+                     *       "schoolYears": [
+                     *         "2026-2027",
+                     *         "2025-2026"
+                     *       ],
+                     *       "nextCursor": "VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpGNVQzU1QwMDAwMDAwMDAwMDAwQUJBQQ"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TestPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMyTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                testId: components["parameters"]["TestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Passage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "testId": "01JF5T3ST0000000000000AAAA",
+                     *       "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *       "titre": "La photosynthese",
+                     *       "matiere": "svt",
+                     *       "mode": "mixte",
+                     *       "schoolYear": "2026-2027",
+                     *       "startedAt": "2026-12-01T17:02:11Z",
+                     *       "endedAt": "2026-12-01T17:06:40Z",
+                     *       "total": 2,
+                     *       "answered": 2,
+                     *       "correct": 1,
+                     *       "firstTry": 1,
+                     *       "scorePct": 50,
+                     *       "xpGained": 5,
+                     *       "status": "complet",
+                     *       "questions": [
+                     *         {
+                     *           "questionId": "qcm-01",
+                     *           "rank": 1,
+                     *           "kind": "qcm",
+                     *           "correct": true,
+                     *           "attempts": 1,
+                     *           "firstTry": true,
+                     *           "xpGained": 5,
+                     *           "answeredAt": "2026-12-01T17:02:40Z",
+                     *           "choice": "Du dioxygene",
+                     *           "prompt": "Que produit la photosynthese ?",
+                     *           "choices": [
+                     *             "Du dioxygene",
+                     *             "Du dioxyde de carbone",
+                     *             "De l'azote",
+                     *             "De l'eau"
+                     *           ],
+                     *           "correctAnswer": "Du dioxygene"
+                     *         },
+                     *         {
+                     *           "questionId": "gap-01",
+                     *           "rank": 2,
+                     *           "kind": "gap",
+                     *           "correct": false,
+                     *           "attempts": 1,
+                     *           "firstTry": false,
+                     *           "xpGained": 0,
+                     *           "answeredAt": "2026-12-01T17:06:40Z",
+                     *           "choice": "azote",
+                     *           "prompt": "La photosynthese produit du ____.",
+                     *           "correctAnswer": "dioxygene"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TestDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getStudentProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avancement */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "student": {
+                     *         "studentId": "01JEXAMPLE0STU0000000000AA",
+                     *         "pseudo": "Lila-7k2f",
+                     *         "schoolLevel": "seconde",
+                     *         "under15": false,
+                     *         "status": "actif",
+                     *         "pageQuota": 50
+                     *       },
+                     *       "progress": {
+                     *         "xp": 110,
+                     *         "level": 2,
+                     *         "streakDays": 3,
+                     *         "freezes": 1,
+                     *         "stage": 2,
+                     *         "pagesRemaining": 18,
+                     *         "pagesLimit": 20,
+                     *         "resetDate": "2027-01-01",
+                     *         "badges": [
+                     *           "premier_scan"
+                     *         ]
+                     *       },
+                     *       "docs": [
+                     *         {
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "titre": "La photosynthese",
+                     *           "matiere": "svt",
+                     *           "pages": 2,
+                     *           "createdAt": "2026-11-28T16:00:00Z",
+                     *           "tests": 3,
+                     *           "bestScorePct": 90,
+                     *           "lastScorePct": 80,
+                     *           "lastTestAt": "2026-12-01T17:06:40Z"
+                     *         }
+                     *       ],
+                     *       "scans": [
+                     *         {
+                     *           "scanId": "01JEXAMPLE0JOB0000000000AA",
+                     *           "stage": "verification",
+                     *           "pages": 3,
+                     *           "createdAt": "2026-12-01T18:00:00Z"
+                     *         }
+                     *       ],
+                     *       "weeks": [
+                     *         {
+                     *           "week": "2026-W48",
+                     *           "tests": 4,
+                     *           "avgScorePct": 72,
+                     *           "activeDays": 3
+                     *         }
+                     *       ],
+                     *       "subjects": [
+                     *         {
+                     *           "matiere": "svt",
+                     *           "tests": 3,
+                     *           "avgScorePct": 83
+                     *         }
+                     *       ],
+                     *       "schoolYears": [
+                     *         "2026-2027"
+                     *       ],
+                     *       "recentTests": [
+                     *         {
+                     *           "testId": "01JF5T3ST0000000000000AAAA",
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "titre": "La photosynthese",
+                     *           "matiere": "svt",
+                     *           "mode": "mixte",
+                     *           "schoolYear": "2026-2027",
+                     *           "startedAt": "2026-12-01T17:02:11Z",
+                     *           "endedAt": "2026-12-01T17:06:40Z",
+                     *           "total": 10,
+                     *           "answered": 10,
+                     *           "correct": 8,
+                     *           "firstTry": 7,
+                     *           "scorePct": 80,
+                     *           "xpGained": 63,
+                     *           "status": "complet"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StudentProgressView"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listStudentTests: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["TestLimit"];
+                /** @description Curseur opaque renvoye par la page precedente (`nextCursor`) */
+                cursor?: components["parameters"]["TestCursor"];
+                /** @description Annee scolaire (1er septembre au 31 aout, Europe/Paris), ex. 2026-2027 */
+                schoolYear?: components["parameters"]["SchoolYear"];
+                docId?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page de resumes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "testId": "01JF5T3ST0000000000000AAAA",
+                     *           "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *           "titre": "La photosynthese",
+                     *           "matiere": "svt",
+                     *           "mode": "mixte",
+                     *           "schoolYear": "2026-2027",
+                     *           "startedAt": "2026-12-01T17:02:11Z",
+                     *           "endedAt": "2026-12-01T17:06:40Z",
+                     *           "total": 10,
+                     *           "answered": 10,
+                     *           "correct": 8,
+                     *           "firstTry": 7,
+                     *           "scorePct": 80,
+                     *           "xpGained": 63,
+                     *           "status": "complet"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TestPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getStudentTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: components["parameters"]["StudentId"];
+                testId: components["parameters"]["TestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Passage, par question */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "testId": "01JF5T3ST0000000000000AAAA",
+                     *       "docId": "01JEXAMPLE0DOC0000000000AA",
+                     *       "titre": "La photosynthese",
+                     *       "matiere": "svt",
+                     *       "mode": "mixte",
+                     *       "schoolYear": "2026-2027",
+                     *       "startedAt": "2026-12-01T17:02:11Z",
+                     *       "endedAt": "2026-12-01T17:06:40Z",
+                     *       "total": 2,
+                     *       "answered": 2,
+                     *       "correct": 1,
+                     *       "firstTry": 1,
+                     *       "scorePct": 50,
+                     *       "xpGained": 5,
+                     *       "status": "complet",
+                     *       "questions": [
+                     *         {
+                     *           "questionId": "qcm-01",
+                     *           "rank": 1,
+                     *           "kind": "qcm",
+                     *           "correct": true,
+                     *           "attempts": 1,
+                     *           "firstTry": true,
+                     *           "xpGained": 5,
+                     *           "answeredAt": "2026-12-01T17:02:40Z"
+                     *         },
+                     *         {
+                     *           "questionId": "gap-01",
+                     *           "rank": 2,
+                     *           "kind": "gap",
+                     *           "correct": false,
+                     *           "attempts": 1,
+                     *           "firstTry": false,
+                     *           "xpGained": 0,
+                     *           "answeredAt": "2026-12-01T17:06:40Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TestParentDetail"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     createStudent: {
         parameters: {
             query?: never;
@@ -2625,6 +3281,38 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["FamilyExport"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createExportArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archive prete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "url": "https://example.invalid/exports/archive.zip?signature=exemple",
+                     *       "expiresAt": "2026-12-01T10:10:00Z",
+                     *       "format": "zip",
+                     *       "sizeBytes": 482113,
+                     *       "students": 2,
+                     *       "tests": 1840,
+                     *       "truncated": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ExportArchive"];
                 };
             };
             403: components["responses"]["Forbidden"];

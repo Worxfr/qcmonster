@@ -99,3 +99,31 @@ describe('dynamoTreeDb', () => {
     expect(waits).toEqual([100, 200]);
   });
 });
+
+describe('historique des tests (H1): les passages TEST# partent avec la fiche, l\'eleve et la famille', () => {
+  const T = (sid: string, n: string, docId: string) => ({ ...keys.test(sid, `2026-12-0${n}T10:00:00Z`, `ID${n}`.padEnd(26, '0')), docId });
+  const withTests = () => [...seed(), T('s1', '1', 'd1'), T('s1', '2', 'd1'), T('s1', '3', 'dX'), T('s2', '4', 'd2')];
+  const tests = (db: ReturnType<typeof memoryTreeDb>, sid: string) => db.keys().filter((x) => x.PK === `STUDENT#${sid}` && x.SK.startsWith('TEST#')).map((x) => x.SK.slice(-26, -25));
+
+  it('supprimer une fiche supprime ses passages seulement (ceux des autres fiches et des autres eleves restent)', async () => {
+    const db = memoryTreeDb(withTests());
+    expect(await deleteDocTree(db, 's1', 'd1')).toBe(7);
+    expect(db.keys().filter((x) => x.SK.startsWith('TEST#')).map((x) => x.PK + x.SK.slice(5, 25))).toEqual(['STUDENT#s12026-12-03T10:00:00Z', 'STUDENT#s22026-12-04T10:00:00Z']);
+  });
+  it('une fiche qui n\'est pas a l\'eleve ne supprime rien, passages compris', async () => {
+    const db = memoryTreeDb(withTests());
+    expect(await deleteDocTree(db, 's2', 'd1')).toBe(0);
+    expect(db.keys().filter((x) => x.SK.startsWith('TEST#'))).toHaveLength(4);
+  });
+  it('supprimer l\'eleve supprime tous ses passages, y compris ceux d\'une fiche deja supprimee', async () => {
+    const db = memoryTreeDb(withTests());
+    await deleteStudentTree(db, 'f1', 's1');
+    expect(tests(db, 's1')).toEqual([]);
+    expect(tests(db, 's2')).toHaveLength(1);
+  });
+  it('supprimer la famille supprime tous les passages de tous ses eleves', async () => {
+    const db = memoryTreeDb(withTests());
+    await deleteFamilyTree(db, 'f1');
+    expect(db.keys().filter((x) => x.SK.startsWith('TEST#'))).toEqual([]);
+  });
+});
