@@ -3,7 +3,7 @@
 // donnee par l'eleve, de choix ni de texte de question dans les passages (liste blanche `toParentDetail`).
 import { isTestSk, testIdOfSk, toParentDetail } from '../../../shared/tests-history.js';
 import { expired } from '../game/tests.js';
-import { LINK_TTL_S, exportKey, type ArchiveStore } from '../lib/archive-store.js';
+import { LINK_TTL_S, exportKey, lockKey, type ArchiveStore } from '../lib/archive-store.js';
 import type { Deps } from '../lib/deps.js';
 import { HttpError, type ParentCtx } from '../lib/http.js';
 import { zip } from '../lib/zip.js';
@@ -56,20 +56,31 @@ export function capByYears(perStudent: Map<string, Line[]>, max: number): { kept
 }
 
 /**
- * shortcut: l'archive se construit en memoire en une passe (quelques centaines de Ko par annee; au plus 50 000 passages, ~75 Mo avant compression,
- * d'ou une fonction de 1 Go). Si la mesure depasse 20 s, passer en construction asynchrone (design section 6).
+ * shortcut: l'archive se construit en memoire en une passe. Mesure locale (stockage en memoire, 20 lignes par passage): 20 000 passages 1,0 s et 570 Mo,
+ * 50 000 passages 2,4 s et 600 a 680 Mo (zip de 5 Mo), d'ou une fonction de 1 Go; au-dela de ~70 000 passages lus la memoire manque. A passer en construction asynchrone si la mesure reelle depasse 20 s.
  */
 export async function createExportArchive(deps: ArchiveDeps, ctx: ParentCtx): Promise<ExportArchiveView> {
   const now = deps.now();
-  const recent = (await deps.archives.list(ctx.familyId)).filter((t) => now.getTime() - t < 3_600_000);
+  const recent = (await deps.archives.list(ctx.familyId)).filter((o) => o.key.endsWith('.lock') && now.getTime() - o.at < 3_600_000);
   if (recent.length >= MAX_ARCHIVES_PER_HOUR) throw new HttpError(429, 'quota_epuise', "Trop d'archives demandées, réessaie dans une heure");
+  // Marqueur AVANT la construction (qui dure plusieurs secondes): des demandes simultanees le voient. Il reste meme si la construction echoue (limite prudente).
+  // shortcut: lister puis ecrire n'est pas atomique; deux demandes dans la meme milliseconde peuvent encore passer (le debit de la route borne la rafale a 2).
+  const id = deps.newId();
+  await deps.archives.put(lockKey(ctx.familyId, id), Buffer.alloc(0));
 
-  const exported = await exportFamily(deps, ctx);
+  // Les passages sont lus UNE fois, avec la partition de l'eleve que l'export lit deja; chacun est reduit tout de suite a la liste blanche (sans `c`).
   const perStudent = new Map<string, Line[]>();
-  for (const s of exported.students) {
-    const items = (await deps.store.query(`STUDENT#${s.studentId}`, 'TEST#')).filter((i) => isTestSk(i.SK) && !expired(i, now.getTime())).sort((a, b) => a.SK.localeCompare(b.SK));
-    perStudent.set(s.studentId, items.map((i) => toParentDetail(i, testIdOfSk(i.SK))));
-  }
+  const exported = await exportFamily(deps, ctx, {
+    questionText: false, // le parent ne lit jamais le texte d'une question ni la bonne reponse
+    onTests: (sid, items) =>
+      perStudent.set(
+        sid,
+        items
+          .filter((i) => isTestSk(i.SK) && !expired(i, now.getTime()))
+          .sort((a, b) => a.SK.localeCompare(b.SK))
+          .map((i) => toParentDetail(i, testIdOfSk(i.SK))),
+      ),
+  });
   const { kept, truncated } = capByYears(perStudent, deps.maxTests ?? MAX_ARCHIVE_TESTS);
   const entries = [{ name: 'export.json', data: Buffer.from(JSON.stringify(exported, null, 1), 'utf8') }];
   let tests = 0;
@@ -78,7 +89,7 @@ export async function createExportArchive(deps: ArchiveDeps, ctx: ParentCtx): Pr
     entries.push({ name: `tests/${sid}.jsonl`, data: Buffer.from(ls.map((l) => JSON.stringify(l)).join('\n') + (ls.length ? '\n' : ''), 'utf8') });
   }
   const body = zip(entries, now);
-  const key = exportKey(ctx.familyId, deps.newId());
+  const key = exportKey(ctx.familyId, id);
   await deps.archives.put(key, body);
   const url = await deps.archives.signedUrl(key);
   return { url, expiresAt: new Date(now.getTime() + LINK_TTL_S * 1000).toISOString(), format: 'zip', sizeBytes: body.length, students: exported.students.length, tests, truncated };

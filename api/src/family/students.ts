@@ -106,4 +106,6 @@ export async function purgeStudent(deps: FamilyDeps, fid: string, s: Item): Prom
 
 export async function deleteStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string): Promise<void> {
   await purgeStudent(deps, ctx.familyId, await studentOf(deps, ctx.familyId, sid));
+  // Les archives d'export deja faites contiennent les passages et le profil de l'eleve: elles partent avec lui (celles de la famille entiere).
+  await deps.archives.deleteFamily(ctx.familyId);
 }

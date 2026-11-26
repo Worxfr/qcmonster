@@ -7,13 +7,15 @@ export const EXPORT_PREFIX = 'exports/';
 export const LINK_TTL_S = 600;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const exportKey = (familyId: string, id: string): string => `${EXPORT_PREFIX}${familyId}/${id}.zip`;
+/** Marqueur ecrit AVANT la construction: c'est lui que la limite horaire compte (l'archive finie porte la meme cle en `.zip`). */
+export const lockKey = (familyId: string, id: string): string => `${EXPORT_PREFIX}${familyId}/${id}.lock`;
 
 export interface ArchiveStore {
   put(key: string, body: Buffer): Promise<void>;
   /** Lien de telechargement signe, valable `LINK_TTL_S` secondes. Jamais journalise. */
   signedUrl(key: string): Promise<string>;
-  /** Dates (ms) des archives de la famille encore presentes. */
-  list(familyId: string): Promise<number[]>;
+  /** Objets de la famille encore presents (cle et date en ms). */
+  list(familyId: string): Promise<{ key: string; at: number }[]>;
   /** Supprime toutes les archives de la famille. */
   deleteFamily(familyId: string): Promise<void>;
 }
@@ -38,8 +40,8 @@ export function s3Archives(bucket: string, client: S3Client = new S3Client({})):
     signedUrl: (key) =>
       getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key, ResponseContentType: 'application/zip', ResponseContentDisposition: 'attachment; filename="qcmonster-export.zip"' }), { expiresIn: LINK_TTL_S }),
     async list(familyId) {
-      const out: number[] = [];
-      for await (const page of pages(familyId)) for (const o of page) if (o.LastModified) out.push(o.LastModified.getTime());
+      const out: { key: string; at: number }[] = [];
+      for await (const page of pages(familyId)) for (const o of page) if (o.Key && o.LastModified) out.push({ key: o.Key, at: o.LastModified.getTime() });
       return out;
     },
     async deleteFamily(familyId) {
@@ -71,7 +73,7 @@ export function memoryArchives(now: () => Date = () => new Date()): ArchiveStore
     },
     async list(familyId) {
       await Promise.resolve();
-      return [...objects].filter(([k]) => k.startsWith(`${EXPORT_PREFIX}${familyId}/`)).map(([, v]) => v.at);
+      return [...objects].filter(([k]) => k.startsWith(`${EXPORT_PREFIX}${familyId}/`)).map(([key, v]) => ({ key, at: v.at }));
     },
     async deleteFamily(familyId) {
       await Promise.resolve();
