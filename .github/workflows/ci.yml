@@ -105,18 +105,9 @@ jobs:
         working-directory: e2e
       - run: npx tsc --noEmit
         working-directory: e2e
-      # Cache des navigateurs, cle = lockfile e2e (donc version de Playwright). Sans cache: installation complete. Avec cache:
-      # seules les bibliotheques systeme (apt) sont reinstallees.
-      - id: pw-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
-      - if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-        working-directory: e2e
-      - if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+      # Pas de cache des navigateurs: mesure sur la PR #87, `playwright install-deps` seul a pris 229 s (apt lent) contre ~18 s pour
+      # l'installation complete. Le telechargement de Chromium n'est pas le cout dominant.
+      - run: npx playwright install --with-deps chromium
         working-directory: e2e
       - name: Tests de bout en bout (mock)
         run: npx playwright test
