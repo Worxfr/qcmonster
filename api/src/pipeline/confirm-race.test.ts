@@ -15,8 +15,10 @@ const scansCreate = guarded(api.scansCreate);
 const body = (r: { body?: string }) => JSON.parse(r.body ?? '{}');
 const MD = `# La photosynthese\n\n${COURSE_LINES.join('\n')}`;
 
-async function review() {
-  const k = await makeCtx(goodScript({ transcription: (pages) => JSON.stringify({ pages: pages.map((page) => ({ page, suite: false, md: MD, figures: [] })) }), classify: classifyJson() }));
+const MDF = `${MD}\n\n[[f1]]`;
+async function review(withFigure = false) {
+  const figs = [{ id: 'f1', box: [0.1, 0.4, 0.8, 0.35], kind: 'schema', alt: 'Schema', caption: 'Fig' }];
+  const k = await makeCtx(goodScript({ transcription: (pages) => JSON.stringify({ pages: pages.map((page) => ({ page, suite: false, md: withFigure ? MDF : MD, figures: withFigure ? figs : [] })) }), classify: classifyJson() }));
   const r = await scansCreate(k.ctx, event({ body: { pages: 1, contentType: 'image/jpeg' } }));
   const i = { jobId: body(r).jobId as string, sid: 's1' };
   const key = `${scansPrefix('s1', i.jobId)}0`;
@@ -73,5 +75,18 @@ describe('jobs-confirm: deux requetes differentes', () => {
     const job = (await k.db.get(jobKey('s1', i.jobId)))!;
     expect(typeof job.confirmFp).toBe('string');
     expect(job.confirmStartedAt).toBeDefined();
+  });
+  it('copie des figures impossible (503): la reclamation est rendue, une relecture corrigee (autre corps) peut etre renvoyee', async () => {
+    const { k, i } = await review(true);
+    k.figures.failCopy.on = true;
+    const fig = { figures: [{ figureId: 'f1', keep: true }] };
+    expect((await confirm(k, i.jobId, { ...A, ...fig })).statusCode).toBe(503);
+    const job = (await k.db.get(jobKey('s1', i.jobId)))!;
+    expect(job.state).toBe('a_confirmer');
+    expect(job.confirmFp).toBeUndefined();
+    expect(job.confirmDocIds).toBeUndefined();
+    k.figures.failCopy.on = false;
+    expect((await confirm(k, i.jobId, { ...B, ...fig })).statusCode).toBe(200);
+    expect(JSON.stringify(await k.db.get(keys.coursText('s1', i.jobId, 1)))).toContain('second onglet');
   });
 });

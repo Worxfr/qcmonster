@@ -25,7 +25,7 @@ const OPEN = 'verification';
 /** Le job de la modification, ENCORE ouverte (ni annulee, ni echouee). Sinon l'etape s'arrete: `Catch` de la machine vers `rev-fail`. */
 async function open(ctx: Ctx, i: ReviseInput): Promise<Item> {
   const job = await ctx.db.get(jobKey(i.sid, i.revisionId));
-  if (!isRevision(job) || job.coursId !== i.coursId) throw new Error('modification introuvable');
+  if (!isRevision(job) || job.coursId !== i.coursId || job.familyId !== i.fid) throw new Error('modification introuvable');
   if (job.state !== OPEN) throw new Error('modification arretee');
   return job;
 }
@@ -146,7 +146,7 @@ const COPIED = ['CLAIM#', 'VERDICT#', 'QCM#', 'GAP#'];
 export async function revCommit(ctx: Ctx, raw: unknown): Promise<{ ok: true }> {
   const i = parseReviseInput(raw);
   let job = await ctx.db.get(jobKey(i.sid, i.revisionId));
-  if (!isRevision(job) || job.coursId !== i.coursId) throw new Error('modification introuvable');
+  if (!isRevision(job) || job.coursId !== i.coursId || job.familyId !== i.fid) throw new Error('modification introuvable');
   if (job.state === 'termine') {
     await releaseLock(ctx, i.sid, i.coursId, i.revisionId); // plantage entre l'etat et le verrou: le verrou est libere EN DERNIER, rejouable
     return { ok: true };
@@ -237,7 +237,7 @@ async function finish(ctx: Ctx, i: ReviseInput, job: Item): Promise<void> {
 export async function revFail(ctx: Ctx, raw: unknown): Promise<{ ok: boolean }> {
   const i = parseReviseInput(raw);
   const job = await ctx.db.get(jobKey(i.sid, i.revisionId));
-  if (!isRevision(job) || job.coursId !== i.coursId) return { ok: false };
+  if (!isRevision(job) || job.coursId !== i.coursId || job.familyId !== i.fid) return { ok: false };
   if (job.state === 'termine') {
     await releaseLock(ctx, i.sid, i.coursId, i.revisionId);
     return { ok: true };

@@ -328,6 +328,8 @@ export async function jobsConfirm(ctx: Ctx, event: APIGatewayProxyEventV2): Res 
     // Jamais le prefixe du cours entier pour un ajout: seules les figures de ce job sont supprimees.
     if (base) for (const f of jobFigures) await ctx.figures.deleteAll(figureKey(sid, coursId, newFigId(f.figureId))).catch(() => undefined);
     else await ctx.figures.deleteAll(coursFiguresPrefix(sid, coursId)).catch(() => undefined);
+    // La reclamation est rendue: une relecture corrigee (autre corps) peut etre renvoyee. Rien n'a ete ecrit dans le cours a ce stade.
+    await ctx.db.update(jobKey(sid, jobId), { remove: ['confirmFp', 'confirmDocIds'], cond: { exists: true, eq: { state: 'a_confirmer' } } });
     return fail('indisponible', 'Service momentanément indisponible, réessaie');
   }
   let docRank = 0;

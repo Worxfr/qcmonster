@@ -13,7 +13,7 @@ import { expire, failJob, purgeScan } from '../pipeline/steps.js';
 import { jobsCancel, jobsConfirm } from '../pipeline/api.js';
 import { scansDelete } from '../scans/delete.js';
 import { event, parent } from '../pipeline/testkit.js';
-import { revCommit, revFail } from './machine.js';
+import { revCommit, revFail, revPrepare } from './machine.js';
 import { bodyOf, cancel, correction, COURS, create, DOC, get, runMachine, setup, snapshot } from './testkit.js';
 
 const ids = (revisionId: string) => ({ revisionId, sid: 's1', fid: 'f1', coursId: COURS });
@@ -331,6 +331,23 @@ describe('annulation', () => {
     expect((await job(k, b.revisionId)).state).toBe('rejete');
     expect((await job(k, b.revisionId)).restoredAt).toBeDefined();
     expect((await cancel(k.ctx, b.revisionId)).statusCode).toBe(409);
+  });
+  it('parent: 403 sur l\'annulation, rien ne change', async () => {
+    const k = await setup();
+    const b = bodyOf(await create(k.ctx, correction));
+    const r = await guarded((await import('./cancel.js')).reviseCancel)(k.ctx, parent({ params: { coursId: COURS, revisionId: b.revisionId } }));
+    expect(r.statusCode).toBe(403);
+    expect((await job(k, b.revisionId)).state).toBe('verification');
+    expect((await head(k))?.appendJobId).toBe(b.revisionId);
+  });
+  it('fid d\'une autre famille: chaque etape refuse (le job porte sa famille)', async () => {
+    const k = await setup();
+    const b = bodyOf(await create(k.ctx, correction));
+    const bad = { ...ids(b.revisionId), fid: 'autre' };
+    await expect(revPrepare(k.ctx, bad)).rejects.toThrow();
+    await expect(revCommit(k.ctx, bad)).rejects.toThrow();
+    expect(await revFail(k.ctx, bad)).toEqual({ ok: false });
+    expect((await job(k, b.revisionId)).state).toBe('verification');
   });
   it('apres commitStartedAt: 409 etat_invalide', async () => {
     const k = await setup();
