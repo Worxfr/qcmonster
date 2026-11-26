@@ -29,7 +29,7 @@ Ce qu'on ne change pas : la clé et le mot attendu ne quittent jamais le serveur
 |---|---|---|
 | Question QCM / trou | `DOC#<docId>` / `QCM#<nn>`, `GAP#<nn>` | **Inchangé.** `nn` va jusqu'à 40 par type en pratique (limite de format 99). Les numéros ne sont **jamais réutilisés** : une question retirée laisse un trou (voir section 13 pour F10) |
 | Taille de la banque | calculée | `QuestionPool = nombre de QCM + nombre de trous lisibles`. Affichée par `DocSummary.questionCount` (section 8) |
-| Questions déjà vues | `ATT#<questionId>#<jour>` (existant) | **Aucun nouvel élément.** Le tirage lit `ATT#<docId>:` en préfixe : « vue » = a une ligne `ATT`, « dernière fois » = le jour le plus récent |
+| Questions déjà vues | `ATT#<questionId>#<jour>` (existant) | **Aucun nouvel élément.** Le tirage lit `ATT#<docId>:` en préfixe : « vue » = a une ligne `ATT`, « dernière fois » = le jour le plus récent. **Un attribut `xp` s'ajoute** (points réellement payés), pour le plafond de 50 XP par fiche (section 7) |
 
 Pourquoi ne pas créer un élément `SEEN#` : `ATT` est déjà écrit à chaque réponse, dans la partition de l'élève, effacé avec l'élève, et porte le jour. Contre-partie : une fiche travaillée tous les jours pendant un an donne environ 3 650 lignes `ATT` (10 par jour), soit environ 0,4 Mo à lire, un seul `Query` d'environ 50 RCU. `shortcut: lecture complète des ATT de la fiche, à remplacer par un élément SEEN#<docId> (au plus 99 identifiants) si une fiche dépasse 5 000 lignes ou 300 ms.`
 
@@ -126,7 +126,13 @@ Le `rank` et `total` de H1 deviennent : `rank` = position dans `draw`, `total` =
 - La vue **parent** de H1 est inchangée : résultat juste/faux par `questionId` et `rank`, jamais de texte. Elle gagne seulement `docIds` et `scope` dans le résumé.
 - **Suppression d'une fiche** (H1 P2 : « fiche supprimée = ses passages supprimés »). Pour un test d'**une** fiche, rien ne change. Pour un test multi-fiches, supprimer une fiche retire **seulement les lignes de cette fiche** (préfixe `<docId>:` de `q`), recalcule `total`, `answered`, `correct`, et supprime le passage s'il ne reste aucune ligne (point P9). `deleteDocTree` (`shared/delete-tree.ts`) en est le propriétaire.
 - Un `questionId` qui n'existe plus (question retirée à la régénération) : `prompt` absent dans `TestDetail`, le front affiche « question retirée » (H1 §9, déjà prévu).
-- **Points (XP).** La règle « une récompense par question pour toujours » ne change pas. Conséquence à connaître : une fiche passe de 10 questions payables à 40 au plus, donc de 50 à environ 200 XP de gain total. Le plafond de 250 XP par jour, le délai minimal de 1 s par réponse, les 20 s pour une série de 10 et la quarantaine au-delà de 100 bonnes réponses en 10 minutes restent. Le bonus « série parfaite » reste refusé pour une question dont l'affirmation n'est pas « vérifiée » (calculé **par question**, donc correct sur un test multi-fiches). Point P5.
+- **Points (XP), décision du propriétaire sur P5 : 50 points au plus par fiche, au total.** La règle « une récompense par question pour toujours » reste, et s'y ajoute un **plafond de 50 XP par fiche pour toute la vie de la fiche** (`DOC_XP_CAP = 50`, constante de `api/src/game/rules.ts`). 50 XP correspond à ce qu'une fiche pouvait déjà rapporter avec ses 10 questions (10 x 5) : **aucune fiche existante ne perd de points**, et une banque plus grande n'en rapporte pas plus. Le plafond quotidien de 250 XP, le délai de 1 s, les 20 s pour une série de 10 et la quarantaine au-delà de 100 bonnes réponses en 10 minutes ne changent pas.
+  - **Ce qui compte dans les 50** : seulement les points de réponse à une question de la fiche (QCM 5 ou 2, trou 5). Ne comptent pas : le bonus de série (+20, +30, calculé par série et non par fiche), les 10 XP par page scannée, les 8 XP de révision et les 15 XP de signalement.
+  - **Calcul** : dans `mutate` de `answers-post`, le serveur lit déjà `ATT#<questionId>#` ; il lit en plus `ATT#<docId>:` (même `Query` que celle du tirage, section 3) et calcule `payé = somme des xp des lignes ATT de la fiche`. `gain = min(gain normal, 50 - payé)`. La ligne `ATT` écrite porte un attribut nouveau **`xp`** (le gain réellement payé). Une ligne ancienne sans `xp` compte 5 si `rewarded` est vrai (valeur haute, jamais au détriment de l'élève au-delà de 5 points).
+  - **Au-delà du plafond** : la réponse reste corrigée (juste ou fausse, essais, historique de test), `xpGained = 0`, et la ligne `ATT` n'est pas marquée `rewarded`. Aucune limite d'essais ne change. Le plafond ne baisse jamais, donc une question refusée aujourd'hui ne sera jamais payée plus tard.
+  - **Deux réponses en même temps** : `mutate` est conditionnel à la version de `PROFILE`, donc les réponses d'un même élève passent l'une après l'autre ; le calcul est refait à chaque rejeu. Pas de dépassement possible de 50.
+  - **Anti-triche** : la règle s'ajoute à la liste de `docs/game-rules.md` section 7 (point 10, « 50 XP par fiche au plus »). Le tirage ne cherche pas à favoriser les fiches pleines ou non : il tire sur la banque, point.
+  - **Affichage** : `Session.xpRemaining` et `AnswerResult.capped` (section 8) permettent de dire « Tu as gagné tous les points de cette fiche (50 sur 50). Tu peux continuer pour t'entraîner. » La série de 10 et ses bonus restent payables.
 - Une série (`SERIES_LENGTH = 10`) correspond à 10 réponses : un test de 20 questions donne deux séries.
 
 ## 8. Contrat proposé (additif, **non appliqué** : à intégrer après la PR #82)
@@ -140,6 +146,7 @@ Paramètre de requête facultatif `size` (`5`, `10`, `15`, `20`, défaut `10`). 
 |---|---|---|
 | `available` | integer | nombre de questions distinctes utilisables dans la banque (hors proches) |
 | `short` | boolean | `true` si moins de questions que demandé |
+| `xpRemaining` | integer (0 à 50) | points encore gagnables sur la fiche (`50 - payé`) |
 
 Un client 1.5 qui ignore ces champs reçoit simplement 10 questions au plus (il en recevait déjà 10 au plus).
 
@@ -157,6 +164,10 @@ PracticeSession:
     questions: { type: array, items: { $ref: '#/components/schemas/Question' } }
     available: { type: integer, minimum: 0 }
     short: { type: boolean }
+    xpRemaining:
+      type: array
+      description: "Points encore gagnables par fiche (50 au plus par fiche)"
+      items: { type: object, required: [docId, xpRemaining], properties: { docId: { type: string }, xpRemaining: { type: integer, minimum: 0, maximum: 50 } } }
     skipped:
       type: array
       items:
@@ -173,6 +184,9 @@ PracticeSession:
 Codes : 400 `requete_invalide` (les deux ou aucun de `docIds`/`folderId`, plus de 10 fiches, `size` hors liste, doublon dans `docIds`) ; 403 pour un parent ; 404 `introuvable` pour un `folderId` inconnu ou d'un autre élève ; **409 `aucune_question`** si aucune fiche n'a de question. Un `docId` inconnu **ou d'un autre élève** n'est pas une erreur : il est rangé dans `skipped` avec `introuvable`, sans différence visible entre « n'existe pas » et « appartient à un autre » (pas de fuite d'existence). Limite de débit : celle de `GET /docs/{docId}/session`.
 
 Un dossier sans fiche, ou dont toutes les fiches sont sans question : 409. Un dossier de 25 fiches : on prend les 10 fiches **les moins récemment travaillées** (point P7) ; les autres ne figurent pas dans `skipped` (elles n'ont pas été écartées pour un défaut, seulement pas retenues) et la réponse a `docIds` de 10.
+
+### 8.2 bis `AnswerResult`
+Champ facultatif `capped` (boolean) : `true` si la réponse aurait rapporté des points mais que la fiche a atteint 50 XP. `xpGained` vaut alors 0.
 
 ### 8.3 `DocSummary`
 Champ facultatif `questionCount` (integer, taille de la banque de la fiche). C'est un **nombre**, jamais un contenu : visible aussi par le parent.
@@ -201,7 +215,7 @@ Fiches **non vérifiées** : une fiche dont aucun fait n'est vérifié n'a pas d
 - **Pages** : aucun changement. Tirer, passer un test et le multi-fiches ne consomment aucune page. Générer la banque pendant un scan ne consomme pas de page de plus.
 - **Coût** : section 4 (plafond par scan inchangé, `jobCapEur`). Les seuils mensuels et le plafond d'essais dev de 100 EUR priment, comme aujourd'hui.
 - **Nouveau plafond (bouton P6 seulement)** : 1 ajout par fiche et par jour, 10 par jour et par élève.
-- **Tirages** : `POST /practice/session` et `GET /docs/{id}/session` ouvrent un passage. Pas de plafond de plus (les points sont déjà plafonnés à 250 XP par jour). Lecture : au plus 10 fiches, soit 10 x (2 `Query` de questions + 1 `Query` de `ATT`), environ 30 `Query` d'une centaine d'octets à quelques Ko, de l'ordre de 0,0001 EUR par tirage.
+- **Tirages** : `POST /practice/session` et `GET /docs/{id}/session` ouvrent un passage. Pas de plafond de plus : les points sont plafonnés à 250 XP par jour et à 50 XP par fiche (section 7). Lecture : au plus 10 fiches, soit 10 x (2 `Query` de questions + 1 `Query` de `ATT`), environ 30 `Query` d'une centaine d'octets à quelques Ko, de l'ordre de 0,0001 EUR par tirage.
 
 ## 11. Droits et confidentialité
 
@@ -217,15 +231,16 @@ Fiches **non vérifiées** : une fiche dont aucun fait n'est vérifié n'a pas d
 - l'historique garde le **titre du dossier** (nom écrit par l'élève, 200 caractères au plus, nettoyé) et plusieurs fiches par passage : une ligne dans le registre (T5b) et dans la politique (tableau des durées) ;
 - la suppression d'une fiche retire seulement ses lignes d'un passage multi-fiches (section 7).
 
-Ces deux modifications sont dans un **commit séparé `docs(legal)`** de cette PR, à valider par le propriétaire. **`POLICY_VERSION` n'est pas relevé** (décision de fusion à part : les parents déjà inscrits n'ont pas à ré-accepter pour un changement de ce niveau, mais c'est au propriétaire d'en juger, point P13). Aucun ID de compte, aucune clé et aucun chemin local dans ce dépôt.
+Aucune règle de points n'apparaît dans les textes légaux (les points ne sont pas une donnée supplémentaire) : le commit légal ne change donc pas avec la décision sur P5. Ces deux modifications sont dans un **commit séparé `docs(legal)`** de cette PR, à valider par le propriétaire. **`POLICY_VERSION` n'est pas relevé** (décision de fusion à part : les parents déjà inscrits n'ont pas à ré-accepter pour un changement de ce niveau, mais c'est au propriétaire d'en juger, point P13). Aucun ID de compte, aucune clé et aucun chemin local dans ce dépôt.
 
 ## 12. Tests
 
 **Unitaires (`shared/pool.test.ts`)** : `closeness` sur des paires jugées à la main (même réponse même affirmation : proche ; autre mot masqué : pas proche ; deux fiches avec la même phrase : proche par R2/R3 ; accents et majuscules ignorés) ; `drawQuestions` avec un hasard fixe : pas de doublon, pas de paire proche, jamais répondues d'abord, puis les plus anciennes, test court quand la banque est petite, répartition égale entre fiches, fiche à court qui passe son tour, 10 questions de 10 fiches de 1 question chacune, 1 fiche de 40 questions ; `poolCap` aux bornes (1, 2, 10, 11, 20 faits).
+**Points (plafond de 50 par fiche)** : une fiche à 40 questions : les bonnes réponses paient jusqu'à 50 XP puis 0 (`capped: true`, juste ou faux inchangé) ; une fiche à 10 questions paie comme avant (10 x 5 = 50) ; un QCM payé 2 au 2e essai compte 2 ; ligne `ATT` ancienne sans `xp` : comptée 5 ; deux fiches : plafond par fiche, pas global ; bonus de série +20/+30 payés même si la fiche est pleine et hors des 50 ; 250 XP par jour toujours appliqué en plus (le plus petit des deux gagne) ; deux réponses rejouées après conflit ne dépassent pas 50 ; une question refusée n'est pas marquée `rewarded`.
 **API** : `session-get` renvoie `size` questions sans clé ; deux tirages de suite sans recoupement ; `answers-post` refuse un `questionId` hors `draw` (409) et accepte celui du tirage ; `POST /practice/session` : parent 403, deux fiches d'un autre élève en `skipped`, dossier d'un autre élève 404, aucune question 409, 11 fiches 400, les deux paramètres 400 ; `TEST#` multi-fiches : `docIds`, `scope`, `rank` dans l'ordre du tirage ; suppression d'une fiche retire ses lignes seulement (test dans `shared/delete-tree.test.ts`).
 **Pipeline** : second tour avec faux modèle (`testkit`) : questions retenues, jumelles jetées, budget du job atteint = fiche publiée avec le premier tour, sortie coupée récupérée, aucun appel au modèle de plus que prévu (compter les appels : 3 au total au lieu de 2).
 **Contrat** : aucun champ `cle`/`attendu`/`correctAnswer` dans `PracticeSession` ; `docIds` borné à 10 ; exemple valide.
-**e2e Playwright (`e2e/tests/08-banque.spec.ts`, mock)** : deux tests de suite sur la même fiche ne partagent aucune question ; choisir 3 fiches, voir les fiches d'origine, finir, retrouver le passage dans « Mes tests » avec « 3 fiches » ; entraînement sur un dossier ; dossier avec une fiche sans question (message et test lancé sur les autres) ; dossier vide (bouton grisé) ; banque trop petite (message « N questions différentes ») ; fiche supprimée pendant un test (la question est sautée) ; **le parent ne voit aucune question** (vue parent après un test multi-fiches : seulement juste/faux) ; un `POST /answers` direct sur une question hors tirage répond 409.
+**e2e Playwright (`e2e/tests/08-banque.spec.ts`, mock)** : deux tests de suite sur la même fiche ne partagent aucune question ; choisir 3 fiches, voir les fiches d'origine, finir, retrouver le passage dans « Mes tests » avec « 3 fiches » ; entraînement sur un dossier ; dossier avec une fiche sans question (message et test lancé sur les autres) ; dossier vide (bouton grisé) ; banque trop petite (message « N questions différentes ») ; fiche supprimée pendant un test (la question est sautée) ; une fiche déjà à 50 XP : le test continue, le message « tous les points de cette fiche » s'affiche et les points ne bougent plus ; **le parent ne voit aucune question** (vue parent après un test multi-fiches : seulement juste/faux) ; un `POST /answers` direct sur une question hors tirage répond 409.
 **Mesure réelle (hors CI, point P12)** : 10 fiches de l'échantillon, mode `real`, 2 passages au plus (garde de `docs/cost-guard.md`), budget d'environ 0,05 EUR pour la génération plus l'évaluation à la main des paires proches.
 
 ## 13. Découpage en lots (propriétaires de fichiers distincts)
@@ -238,7 +253,7 @@ Ordre : **Q1-S** d'abord ; puis **Q1-G** et **Q1-D** en parallèle ; **Q1-W** co
 | **Q1-K** contrat | intégrer la section 8 dans le contrat, **après** la fusion de #82. Un seul lot touche `openapi.yaml` à la fois | `shared/contract/**` |
 | **Q1-S** fonctions pures | `closeness`, `drawQuestions`, `poolCap`, normalisation des mots, tests | `shared/pool.ts`, `shared/pool.test.ts` |
 | **Q1-G** génération | second tour, prompt `variantes`, contrôle de proximité, écriture des questions suivantes, mesure sur 10 fiches et calibrage des seuils (P12) | `api/src/pipeline/pool-gen.ts` (+ tests), 3 lignes dans `api/src/pipeline/steps-doc.ts` (`generate`), une fonction dans `api/src/pipeline/prompts.ts`, `docs/cost-guard.md` (une ligne : estimation et mesure) |
-| **Q1-D** tirage et API | `draw.ts`, `session.ts` (tirage), `answers.ts` (contrôle `draw`), `practice-post`, `PROFILE.currentTest.draw` / `docIds`, `TEST#` multi-fiches, suppression par fiche, `DocSummary.questionCount`, **ROUTES** | `api/src/game/{draw,session,answers,tests}.ts`, `api/src/handlers/{session-get,practice-post,answers-post}.ts`, `api/src/docs/docs.ts` (`questionCount`), `shared/delete-tree.ts` (+ test), `shared/tests-history.ts` (champs facultatifs), `docs/data-model.md`, `infra/lib/api-stack.ts` (**un seul lot touche `infra/`**), `mock/**` |
+| **Q1-D** tirage et API | `draw.ts`, `session.ts` (tirage), `answers.ts` (contrôle `draw`, plafond de 50 XP par fiche, attribut `xp` de `ATT`), `rules.ts` (`DOC_XP_CAP = 50`), `docs/game-rules.md` (point 10 de la section 7, PR vers son propriétaire L1c), `practice-post`, `PROFILE.currentTest.draw` / `docIds`, `TEST#` multi-fiches, suppression par fiche, `DocSummary.questionCount`, **ROUTES** | `api/src/game/{draw,session,answers,tests}.ts`, `api/src/handlers/{session-get,practice-post,answers-post}.ts`, `api/src/docs/docs.ts` (`questionCount`), `shared/delete-tree.ts` (+ test), `shared/tests-history.ts` (champs facultatifs), `docs/data-model.md`, `infra/lib/api-stack.ts` (**un seul lot touche `infra/`**), `mock/**` |
 | **Q1-W** site élève | sélection de fiches, bouton du dossier, choix de la taille, affichage de la fiche d'origine, messages | `web/src/screens/Practice.tsx` (nouveau), `web/src/screens/Quiz.tsx`, une ligne dans `Docs.tsx` et `Folders.tsx`, `web/src/router.ts` (une route), `web/src/api.ts`, `web/src/types.ts` (**un seul lot à la fois**) |
 | **Q1-E** e2e | scénarios de la section 12 | `e2e/tests/08-banque.spec.ts`, `e2e/mock-api/server.mjs`, `e2e/support/**` |
 | **Q1-X** (facultatif) | « Ajouter des questions » pour les anciennes fiches : handler, compteur `POOL#`, rôle de traitement, test M2 | `api/src/pool/**`, `api/src/handlers/pool-post.ts`, `infra/lib/*` (après Q1-D), `infra/test/m2-bedrock.test.ts` |
@@ -252,7 +267,7 @@ Ordre : **Q1-S** d'abord ; puis **Q1-G** et **Q1-D** en parallèle ; **Q1-W** co
 
 ## 14. Points à trancher
 
-Chaque point a une réponse proposée **par défaut** : si vous ne dites rien, c'est elle qui sera faite.
+**Décision du propriétaire** : P1 à P13 validés avec la réponse par défaut, **sauf P5** (50 points au plus par fiche, voir ci-dessous).
 
 | # | Question en mots simples | Réponse proposée par défaut |
 |---|---|---|
@@ -260,7 +275,7 @@ Chaque point a une réponse proposée **par défaut** : si vous ne dites rien, c
 | **P2** | Combien de questions dans un test ? | **10** par défaut. L'élève peut choisir 5, 10, 15 ou 20 |
 | **P3** | Que faire si la fiche n'a pas assez de questions vraiment différentes ? | Le test est **plus court**, avec un message (« cette fiche n'a que 6 questions différentes »). On ne repose jamais une question qui ressemble à une autre du même test, même pour faire le compte |
 | **P4** | Quand reproposer une question déjà posée ? | **Seulement quand toutes les autres ont été posées.** Ensuite, on reprend d'abord les plus anciennes. Une question qu'on a vue sans y répondre n'est pas comptée comme posée |
-| **P5** | Les nouvelles questions rapportent-elles des points ? | **Oui**, comme les autres : une fois par question, dans la limite de 250 points par jour. Une fiche peut donc rapporter jusqu'à environ 200 points en tout au lieu de 50. Alternative : limiter à 50 points par fiche |
+| **P5** | Les nouvelles questions rapportent-elles des points ? | **Décidé par le propriétaire : 50 points au plus par fiche, au total** (pour toute la vie de la fiche). Le plafond de 250 points par jour reste. Une fiche ne peut donc pas rapporter plus qu'avant, même avec beaucoup plus de questions. Les questions au-delà restent corrigées et comptent dans l'historique, sans points |
 | **P6** | Les fiches déjà créées ont peu de questions. Ajoute-t-on un bouton pour en créer d'autres ? | **Oui, mais plus tard** (lot facultatif Q1-X). Environ 0,14 centime par fiche, une fois par fiche et par jour, 10 par jour et par élève |
 | **P7** | Comment partager les questions entre plusieurs fiches ? | **À parts égales** entre les fiches (10 fiches au plus). Un dossier de plus de 10 fiches : on prend les 10 les moins travaillées récemment |
 | **P8** | Que fait-on des fiches d'un dossier qui n'ont pas de questions, ou qui ont été supprimées ? | On les **saute** et on le dit avant de commencer (« 2 fiches n'ont pas encore de questions »). Si aucune fiche n'a de question, le bouton est grisé |
@@ -268,4 +283,4 @@ Chaque point a une réponse proposée **par défaut** : si vous ne dites rien, c
 | **P10** | L'application peut-elle refuser une réponse à une question qui n'est pas dans le test en cours ? | **Oui.** Sinon un élève pourrait deviner une question et voir sa réponse sans jouer. Conséquence : il faut ouvrir un test avant de répondre |
 | **P11** | Le parent voit-il quelque chose de plus ? | Seulement **le nombre de questions** de chaque fiche et le nom du dossier ou « 3 fiches » dans l'historique. Jamais une question ni une réponse |
 | **P12** | Mesure-t-on avant de décider des seuils de ressemblance et du coût ? | **Oui**, sur 10 vraies fiches, avec un coût d'environ 5 centimes, avant d'ouvrir la fonction. Les chiffres de ce document sont des estimations |
-| **P13** | Les textes légaux changent un peu (titre du dossier, plusieurs fiches dans un passage). Fait-on ré-accepter la politique aux parents ? | **Non** : commit séparé à relire, version de la politique **non relevée**. À vous de décider si cela mérite une ré-acceptation |
+| **P13** | Les textes légaux changent un peu (titre du dossier, plusieurs fiches dans un passage). Fait-on ré-accepter la politique aux parents ? | **Décidé : pas de hausse propre à Q1.** Commit séparé, `POLICY_VERSION` **non relevé** par cette PR ; la version sera relevée **une seule fois, avec R1** (PR #82). Q1 ne fusionne donc ses textes légaux qu'avec ou après cette hausse unique |
