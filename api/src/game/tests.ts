@@ -195,7 +195,9 @@ export async function listTests(deps: Deps, ctx: StudentCtx, q: TestQuery): Prom
   if (rows.length > limit) out.nextCursor = encodeCursor(page[page.length - 1].SK);
   if (q.cursor === undefined) {
     const profile = (await deps.store.get(keys.profile(ctx.studentId))) as (Item & { anneesScolaires?: unknown }) | undefined;
-    out.schoolYears = Array.isArray(profile?.anneesScolaires) ? profile.anneesScolaires.filter((y): y is string => typeof y === 'string').sort().reverse() : [];
+    // Jamais une annee sans passage (fiche supprimee depuis): on ne garde que les annees de PROFILE qui ont encore un passage lisible.
+    const present = new Set(all.map((i) => String(i.anneeScolaire ?? '')));
+    out.schoolYears = Array.isArray(profile?.anneesScolaires) ? profile.anneesScolaires.filter((y): y is string => typeof y === 'string' && present.has(y)).sort().reverse() : [];
   }
   return out;
 }
@@ -224,30 +226,31 @@ export async function getTest(deps: Deps, ctx: StudentCtx, testId: string): Prom
   if (!it || expired(it, deps.now().getTime())) throw notFound();
   const docId = String(it.docId ?? '');
   const lines = (Array.isArray(it.items) ? (it.items as TestLine[]) : []).slice().sort((a, b) => a.r - b.r);
-  const questions: QuestionResultView[] = [];
-  for (const l of lines) {
-    const v: QuestionResultView = { questionId: l.q, rank: l.r, kind: l.k, correct: l.ok, attempts: l.n, firstTry: l.f, xpGained: l.xp, answeredAt: l.at, choice: l.c };
-    // Texte relu dans la fiche au moment de la lecture (rien du cours n'est copie dans l'historique); absent si la question n'existe plus.
-    try {
-      const qid = parseQuestionId(l.q);
-      if (qid.docId === docId) {
-        const raw = await deps.store.get(qid.kind === 'qcm' ? keys.qcm(docId, qid.nn) : keys.gap(docId, qid.nn));
-        const parsed = qid.kind === 'qcm' ? QcmItemSchema.safeParse(raw) : GapItemSchema.safeParse(raw);
-        if (parsed.success) {
-          if ('cle' in parsed.data) {
-            v.prompt = parsed.data.enonce;
-            v.choices = [...parsed.data.choix];
-            if (lineDone(l)) v.correctAnswer = parsed.data.choix[parsed.data.cle];
-          } else {
-            v.prompt = parsed.data.phrase;
-            if (lineDone(l)) v.correctAnswer = parsed.data.attendu;
-          }
-        }
+  // Texte relu dans la fiche au moment de la lecture (rien du cours n'est copie dans l'historique). Une question absente ou illisible
+  // (fiche regeneree, ligne d'une autre fiche) reste sans texte; toute erreur d'infrastructure remonte (500), jamais avalee.
+  const questions: QuestionResultView[] = await Promise.all(
+    lines.map(async (l) => {
+      const v: QuestionResultView = { questionId: l.q, rank: l.r, kind: l.k, correct: l.ok, attempts: l.n, firstTry: l.f, xpGained: l.xp, answeredAt: l.at, choice: l.c };
+      let qid: ReturnType<typeof parseQuestionId> | undefined;
+      try {
+        qid = parseQuestionId(l.q);
+      } catch {
+        return v; // questionId mal forme
       }
-    } catch {
-      // questionId inattendu: la ligne reste sans texte
-    }
-    questions.push(v);
-  }
+      if (qid.docId !== docId) return v;
+      const raw = await deps.store.get(qid.kind === 'qcm' ? keys.qcm(docId, qid.nn) : keys.gap(docId, qid.nn));
+      const parsed = qid.kind === 'qcm' ? QcmItemSchema.safeParse(raw) : GapItemSchema.safeParse(raw);
+      if (!parsed.success) return v;
+      if ('cle' in parsed.data) {
+        v.prompt = parsed.data.enonce;
+        v.choices = [...parsed.data.choix];
+        if (lineDone(l)) v.correctAnswer = parsed.data.choix[parsed.data.cle];
+      } else {
+        v.prompt = parsed.data.phrase;
+        if (lineDone(l)) v.correctAnswer = parsed.data.attendu;
+      }
+      return v;
+    }),
+  );
   return { ...toSummary(it, testId), questions };
 }

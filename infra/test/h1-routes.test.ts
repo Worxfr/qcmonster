@@ -27,15 +27,25 @@ describe('H1-A: routes et droits', () => {
     }
     expect(fns.map((f) => f.Properties.FunctionName)).not.toContain('qcm-dev-tests-read');
   });
-  it('tests-read: lecture seule (GetItem, Query) limitee a STUDENT# et FAMILY#, ni ecriture, ni suppression, ni S3, ni Cognito, ni Bedrock', () => {
-    const fn = (Object.values(game.findResources('AWS::Lambda::Function')) as { Properties: { FunctionName: string; Role: { 'Fn::GetAtt': string[] } } }[]).find((f) => f.Properties.FunctionName === 'qcm-dev-tests-read');
-    expect(fn).toBeDefined();
-    const roleId = fn?.Properties.Role['Fn::GetAtt'][0] as string;
-    const policies = Object.values(game.findResources('AWS::IAM::Policy')) as { Properties: { Roles: { Ref: string }[]; PolicyDocument: { Statement: { Action: string | string[]; Condition?: Record<string, Record<string, string[]>> }[] } } }[];
-    const stmts = policies.filter((p) => p.Properties.Roles.some((r) => r.Ref === roleId)).flatMap((p) => p.Properties.PolicyDocument.Statement);
-    const ddb = stmts.filter((s) => ([] as string[]).concat(s.Action).some((a) => a.startsWith('dynamodb:')));
-    expect(ddb.flatMap((s) => ([] as string[]).concat(s.Action)).sort()).toEqual(['dynamodb:GetItem', 'dynamodb:Query']);
-    expect(ddb.flatMap((s) => s.Condition?.['ForAllValues:StringLike']['dynamodb:LeadingKeys'] ?? []).sort()).toEqual(['FAMILY#*', 'STUDENT#*']);
-    expect(stmts.flatMap((s) => ([] as string[]).concat(s.Action)).filter((a) => !a.startsWith('dynamodb:') && !a.startsWith('logs:'))).toEqual([]);
+  it('tests-read: role dedie readDocs (GetItem+Query sur STUDENT#/FAMILY#, GetItem seul sur DOC#), aucune ecriture, suppression, S3, Cognito ni Bedrock; le role read partage ne gagne pas DOC#', () => {
+    type St = { Action: string | string[]; Condition?: Record<string, Record<string, string[]>> };
+    const fns = Object.values(game.findResources('AWS::Lambda::Function')) as { Properties: { FunctionName: string; Role: { 'Fn::GetAtt': string[] } } }[];
+    const policies = Object.values(game.findResources('AWS::IAM::Policy')) as { Properties: { Roles: { Ref: string }[]; PolicyDocument: { Statement: St[] } } }[];
+    const stmtsOf = (name: string) => {
+      const roleId = fns.find((f) => f.Properties.FunctionName === name)?.Properties.Role['Fn::GetAtt'][0] as string;
+      expect(roleId, name).toBeDefined();
+      return policies.filter((p) => p.Properties.Roles.some((r) => r.Ref === roleId)).flatMap((p) => p.Properties.PolicyDocument.Statement);
+    };
+    const acts = (s: St) => ([] as string[]).concat(s.Action);
+    const lead = (s: St) => s.Condition?.['ForAllValues:StringLike']['dynamodb:LeadingKeys'] ?? [];
+    const stmts = stmtsOf('qcm-dev-tests-read');
+    const ddb = stmts.filter((s) => acts(s).some((a) => a.startsWith('dynamodb:')));
+    expect(ddb.map((s) => [acts(s).sort(), lead(s).sort()]).sort()).toEqual([
+      [['dynamodb:GetItem', 'dynamodb:Query'], ['FAMILY#*', 'STUDENT#*']],
+      [['dynamodb:GetItem'], ['DOC#*']],
+    ].sort());
+    expect(stmts.flatMap(acts).filter((a) => !a.startsWith('dynamodb:') && !a.startsWith('logs:'))).toEqual([]);
+    // me-get (role read partage) n'a pas DOC#*.
+    expect(stmtsOf('qcm-dev-me-get').flatMap(lead)).not.toContain('DOC#*');
   });
 });

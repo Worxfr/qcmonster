@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { keys } from '../../../shared/ddb/keys.js';
 import { encodeCursor, newTestId, testIdStartedAt } from '../../../shared/tests-history.js';
+import { deleteDocTree } from '../../../shared/delete-tree.js';
 import { HttpError } from '../lib/http.js';
+import { storeTreeDb } from '../lib/store.js';
 import { FID, SID, qid, seed, testDeps, type TestEnv } from '../lib/testkit.js';
 import { postAnswer } from './answers.js';
 import { getSession } from './session.js';
@@ -252,5 +254,46 @@ describe('lecture: GET /me/tests/{testId}', () => {
     await rejects(getTest(t.deps, a.ctx, newTestId(Date.now())), 404);
     for (const bad of ['x', '..', 'PROFILE', '01JEXAMPLE0TEST000000000AA']) await rejects(getTest(t.deps, a.ctx, bad), 404);
     expect(FID).toBeDefined();
+  });
+
+  it('une ligne q d\'une autre fiche n\'est jamais relue: pas de texte de l\'autre fiche', async () => {
+    const t = testDeps();
+    const { ctx } = await seed(t, { nQcm: 1 });
+    await seed(t, { docId: 'doc2', nQcm: 1 });
+    await pass(t, ctx, 'doc1', 1);
+    const it = (await tests(t))[0];
+    await t.store.commit([{ item: { ...it, items: [{ ...(it.items as object[])[0], q: 'doc2:qcm:01' }] }, when: 'any' }]);
+    const q = (await getTest(t.deps, ctx, it.SK.split('#').pop() as string)).questions[0];
+    expect(q.questionId).toBe('doc2:qcm:01');
+    expect(q.prompt).toBeUndefined();
+    expect(q.correctAnswer).toBeUndefined();
+  });
+
+  it('une erreur d\'infrastructure en relisant la fiche remonte (500), elle n\'est pas avalee', async () => {
+    const t = testDeps();
+    const { ctx } = await seed(t, { nQcm: 1 });
+    await pass(t, ctx, 'doc1', 1);
+    const id = (await tests(t))[0].SK.split('#').pop() as string;
+    const real = t.store.get.bind(t.store);
+    t.store.get = async (k) => {
+      if (k.PK.startsWith('DOC#')) throw new Error('AccessDeniedException');
+      return real(k);
+    };
+    await expect(getTest(t.deps, ctx, id)).rejects.toThrow('AccessDeniedException');
+  });
+});
+
+describe('schoolYears: jamais une annee sans passage', () => {
+  it('apres suppression de la fiche, l\'annee disparait de la liste (PROFILE la garde, la lecture filtre)', async () => {
+    const t = testDeps({ iso: '2026-06-10T10:00:00+02:00' });
+    const { ctx } = await seed(t, { nQcm: 1 });
+    await seed(t, { docId: 'doc2', nQcm: 1 });
+    await pass(t, ctx, 'doc1', 1); // 2025-2026
+    t.clk.set('2026-12-01T10:00:00+01:00');
+    await pass(t, ctx, 'doc2', 1); // 2026-2027
+    expect((await listTests(t.deps, ctx, {})).schoolYears).toEqual(['2026-2027', '2025-2026']);
+    await deleteDocTree(storeTreeDb(t.store), ctx.studentId, 'doc1');
+    expect((await prof(t)).anneesScolaires).toContain('2025-2026');
+    expect((await listTests(t.deps, ctx, {})).schoolYears).toEqual(['2026-2027']);
   });
 });

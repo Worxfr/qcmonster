@@ -2634,7 +2634,7 @@ export interface operations {
                      * @example {
                      *       "items": [
                      *         {
-                     *           "testId": "01JEXAMPLE0TEST000000000AA",
+                     *           "testId": "01JF5T3ST0000000000000AAAA",
                      *           "docId": "01JEXAMPLE0DOC0000000000AA",
                      *           "titre": "La photosynthese",
                      *           "matiere": "svt",
@@ -2651,7 +2651,7 @@ export interface operations {
                      *           "status": "complet"
                      *         },
                      *         {
-                     *           "testId": "01JEXAMPLE0TEST000000000AB",
+                     *           "testId": "01JF5T3ST0000000000000ABAA",
                      *           "docId": "01JEXAMPLE0DOC0000000000AB",
                      *           "titre": "La Revolution francaise",
                      *           "matiere": "histoire_geo",
@@ -2672,7 +2672,7 @@ export interface operations {
                      *         "2026-2027",
                      *         "2025-2026"
                      *       ],
-                     *       "nextCursor": "VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpFWEFNUExFMFRFU1QwMDAwMDAwMDBBQg"
+                     *       "nextCursor": "VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpGNVQzU1QwMDAwMDAwMDAwMDAwQUJBQQ"
                      *     }
                      */
                     "application/json": components["schemas"]["TestPage"];
@@ -2701,7 +2701,7 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "testId": "01JEXAMPLE0TEST000000000AA",
+                     *       "testId": "01JF5T3ST0000000000000AAAA",
                      *       "docId": "01JEXAMPLE0DOC0000000000AA",
                      *       "titre": "La photosynthese",
                      *       "matiere": "svt",
@@ -2839,7 +2839,7 @@ export interface operations {
                      *       ],
                      *       "recentTests": [
                      *         {
-                     *           "testId": "01JEXAMPLE0TEST000000000AA",
+                     *           "testId": "01JF5T3ST0000000000000AAAA",
                      *           "docId": "01JEXAMPLE0DOC0000000000AA",
                      *           "titre": "La photosynthese",
                      *           "matiere": "svt",
@@ -2895,7 +2895,7 @@ export interface operations {
                      * @example {
                      *       "items": [
                      *         {
-                     *           "testId": "01JEXAMPLE0TEST000000000AA",
+                     *           "testId": "01JF5T3ST0000000000000AAAA",
                      *           "docId": "01JEXAMPLE0DOC0000000000AA",
                      *           "titre": "La photosynthese",
                      *           "matiere": "svt",
@@ -2942,7 +2942,7 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "testId": "01JEXAMPLE0TEST000000000AA",
+                     *       "testId": "01JF5T3ST0000000000000AAAA",
                      *       "docId": "01JEXAMPLE0DOC0000000000AA",
                      *       "titre": "La photosynthese",
                      *       "matiere": "svt",

@@ -646,10 +646,10 @@ paths:
               schema: { $ref: '#/components/schemas/TestPage' }
               example:
                 items:
-                  - { testId: 01JEXAMPLE0TEST000000000AA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
-                  - { testId: 01JEXAMPLE0TEST000000000AB, docId: 01JEXAMPLE0DOC0000000000AB, titre: La Revolution francaise, matiere: histoire_geo, mode: qcm, schoolYear: 2026-2027, startedAt: '2026-11-30T18:30:00Z', endedAt: '2026-11-30T18:32:05Z', total: 10, answered: 4, correct: 3, firstTry: 3, scorePct: 30, xpGained: 15, status: incomplet }
+                  - { testId: 01JF5T3ST0000000000000AAAA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
+                  - { testId: 01JF5T3ST0000000000000ABAA, docId: 01JEXAMPLE0DOC0000000000AB, titre: La Revolution francaise, matiere: histoire_geo, mode: qcm, schoolYear: 2026-2027, startedAt: '2026-11-30T18:30:00Z', endedAt: '2026-11-30T18:32:05Z', total: 10, answered: 4, correct: 3, firstTry: 3, scorePct: 30, xpGained: 15, status: incomplet }
                 schoolYears: ['2026-2027', '2025-2026']
-                nextCursor: VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpFWEFNUExFMFRFU1QwMDAwMDAwMDBBQg
+                nextCursor: VEVTVCMyMDI2LTExLTMwVDE4OjMwOjAwWiMwMUpGNVQzU1QwMDAwMDAwMDAwMDAwQUJBQQ
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /me/tests/{testId}:
@@ -668,7 +668,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TestDetail' }
               example:
-                testId: 01JEXAMPLE0TEST000000000AA
+                testId: 01JF5T3ST0000000000000AAAA
                 docId: 01JEXAMPLE0DOC0000000000AA
                 titre: La photosynthese
                 matiere: svt
@@ -715,7 +715,7 @@ paths:
                   - { matiere: svt, tests: 3, avgScorePct: 83 }
                 schoolYears: ['2026-2027']
                 recentTests:
-                  - { testId: 01JEXAMPLE0TEST000000000AA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
+                  - { testId: 01JF5T3ST0000000000000AAAA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /students/{sid}/tests:
@@ -740,7 +740,7 @@ paths:
               schema: { $ref: '#/components/schemas/TestPage' }
               example:
                 items:
-                  - { testId: 01JEXAMPLE0TEST000000000AA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
+                  - { testId: 01JF5T3ST0000000000000AAAA, docId: 01JEXAMPLE0DOC0000000000AA, titre: La photosynthese, matiere: svt, mode: mixte, schoolYear: 2026-2027, startedAt: '2026-12-01T17:02:11Z', endedAt: '2026-12-01T17:06:40Z', total: 10, answered: 10, correct: 8, firstTry: 7, scorePct: 80, xpGained: 63, status: complet }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -762,7 +762,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TestParentDetail' }
               example:
-                testId: 01JEXAMPLE0TEST000000000AA
+                testId: 01JF5T3ST0000000000000AAAA
                 docId: 01JEXAMPLE0DOC0000000000AA
                 titre: La photosynthese
                 matiere: svt

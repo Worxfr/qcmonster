@@ -60,7 +60,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 
   it('moindre privilege: ressources nommees, jamais de joker, rien sur Bedrock, roles distincts du traitement', () => {
     const byRole = statementsByRole(t);
-    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'invite', 'manage', 'play', 'read'].map((k) => `qcm-${env}-game-${k}-role`).sort());
+    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'invite', 'manage', 'play', 'read', 'readDocs'].map((k) => `qcm-${env}-game-${k}-role`).sort());
     for (const [role, stmts] of Object.entries(byRole)) {
       expect(processingRoleNames(env)).not.toContain(role);
       for (const s of stmts) {
@@ -78,7 +78,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
   it('DynamoDB: chaque instruction est limitee a des partitions (dynamodb:LeadingKeys)', () => {
     const byRole = statementsByRole(t);
     const leading = (k: string) => (byRole[`qcm-${env}-game-${k}-role`] ?? []).filter((s) => actions(s).some((a) => a.startsWith('dynamodb:'))).map((s) => (s as unknown as { Condition?: Record<string, Record<string, string[]>> }).Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']);
-    for (const k of ['read', 'play', 'account', 'manage', 'admin', 'activation', 'invite']) for (const l of leading(k)) expect(l, k).toBeDefined();
+    for (const k of ['read', 'readDocs', 'play', 'account', 'manage', 'admin', 'activation', 'invite']) for (const l of leading(k)) expect(l, k).toBeDefined();
     // La route publique n'atteint que les liens d'activation et la famille (lecture de l'eleve).
     expect(leading('activation').flat().sort()).toEqual(['ACTIVATION#*', 'FAMILY#*']);
     expect(leading('read').flat()).not.toContain('ACTIVATION#*');

@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_ITEMS, decodeCursor, encodeCursor, isoSeconds, newTestId, parisDayStartUtc, recount, schoolYearBounds, schoolYearOf, scorePct, testIdStartedAt, testIdTime, toSummary, upsertLine, validDay, type TestLine,
+  MAX_ITEMS, TEST_ID_RE, decodeCursor, encodeCursor, isoSeconds, newTestId, parisDayStartUtc, recount, schoolYearBounds, schoolYearOf, scorePct, testIdStartedAt, testIdTime, toSummary, upsertLine, validDay, type TestLine,
 } from './tests-history.js';
 
 describe('schoolYearOf: les 6 cas de docs/H1-design.md section 3', () => {
@@ -85,5 +86,16 @@ describe('lignes et score', () => {
     const s = toSummary({ docId: 'd', titre: 't', matiere: 'svt', mode: 'mixte', anneeScolaire: '2026-2027', startedAt: 's', total: 4, answered: 4, correct: 3, firstTry: 2, xpGained: 9, items: [{ c: 'secret' }], PK: 'STUDENT#x' }, 'ID');
     expect(JSON.stringify(s)).not.toMatch(/secret|STUDENT|items/);
     expect(s).toMatchObject({ scorePct: 75, status: 'complet', schoolYear: '2026-2027' });
+  });
+});
+
+describe('exemples du contrat', () => {
+  it('chaque testId d\'exemple est un identifiant de passage valide, et le curseur d\'exemple une cle valide', () => {
+    const y = readFileSync(new URL('./contract/openapi.yaml', import.meta.url), 'utf8');
+    const ids = [...y.matchAll(/testId: ([0-9A-Z]{26})/g)].map((m) => m[1]);
+    expect(ids.length).toBeGreaterThan(3);
+    for (const id of ids) expect(id).toMatch(TEST_ID_RE);
+    const cur = /nextCursor: (\S+)\n/.exec(y)?.[1] ?? '';
+    expect(decodeCursor(cur)).toBeDefined();
   });
 });
