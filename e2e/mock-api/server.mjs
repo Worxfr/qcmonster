@@ -782,6 +782,11 @@ const server = createServer(async (req, res) => {
   if (seg[1] === 'students') {
     const s = S.students.find((x) => x.studentId === ID);
     if (!s) return err(res, 404, 'introuvable', 'Introuvable');
+    // S1-W (#34): liens de partage de l'eleve. Le faux serveur n'en cree pas: liste vide, suppressions sans effet.
+    if (seg[3] === 'shares') {
+      if (m === 'GET' && !seg[4]) return send(res, 200, { shares: [], purgePending: false });
+      if (m === 'DELETE') return send(res, 204);
+    }
     if (m === 'POST' && seg[3] === 'login-id') { s.loginId = `${s.loginId.replace(/-[a-z0-9]{4,5}$/, '')}-${suffix()}`; s.pseudo = s.loginId; return send(res, 200, { loginId: s.loginId }); }
     if (m === 'PATCH') {
       if (b.displayName !== undefined) {

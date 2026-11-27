@@ -5,6 +5,7 @@ import type {
   Student, ActivationResponse, FamilyCreateRequest, InvitationCreated, StudentCreateRequest, StudentCreateResponse, Transcription, Sentence,
   ScanList, Cours, Folder, ConfirmSection, ScanQuery, Subject,
   TestPage, TestDetail, TestParentDetail, StudentProgressView, ExportArchive, TestQuery, ConfirmFigure, AddedSentence, ExportState, ReviseRequest, Revision,
+  ShareableList, ShareCreateRequest, ShareCreated, MyShare, StudentShareList,
   Exercice, ExerciceResume, ExerciceCreated, ExerciceHint, ExerciceSolution, CopieCreateResponse, CopieSubmitResponse, Copie,
 } from './types';
 
@@ -79,7 +80,7 @@ export const api = {
   answer: (questionId: string, choice: string) => call<AnswerResult>('POST', '/answers', { questionId, choice }),
   createStudent: (b: StudentCreateRequest) => call<StudentCreateResponse>('POST', '/students', b),
   activationLink: (sid: string) => call<{ url: string; expiresAt: string }>('POST', `/students/${e(sid)}/activation-link`),
-  updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: Student['schoolLevel']; displayName?: string }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
+  updateStudent: (sid: string, b: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: Student['schoolLevel']; displayName?: string; sharing?: boolean }) => call<Student>('PATCH', `/students/${e(sid)}`, b),
   deleteStudent: (sid: string) => call<void>('DELETE', `/students/${e(sid)}`),
   dashboard: () => call<Dashboard>('GET', '/family/dashboard'),
   markRead: (docId: string) => call<ReadResult>('POST', `/docs/${e(docId)}/read`),
@@ -116,6 +117,14 @@ export const api = {
   /** Aucun corps: le serveur calcule lui-meme l'empreinte des pages. */
   submitCopie: (copieId: string) => call<CopieSubmitResponse>('POST', `/copies/${e(copieId)}/submit`),
   copie: (copieId: string) => call<Copie>('GET', `/copies/${e(copieId)}`),
+  /** Partage de QCM (S1 #34). Eleve: 403 si le parent n'a pas active le partage. Le jeton n'est renvoye qu'a la creation. */
+  shareable: (docId: string) => call<ShareableList>('GET', `/docs/${e(docId)}/shareable`),
+  createShare: (b: ShareCreateRequest) => call<ShareCreated>('POST', '/me/shares', b),
+  myShares: () => call<{ shares: MyShare[] }>('GET', '/me/shares'),
+  deleteMyShare: (shareId: string) => call<void>('DELETE', `/me/shares/${e(shareId)}`),
+  studentShares: (sid: string) => call<StudentShareList>('GET', `/students/${e(sid)}/shares`),
+  deleteStudentShare: (sid: string, shareId: string) => call<void>('DELETE', `/students/${e(sid)}/shares/${e(shareId)}`),
+  deleteStudentShares: (sid: string) => call<void>('DELETE', `/students/${e(sid)}/shares`),
   deleteCopie: (copieId: string) => call<void>('DELETE', `/copies/${e(copieId)}`),
 };
 

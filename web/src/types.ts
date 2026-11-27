@@ -75,3 +75,15 @@ export type CopieEnvoi = S['CopieEnvoi'];
 export type CopieSubmitResponse = S['CopieSubmitResponse'];
 export type Copie = S['Copie'];
 export type CopieEtape = S['CopieEtape'];
+
+// S1 #34: partage de QCM. `SharedQuiz` est reecrit ici: le type genere y ajoute a tort `activationLink`.
+export type ShareableList = S['ShareableList'];
+export type ShareableQuestion = S['ShareableQuestion'];
+export type ShareCreateRequest = S['ShareCreateRequest'];
+export type ShareCreated = S['ShareCreated'];
+export type ShareSummary = S['ShareSummary'];
+export type MyShare = S['MyShare'];
+export type StudentShareList = S['StudentShareList'];
+export type SharedQuestion = S['SharedQuestion'];
+export type SharedQuiz = { title: string; subject?: Subject; questions: SharedQuestion[]; expiresAt: string };
+export type ShareReportReason = S['ShareReportRequest']['reason'];
