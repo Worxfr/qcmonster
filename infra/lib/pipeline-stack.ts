@@ -15,6 +15,7 @@ import { buildSync } from 'esbuild';
 import type { Construct } from 'constructs';
 import { EU_REGIONS, SYSTEM_PROFILES } from './models-stack.js';
 import { reviseStatements } from './revise-access.js';
+import { deleteSharesStatement } from './share-access.js';
 import { REVISE_INPUT_KEYS } from '../../shared/revise-access.js';
 import { CONFIRM_TIMEOUT_S, MACHINE_TIMEOUT_MIN_S, MAX_SECTIONS, machineTimeoutNeededS } from '../../shared/scans.js';
 import { COPIES_PREFIX, fn, FIGURES_BUCKET_PARAM, METRIC_NAMESPACE, SCAN_EVENT_PREFIX, ssmParam, stackName, reviseRoleName, reviseStartRoleName, reviseStateMachineName, stateMachineName, tableName, WORKFLOW_HANDLERS, type Env } from '../../shared/names.js';
@@ -277,6 +278,9 @@ export class PipelineStack extends Stack {
     // cours-delete: supprime le cours (STUDENT#), l'arbre de chaque fiche (DOC#), la copie de travail (JOB#), retire coursId (UpdateItem) et supprime les signalements (FAMILY#: Query + BatchWriteItem). Pas de PutItem, S3, Bedrock.
     coursRole.addToPolicy(leading(['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:BatchWriteItem'], 'STUDENT#*', 'DOC#*', 'JOB#*'));
     coursRole.addToPolicy(leading(['dynamodb:Query', 'dynamodb:BatchWriteItem'], 'FAMILY#*'));
+    // S1 (#34): `fiches: 'supprimer'` supprime d'abord les copies publiques des liens de ces fiches (option `deleteShares`). Instruction SEPAREE `SHARE#*`, jamais dans `ddbApi`.
+    coursRole.addToPolicy(deleteSharesStatement(tableArn));
+    deleteRole.addToPolicy(deleteSharesStatement(tableArn)); // idem pour docs-delete
     coursRole.addToPolicy(deleteCopies()); // E1: `fiches: 'supprimer'` appelle deleteDocTree (images des copies de ces fiches)
     // --- R1-B: bucket des figures (docs/R1-design.md 12). Jamais de joker de bucket; l'isolation par eleve est faite par le handler (cle construite avec le sid du jeton), pas par IAM.
     const listFigures = new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [figuresArn], conditions: { StringLike: { 's3:prefix': ['figures/*'] } } });

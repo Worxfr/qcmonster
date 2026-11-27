@@ -8,13 +8,14 @@ import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
 import { webOriginFor } from './data-stack.js';
 import { e1Statements } from './e1-access.js';
+import { deleteSharesStatement, shareStatements } from './share-access.js';
 import { copieStateMachineName, COPIES_PREFIX, EXO_FUNCTIONS, fn, FIGURES_BUCKET_PARAM, ssmParam, stackName, tableName, type Env } from '../../shared/names.js';
 
 export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId' | 'copieStart' | 'copieDelete';
+type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId' | 'copieStart' | 'copieDelete' | 'shareMake' | 'shareManage' | 'sharePublic';
 interface HandlerDef {
   name: string;
   role: RoleKey;
@@ -143,6 +144,8 @@ export class GameStack extends Stack {
       // Suppression et export: efface tout, y compris l'utilisateur Cognito et les photos en cours.
       admin: [
         ddb([...READ, 'DeleteItem', 'BatchWriteItem'], [...FAM, ...STU, 'DOC#*', 'JOB#*', 'ACTIVATION#*'], true),
+        // S1 (#34): supprimer un eleve ou la famille supprime d'abord les copies publiques de ses liens. Instruction SEPAREE, SHARE#* seulement (shared/share-access.ts).
+        deleteSharesStatement(tableArn),
         cognito(['AdminDeleteUser']),
         new iam.PolicyStatement({ actions: ['s3:ListBucket'], resources: [`arn:${this.partition}:s3:::${scansBucket}`], conditions: { StringLike: { 's3:prefix': ['scans/*', 'exports/*', `${COPIES_PREFIX}*`] } } }),
         new iam.PolicyStatement({ actions: ['s3:DeleteObject'], resources: [`arn:${this.partition}:s3:::${scansBucket}/scans/*`, `arn:${this.partition}:s3:::${scansBucket}/exports/*`, `arn:${this.partition}:s3:::${scansBucket}/${COPIES_PREFIX}*`] }), // E1: copies/ (liste puis suppression, jamais de lecture)
@@ -161,6 +164,12 @@ export class GameStack extends Stack {
       copieStart: [...e1Statements('copieStart', { env: envName, tableArn, bucketArn: scansBucketArn }), new iam.PolicyStatement({ actions: ['states:StartExecution'], resources: [copieMachineArn] })],
       // E1: lit l'eleve et la famille, supprime la copie (STUDENT#) et ses images par cles exactes. Ni liste, ni lecture S3.
       copieDelete: e1Statements('copieDelete', { env: envName, tableArn, bucketArn: scansBucketArn }),
+      // S1 (#34): trois roles NOUVEAUX, DERIVES de shared/share-access.ts (source unique, test infra/test/s1-access.test.ts). Aucune fonction ne les utilise encore (lot S1-A):
+      // `shareMake` (cree: seul a lire les cles de reponse), `shareManage` (liste, revoque, purge: jamais DOC#), `sharePublic` (route publique: SHARE#* seulement, ni Query ni autre partition).
+      // `manage` reste INCHANGE (ni STUDENT#*, ni BatchWriteItem, ni SHARE#*): la coupure des liens passe par `shareManage`.
+      shareMake: shareStatements('shareMake', tableArn),
+      shareManage: shareStatements('shareManage', tableArn),
+      sharePublic: shareStatements('sharePublic', tableArn),
     };
 
     const roles = {} as Record<RoleKey, iam.Role>;

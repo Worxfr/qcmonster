@@ -214,8 +214,10 @@ describe('Pipeline (L2a): relecture PR #14', () => {
             expect(res).not.toContain('"*"');
             // Exception: le compteur de cout (COST#, GetItem) n'a pas besoin de l'index.
             const costRead = JSON.stringify((x as unknown as { Condition?: unknown }).Condition ?? '').includes('COST#');
-            expect(Array.isArray(x.Resource) ? x.Resource.length : 1).toBe(costRead ? 1 : 2);
-            if (!costRead) expect(res).toContain('index/GSI1');
+            // S1 (#34): les instructions du partage (`SHARE#*`) n'interrogent aucun index non plus: la table seule.
+            const tableOnly = costRead || JSON.stringify((x as unknown as { Condition?: unknown }).Condition ?? '').includes('SHARE#');
+            expect(Array.isArray(x.Resource) ? x.Resource.length : 1).toBe(tableOnly ? 1 : 2);
+            if (!tableOnly) expect(res).toContain('index/GSI1');
           }
           // R1-B: trois prefixes seulement, jamais un bucket entier: scans/ et exports/ (bucket des photos), figures/ (bucket des figures)
           if (as.some((a) => a.startsWith('s3:') && a !== 's3:ListBucket')) expect(res).toMatch(/\/(scans|exports|figures|copies)\/\*/);
@@ -300,6 +302,7 @@ describe('FEAT-A (lot I): fonctions, roles et tags', () => {
         expect(flat(/^pipelineapicoursrole/i)).toEqual([
           { actions: ['dynamodb:BatchWriteItem', 'dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem'], keys: ['STUDENT#*', 'DOC#*', 'JOB#*'] },
           { actions: ['dynamodb:BatchWriteItem', 'dynamodb:Query'], keys: ['FAMILY#*'] },
+          { actions: ['dynamodb:BatchWriteItem', 'dynamodb:Query'], keys: ['SHARE#*'] }, // S1 (#34): copies publiques des liens des fiches supprimees (instruction separee)
         ]);
         // R1-B: hors DynamoDB, la lecture signe des figures (GetObject) et la suppression liste et efface le prefixe figures/; jamais d'ecriture
         expect(own(/pipelineapicoursread/i).filter((a) => !a.startsWith('dynamodb:'))).toEqual(['s3:GetObject']);
