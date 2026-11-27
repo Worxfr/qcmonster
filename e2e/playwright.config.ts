@@ -43,7 +43,7 @@ export default defineConfig({
             command: `npm run dev -w web -- --host 127.0.0.1 --port ${WEB_PORT} --strictPort`,
             cwd: '..',
             url: `http://127.0.0.1:${WEB_PORT}`,
-            env: { VITE_API_URL: `http://127.0.0.1:${API_PORT}`, VITE_AUTH_MODE: 'mock', VITE_REVISE_ENABLED: 'true' },
+            env: { VITE_API_URL: `http://127.0.0.1:${API_PORT}`, VITE_AUTH_MODE: 'mock', VITE_REVISE_ENABLED: 'true', VITE_SHARE_ENABLED: 'true' },
             reuseExistingServer: !process.env.CI,
             timeout: 90_000,
           },

@@ -1,0 +1,39 @@
+/* Partage de QCM (S1 #34): clair, vif, joyeux. Aucun style en ligne (CSP style-src 'self'). */
+.share-page { padding-bottom: 3rem; }
+.share-banner { margin: 0; background: #e0f2fe; color: #0c4a6e; border: 2px solid #7dd3fc; border-radius: var(--radius); padding: .7rem 1rem; font-weight: 600; }
+.share-hero { text-align: center; background: linear-gradient(160deg, #f3e8ff 0%, #fff 55%, #fef3c7 100%); }
+.share-hero h1 { font-size: 1.9rem; overflow-wrap: anywhere; }
+.share-hero .btn-big { max-width: 22rem; margin-inline: auto; display: block; }
+.share-score { font-size: 1.4rem; margin: .4rem 0 1rem; }
+.share-score strong { font-size: 2.4rem; color: var(--brand); }
+.share-gone { text-align: center; }
+.share-steps { display: flex; gap: .3rem; margin-bottom: .8rem; }
+.share-steps span { flex: 1; height: .5rem; border-radius: 999px; background: var(--line); }
+.share-steps span.done { background: var(--alt); }
+.share-steps span.now { background: var(--brand); }
+.btn-choice.right { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); opacity: 1; }
+.btn-choice.wrong { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); opacity: 1; }
+.share-page .btn-choice { min-height: 52px; }
+.share-report { text-align: center; box-shadow: none; }
+.share-report fieldset, .ttl { border: 2px solid var(--line); border-radius: 14px; padding: .6rem .9rem; text-align: left; margin: 0; }
+.share-report legend, .ttl legend { font-weight: 800; padding: 0 .3rem; }
+.share-report label.check, .ttl label.check { padding: .35rem 0; }
+.share-pick li { border: 2px solid var(--line); border-radius: 14px; padding: .5rem .7rem; background: #faf5ff; }
+.share-pick li.off { background: #f4f4f5; border-style: dashed; }
+.share-pick li:has(input:checked) { border-color: var(--brand); background: #f3e8ff; }
+.share-pick .check { align-items: flex-start; }
+.share-pick .check input { flex: none; margin-top: .15rem; }
+.share-pick .why { display: block; color: var(--muted); font-weight: 600; }
+.share-pick .grow { overflow-wrap: anywhere; }
+.share-row { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; border: 2px solid var(--line); border-radius: 14px; padding: .6rem .8rem; background: #fff; }
+.share-row .grow { min-width: 12rem; }
+.share-row p { margin: .2rem 0; }
+.share-parent { margin-top: 1rem; border-top: 2px dashed var(--line); padding-top: .8rem; display: grid; gap: .6rem; }
+.share-parent h4 { margin: 0; font-size: 1.05rem; }
+.share-parent .notice .btn { margin-left: .4rem; }
+@media (max-width: 520px) {
+  .share-hero h1 { font-size: 1.5rem; }
+  .share-row .btn { width: 100%; }
+  .share-page .btn-big { max-width: none; }
+}
+.share-pick .check { font-weight: 500; }

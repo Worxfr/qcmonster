@@ -14,3 +14,6 @@ export const SIGNUP_ENABLED: boolean = MOCK_AUTH || (!CONFIG_ERROR && !!COGNITO_
 
 /** M1 #90: ecran « Modifier ce cours ». Ferme par defaut, comme `REVISE_ENABLED` cote serveur; a ouvrir ensemble (VITE_REVISE_ENABLED=true). */
 export const REVISE_ENABLED: boolean = e.VITE_REVISE_ENABLED === 'true';
+
+/** S1 #34: partage de QCM par lien (bouton, ecrans, page publique /p). Ferme par defaut, comme `SHARE_PUBLIC_ENABLED` cote serveur; a ouvrir ensemble (VITE_SHARE_ENABLED=true). */
+export const SHARE_ENABLED: boolean = e.VITE_SHARE_ENABLED === 'true';

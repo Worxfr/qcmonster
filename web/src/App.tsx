@@ -4,7 +4,7 @@ import { isActivationRoute } from './activation';
 import { AppContext } from './app-context';
 import { isSignedIn, mockRole, onSignedOut, signOut } from './auth';
 import { ErrorBox, Loading } from './components/ui';
-import { MOCK_AUTH, SIGNUP_ENABLED } from './env';
+import { MOCK_AUTH, SHARE_ENABLED, SIGNUP_ENABLED } from './env';
 import { errMsg, useLoad } from './hooks';
 import { useRoute } from './router';
 import { Admin, useIsAdmin } from './screens/Admin';
@@ -28,6 +28,7 @@ import { Docs } from './screens/Docs';
 import { Folders } from './screens/Folders';
 import { Cours } from './screens/Cours';
 import { Modifier } from './screens/Modifier';
+import { MyShares, ShareCreate } from './screens/Share';
 import { Quiz } from './screens/Quiz';
 import { Exercices } from './screens/Exercices';
 import { Exercice } from './screens/Exercice';
@@ -116,6 +117,8 @@ function Shell() {
   else if (seg === 'exercices' && id) body = <Exercices key={id} docId={id} />;
   else if (seg === 'exercice' && id) body = <Exercice key={id} id={id} />;
   else if (seg === 'copie' && id) body = <Copie key={id} id={id} />;
+  else if (SHARE_ENABLED && seg === 'partager' && id) body = <ShareCreate key={id} docId={id} />; // partage de QCM (S1 #34)
+  else if (SHARE_ENABLED && seg === 'partages') body = <MyShares />;
   else if (seg === 'profil') body = <Profile />;
   else if (seg === 'jeu') body = <Game />;
   else if (seg === 'tests' && id) body = <TestDetailView id={id} />;

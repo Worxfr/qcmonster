@@ -9,6 +9,8 @@ import type { ExportArchive, Student } from '../types';
 import { POLICY_VERSION } from '../../../shared/policy';
 import { PolicyLink } from './Policy';
 import { LoginIdCard } from '../components/LoginIdCard';
+import { SHARE_ENABLED } from '../env';
+import { ShareParent } from './ShareParent';
 import { nicknameFormOk } from '../../../shared/pseudo-rules';
 
 type Shown = { name: string; url?: string; expiresAt?: string; loginId?: string; kind: 'link' | 'login' };
@@ -140,6 +142,7 @@ export function Parent() {
                 </label>
                 <button className="btn btn-small btn-ghost" onClick={() => { if (window.confirm(`Supprimer ${s.displayName} et toutes ses données ?`)) void act(() => api.deleteStudent(s.studentId)); }}>Supprimer</button>
               </div>
+              {SHARE_ENABLED && <ShareParent student={s} />}
             </li>
           ))}
         </ul>
