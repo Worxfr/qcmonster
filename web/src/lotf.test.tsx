@@ -237,6 +237,8 @@ describe('découper en sections', () => {
     });
     await open('#/job/J1');
     await screen.findByText("J'ai proposé 3 fiches, change-les si besoin.");
+    // attente explicite: la liste des dossiers est arrivee (le GET est parti et sa reponse est rendue), pas seulement l'ecran
+    await waitFor(() => expect(screen.getAllByRole('option', { name: 'Contrôle de juin' }).length).toBeGreaterThan(0));
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/folders'))).toHaveLength(1);
   });
 
