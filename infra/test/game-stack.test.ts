@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { Template } from 'aws-cdk-lib/assertions';
 process.env.QCM_NO_AUTORUN = '1';
@@ -32,11 +32,33 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
     const names = fns.map((f) => f.Properties.FunctionName as string).sort();
     expect(names).toEqual(GAME_HANDLERS.map((h) => `qcm-${env}-${h.name}`).sort());
     // Les handlers du lot sont exactement ceux que la table ROUTES attribue a L3 et a E1 (les fonctions `exo-gen`, `copie-correct` et `copie-fail` sont dans la stack Exo).
-    const l3 = [...new Set(ROUTES.map((r) => r.handler).filter((h) => HANDLER_LOT[h] === 'L3' || HANDLER_LOT[h] === 'E1'))].sort();
+    const l3 = [...new Set(ROUTES.map((r) => r.handler).filter((h) => HANDLER_LOT[h] === 'L3' || HANDLER_LOT[h] === 'E1' || HANDLER_LOT[h] === 'S1'))].sort();
     expect(GAME_HANDLERS.map((h) => h.name).sort()).toEqual(l3);
     for (const f of fns) {
       expect(f.Properties).toMatchObject({ Runtime: 'nodejs22.x', Architectures: ['arm64'] });
       expect((f.Properties.Environment as { Variables: Record<string, unknown> }).Variables).toMatchObject({ QCM_ENV: env, TABLE_NAME: `qcm-${env}` });
+    }
+  });
+
+  it('S1-A: les huit fonctions du partage sont FERMEES par defaut (SHARE_PUBLIC_ENABLED=false), dev comme prod; les autres n\'ont pas la variable', () => {
+    for (const f of fns) {
+      const name = String(f.Properties.FunctionName);
+      const vars = (f.Properties.Environment as { Variables: Record<string, unknown> }).Variables;
+      if (name.startsWith(`qcm-${env}-shares-`)) expect(vars.SHARE_PUBLIC_ENABLED, name).toBe('false');
+      else expect(vars, name).not.toHaveProperty('SHARE_PUBLIC_ENABLED');
+    }
+    expect(fns.filter((f) => String(f.Properties.FunctionName).startsWith(`qcm-${env}-shares-`))).toHaveLength(8);
+  });
+
+  it('S1-A, obligation 4: chaque variable d\'environnement que le code du partage lit est posee sur CHAQUE fonction du partage (sinon 500 en prod que les tests simules ne voient pas)', () => {
+    const dirs = ['../../api/src/handlers/', '../../api/src/shares/'].map((d) => new URL(d, import.meta.url));
+    const files = dirs.flatMap((d) => readdirSync(d).filter((f) => /^(shares-.*|[a-z-]+)\.ts$/.test(f) && !/\.test\.ts$/.test(f) && (d.pathname.endsWith('/shares/') || f.startsWith('shares-'))).map((f) => new URL(f, d)));
+    const wanted = new Set<string>();
+    for (const u of files) for (const m of readFileSync(u, 'utf8').matchAll(/process\.env\.([A-Z_]+)|\bneed\('([A-Z_]+)'\)/g)) wanted.add(m[1] ?? m[2]);
+    expect([...wanted].sort()).toEqual(['QCM_ENV', 'SHARE_PUBLIC_ENABLED', 'TABLE_NAME']); // toute NOUVELLE variable lue doit etre ajoutee ici ET a la fonction
+    for (const f of fns.filter((x) => String(x.Properties.FunctionName).startsWith(`qcm-${env}-shares-`))) {
+      const vars = (f.Properties.Environment as { Variables: Record<string, unknown> }).Variables;
+      for (const w of wanted) expect(vars, `${String(f.Properties.FunctionName)}: ${w}`).toHaveProperty(w);
     }
   });
 

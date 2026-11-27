@@ -31,6 +31,8 @@ export interface StudentView {
   under15: boolean;
   status: 'actif' | 'suspendu';
   pageQuota: number;
+  /** S1 (#34): partage de QCM ouvert par le parent pour cet eleve (absent = ferme). */
+  sharing?: boolean;
 }
 
 /** Eleve du contrat (`Student`), sans aucun attribut interne (cognitoSub, hache d'activation). */
@@ -43,4 +45,5 @@ export const studentView = (it: Item): StudentView => ({
   under15: it.moins15 === true,
   status: it.statut === 'suspendu' ? 'suspendu' : 'actif',
   pageQuota: Number(it.quotaPages ?? 0),
+  ...(it.sharing === true ? { sharing: true } : {}),
 });

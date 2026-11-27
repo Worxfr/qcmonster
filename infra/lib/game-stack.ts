@@ -20,7 +20,7 @@ interface HandlerDef {
   name: string;
   role: RoleKey;
   /** Variables d'environnement en plus de TABLE_NAME et QCM_ENV. */
-  needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET' | 'FIGURES_BUCKET' | 'COPIE_STATE_MACHINE_ARN' | 'EXO_GEN_FUNCTION')[];
+  needs?: ('USER_POOL_ID' | 'WEB_ORIGIN' | 'SCANS_BUCKET' | 'FIGURES_BUCKET' | 'COPIE_STATE_MACHINE_ARN' | 'EXO_GEN_FUNCTION' | 'SHARE_PUBLIC_ENABLED')[];
   /** Memoire (Mo) et delai (s) si differents du defaut (256 Mo, 10 s; 30 s pour le role admin). */
   memoryMb?: number;
   timeoutS?: number;
@@ -68,6 +68,15 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   { name: 'copies-submit', role: 'copieStart', needs: ['SCANS_BUCKET', 'COPIE_STATE_MACHINE_ARN'] },
   // Ecart au design (qui le mettait dans `play`): `play` n'a pas DeleteItem, par choix. Role dedie: DeleteItem STUDENT# et DeleteObject copies/*.
   { name: 'copie-delete', role: 'copieDelete', needs: ['SCANS_BUCKET'] },
+  // contract-v1.12 (S1-A, #34): partage de QCM par lien, huit fonctions pour neuf routes. Roles: shared/share-access.ts (SHARE_HANDLERS, source unique). Ferme par defaut (SHARE_PUBLIC_ENABLED).
+  { name: 'shares-shareable', role: 'shareMake', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-create', role: 'shareMake', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-list', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-delete', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-parent-list', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-parent-delete', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-open', role: 'sharePublic', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-report', role: 'sharePublic', needs: ['SHARE_PUBLIC_ENABLED'] },
 ];
 
 export const gameRoleName = (env: Env, key: RoleKey) => `qcm-${env}-game-${key}-role`;
@@ -181,7 +190,9 @@ export class GameStack extends Stack {
       for (const st of policies[key]) roles[key].addToPolicy(st);
     }
 
-    const extra = { USER_POOL_ID: userPoolId, WEB_ORIGIN: webOrigin, SCANS_BUCKET: scansBucket, FIGURES_BUCKET: figuresBucket, COPIE_STATE_MACHINE_ARN: copieMachineArn, EXO_GEN_FUNCTION: fn(envName, EXO_FUNCTIONS.gen) };
+    const extra = { USER_POOL_ID: userPoolId, WEB_ORIGIN: webOrigin, SCANS_BUCKET: scansBucket, FIGURES_BUCKET: figuresBucket, COPIE_STATE_MACHINE_ARN: copieMachineArn, EXO_GEN_FUNCTION: fn(envName, EXO_FUNCTIONS.gen),
+      // S1: FERME par defaut en dev et en prod. Ouvrir = `cdk deploy -c sharePublicEnabled=true` (deploiement actif, a decider par le proprietaire apres la validation des couts et des textes legaux).
+      SHARE_PUBLIC_ENABLED: this.node.tryGetContext('sharePublicEnabled') === 'true' ? 'true' : 'false' };
     for (const h of GAME_HANDLERS) {
       const logGroup = new logs.LogGroup(this, `Logs-${h.name}`, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY });
       logGroup.grantWrite(roles[h.role]); // journaux de CETTE fonction seulement

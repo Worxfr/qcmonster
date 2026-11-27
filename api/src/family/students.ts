@@ -93,8 +93,8 @@ export async function createLink(deps: FamilyDeps, ctx: ParentCtx, sid: string) 
   return { url: link.url, expiresAt: link.expiresAt };
 }
 
-export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string, body: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: string; displayName?: string }) {
-  if (body.status === undefined && body.pageQuota === undefined && body.schoolLevel === undefined && body.displayName === undefined) throw badRequest();
+export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string, body: { status?: 'actif' | 'suspendu'; pageQuota?: number; schoolLevel?: string; displayName?: string; sharing?: boolean }) {
+  if (body.status === undefined && body.pageQuota === undefined && body.schoolLevel === undefined && body.displayName === undefined && body.sharing === undefined) throw badRequest();
   const s = await studentOf(deps, ctx.familyId, sid);
   const meta = await deps.store.get(keys.family(ctx.familyId));
   const familyLimit = Number(meta?.plafondPages ?? quotaDefaults(deps.env).familyPages);
@@ -103,6 +103,8 @@ export async function updateStudent(deps: FamilyDeps, ctx: ParentCtx, sid: strin
   const next: Item = { ...s };
   if (body.status !== undefined) next.statut = body.status;
   if (body.pageQuota !== undefined) next.quotaPages = body.pageQuota;
+  // S1 (#34): drapeau du partage, DRAPEAU SEUL: `false` refuse toute creation tout de suite; les liens existants se suppriment par `DELETE /students/{sid}/shares` (role dedie).
+  if (body.sharing !== undefined) next.sharing = body.sharing;
   if (body.schoolLevel !== undefined) next.niveau = body.schoolLevel; // rectification (droit de correction); `under15` se refait en recreant l'eleve
   const writes: Write[] = [{ item: next, when: s.v ?? 'any' }];
   let renamed: string | undefined;
@@ -133,7 +135,7 @@ export async function purgeStudent(deps: FamilyDeps, fid: string, s: Item): Prom
   await deps.archives.deleteFamily(sid); // archives de l'eleve `exports/<eleve>/` (R1 3.6; le prefixe est celui de l'identifiant, comme pour une famille)
   await deps.photos.deleteFiguresForStudent(sid); // figures/<eleve>/ AVANT l'arbre DynamoDB (R1 3.2): une suppression interrompue se reprend
   if (typeof s.activationHash === 'string') await deps.store.remove({ PK: `ACTIVATION#${s.activationHash}`, SK: 'META' });
-  await deleteStudentTree(deps.tree, fid, sid);
+  await deleteStudentTree(deps.tree, fid, sid, { deleteShares: true }); // S1: les copies publiques de ses liens partent d'abord
 }
 
 export async function deleteStudent(deps: FamilyDeps, ctx: ParentCtx, sid: string): Promise<void> {

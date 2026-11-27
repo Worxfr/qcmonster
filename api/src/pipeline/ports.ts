@@ -16,7 +16,11 @@ export interface Cond {
   absent?: string[];
 }
 /** Operation d'une transaction: ecriture d'element (`ifNotExists`) ou mise a jour conditionnelle. */
-export type TxOp = { put: Item; ifNotExists?: boolean } | { key: Key; spec: UpdateSpec };
+export type TxOp =
+  | { put: Item; ifNotExists?: boolean; /** S1: ecrit si l'element manque OU si son `expiresAt` est echu a cet instant (ISO): emplacement de partage reutilisable. */ ifFreeAt?: string }
+  | { key: Key; spec: UpdateSpec }
+  /** S1: verification sans ecriture (ConditionCheckItem), dans la meme transaction. */
+  | { check: Key; cond: Cond };
 export interface UpdateSpec {
   set?: Record<string, unknown>;
   add?: Record<string, number>;
@@ -42,7 +46,7 @@ export interface Db {
 /** Adaptateur vers le port de suppression en cascade de shared/delete-tree.ts (cles seules). */
 export const treeDbFrom = (db: Db): TreeDb => ({
   list: async (pk, skPrefix) =>
-    (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) })),
+    (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}), ...(typeof i.hash === 'string' ? { hash: i.hash } : {}), ...(typeof i.famSlot === 'number' ? { famSlot: i.famSlot } : {}), ...(typeof i.sid === 'string' ? { sid: i.sid } : {}) })),
   remove: (ks) => db.remove(ks),
   async mutateTest(key, fn) {
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -184,11 +188,17 @@ export function dynamoDb(client: DynamoDBDocumentClient, table: string, sleep: (
       try {
         await client.send(
           new TransactWriteCommand({
-            TransactItems: ops.map((o) =>
-              'put' in o
-                ? { Put: { TableName: table, Item: o.put, ConditionExpression: o.ifNotExists ? 'attribute_not_exists(PK)' : undefined } }
-                : { Update: { TableName: table, Key: o.key, ...buildUpdate(o.spec) } },
-            ),
+            TransactItems: ops.map((o) => {
+              if ('check' in o) {
+                const b = buildUpdate({ cond: o.cond });
+                return { ConditionCheck: { TableName: table, Key: o.check, ConditionExpression: b.ConditionExpression ?? 'attribute_exists(PK)', ExpressionAttributeNames: Object.keys(b.ExpressionAttributeNames).length ? b.ExpressionAttributeNames : undefined, ExpressionAttributeValues: b.ExpressionAttributeValues } };
+              }
+              if ('put' in o) {
+                if (o.ifFreeAt !== undefined) return { Put: { TableName: table, Item: o.put, ConditionExpression: 'attribute_not_exists(PK) OR #ex <= :now', ExpressionAttributeNames: { '#ex': 'expiresAt' }, ExpressionAttributeValues: { ':now': o.ifFreeAt } } };
+                return { Put: { TableName: table, Item: o.put, ConditionExpression: o.ifNotExists ? 'attribute_not_exists(PK)' : undefined } };
+              }
+              return { Update: { TableName: table, Key: o.key, ...buildUpdate(o.spec) } };
+            }),
           }),
         );
         return true;
@@ -267,9 +277,15 @@ export function memoryDb(shared?: Map<string, unknown>): Db & { items: Map<strin
     async transact(ops) {
       await sleepNone();
       for (const o of ops) {
-        if ('put' in o ? o.ifNotExists && items.has(idOf(o.put)) : !passes(items.get(idOf(o.key)), o.spec.cond)) return false;
+        if ('check' in o) {
+          if (!passes(items.get(idOf(o.check)), o.cond)) return false;
+        } else if ('put' in o) {
+          const cur = items.get(idOf(o.put));
+          if (o.ifFreeAt !== undefined ? cur && !(String(cur.expiresAt ?? '') <= o.ifFreeAt) : o.ifNotExists && cur) return false;
+        } else if (!passes(items.get(idOf(o.key)), o.spec.cond)) return false;
       }
       for (const o of ops) {
+        if ('check' in o) continue;
         if ('put' in o) items.set(idOf(o.put), structuredClone(o.put));
         else items.set(idOf(o.key), apply(items.get(idOf(o.key)), o.key, o.spec));
       }

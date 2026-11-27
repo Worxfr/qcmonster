@@ -5,7 +5,7 @@ import type { ZodType } from 'zod';
 import { log } from '../../../shared/log/index.js';
 import { PSEUDO_REFUSED_MESSAGE, PSEUDO_TAKEN_MESSAGE } from '../../../shared/pseudo-rules.js';
 
-export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question' | 'pseudo_refuse' | 'pseudo_pris' | 'matiere_non_prevue' | 'plafond_exercices' | 'fiche_trop_courte' | 'pas_encore' | 'trop_tot' | 'deja_en_cours' | 'quota_copies' | 'plafond_copies' | 'copie_deja_rendue' | 'solution_vue' | 'en_correction';
+export type ErrorCode = 'erreur_interne' | 'requete_invalide' | 'interdit' | 'introuvable' | 'etat_invalide' | 'quota_epuise' | 'budget_epuise' | 'aucune_question' | 'pseudo_refuse' | 'pseudo_pris' | 'matiere_non_prevue' | 'plafond_exercices' | 'fiche_trop_courte' | 'pas_encore' | 'trop_tot' | 'deja_en_cours' | 'quota_copies' | 'plafond_copies' | 'copie_deja_rendue' | 'solution_vue' | 'en_correction' | 'titre_refuse' | 'questions_non_partageables' | 'plafond_partages' | 'lien_indisponible';
 
 /** Erreur attendue, convertie en reponse du contrat. Toute autre erreur est journalisee (code seul) puis devient un 500 generique: rien n'est relance, donc le runtime Lambda ne journalise ni message ni pile (A4). */
 export class HttpError extends Error {
