@@ -8,8 +8,8 @@ import type { Item } from '../pipeline/ports.js';
 import { dayOf, hashToken, isExpired, lienIndisponible, type ShareCtx } from './ctx.js';
 
 /** Corps: le jeton est une chaine (sa forme est controlee a part, pour repondre 404 et non 400). */
-export const OpenBodySchema = z.object({ token: z.string().max(200) });
-export const ReportBodySchema = z.object({ token: z.string().max(200), reason: z.enum(SHARE_REPORT_REASONS) });
+export const OpenBodySchema = z.object({ token: z.string() });
+export const ReportBodySchema = z.object({ token: z.string(), reason: z.enum(SHARE_REPORT_REASONS) });
 
 /** Copie figee lisible: existe, `actif`, pas echue, moins de 3 signalements. */
 const usable = (m: Item | undefined, c: ShareCtx): m is Item => !!m && m.state === 'actif' && !isExpired(m, c) && Number(m.reports ?? 0) < SHARE_REPORTS_TO_SUSPEND;

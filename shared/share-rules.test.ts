@@ -23,6 +23,8 @@ describe('filtre de donnees personnelles', () => {
     expect(pd('appelle le (06) 12 34 56 78')).toBe('telephone');
     expect(pd('０６１２３４５６７８')).toBe('telephone');
     expect(pd('٠٦ ١٢ ٣٤ ٥٦ ٧٨')).toBe('telephone');
+    // B1 (relecture #111): separateurs de 1 a 3 caracteres non alphanumeriques
+    for (const s of ['06. 12. 34. 56. 78', '06 . 12 . 34 . 56 . 78', '06/12/34/56/78', '06_12_34_56_78', '06,12,34,56,78', '06, 12, 34, 56, 78', '06 / 12 / 34', '06. 12. 34', '06 - 12 - 34', '(06) 12 34 56 78', '+33 6.12.34.56.78']) expect(pd(s), s).toBe('telephone');
     expect(pd('numero 06 12 34')).toBe('telephone'); // 6 chiffres: seuil
     expect(pd('numero 06 12 3')).toBeNull(); // 5 chiffres
     expect(pd('en 1789 puis en 1815')).toBeNull();
@@ -53,6 +55,18 @@ describe('filtre de donnees personnelles', () => {
     expect(pd('12 rue des Lilas', true)).toBe('adresse');
     expect(pd('75001 Paris', true)).toBe('adresse');
     expect(pd('12 rue des Lilas', false)).toBeNull();
+  });
+});
+
+describe('non-regression: dates et textes normaux restent permis', () => {
+  it('dates, annees, calculs, numeros de page', () => {
+    for (const s of ['Le 14 juillet 1789', 'Le 14/07/1789', 'Le 14.07.1789', 'le 1-12-1905', 'en 1789 puis en 1815', 'de 1914 a 1918', 'La page 12, question 3', 'Calcule 12 + 34 = 46', '3 x 4 = 12', '25 % de 80', 'x = 5, y = 12', 'Le resultat est 1,5 puis 2,25', 'Il y a 4 jeux de 52 cartes', 'La vitesse vaut 340 m/s']) expect(pd(s), s).toBeNull();
+  });
+  it('titres normaux', () => {
+    for (const s of ['La cellule', 'Revision 3eme: les fractions', 'Chapitre 4, partie 2', 'La Revolution de 1789']) expect(checkTitle(s, ctx).ok, s).toBe(true);
+  });
+  it('dans le titre: les memes separateurs sont refuses', () => {
+    for (const s of ['Appelle 06/12/34/56/78', 'Appelle 06, 12, 34, 56, 78', 'Appelle 06. 12. 34. 56. 78']) expect(checkTitle(s, ctx).ok, s).toBe(false);
   });
 });
 

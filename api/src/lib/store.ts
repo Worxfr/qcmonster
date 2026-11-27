@@ -157,6 +157,10 @@ const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studen
 
 /** Adaptateur `TreeDb` (shared/delete-tree.ts) au-dessus d'un Store: pour les tests; en production on passe `dynamoTreeDb` de shared. */
 export const storeTreeDb = (store: Store): TreeDb => ({
+  async closeSharing(key) {
+    const cur = await store.get(key);
+    if (cur && cur.sharing === true) await store.commit([{ item: { ...cur, sharing: false }, when: cur.v ?? 'any' }]);
+  },
   async mutateTest(key, fn) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const cur = await store.get(key);

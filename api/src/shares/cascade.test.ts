@@ -72,6 +72,19 @@ describe('students-delete et family-admin', () => {
     expect(left.join()).toMatch(/SHAREREF#2/);
     expect(left.join()).not.toMatch(/SHAREREF#1/);
   });
+  it("supprimer un eleve ferme son partage AVANT de supprimer ses liens (#111 m2)", async () => {
+    const t = testDeps();
+    const { sid } = await famSeed(t);
+    await t.store.commit([{ item: { ...(await t.store.get({ PK: 'FAMILY#fam1', SK: `STUDENT#${sid}` }))!, sharing: true }, when: 'any' }]);
+    await plant((i) => t.store.commit([{ item: i, when: 'any' }]), 'fam1', sid, 'doc1', 1, 'a');
+    const log: string[] = [];
+    const tree = t.deps.tree;
+    t.deps.tree = { ...tree, mutateTest: tree.mutateTest, closeSharing: async (k) => (log.push('close'), tree.closeSharing!(k)), list: async (pk, p) => (log.push(`list ${pk} ${p ?? ''}`), tree.list(pk, p)), remove: async (ks) => (log.push('remove'), tree.remove(ks)) };
+    await deleteStudent(t.deps, parentCtx, sid);
+    expect(log.indexOf('close')).toBeGreaterThanOrEqual(0);
+    expect(log.indexOf('close')).toBeLessThan(log.indexOf('list STUDENT#stu1 SHAREREF#'));
+    expect(log.indexOf('close')).toBeLessThan(log.indexOf('remove'));
+  });
   it('supprimer la famille supprime toutes les copies', async () => {
     const t = testDeps();
     const { sid } = await famSeed(t);

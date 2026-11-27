@@ -39,8 +39,13 @@ export type FilterReason = 'email' | 'web' | 'telephone' | 'nom' | 'adresse';
 
 const EMAIL = /@|\(\s*at\s*\)|\[\s*at\s*\]|\{\s*at\s*\}|\barobase\b|\b(at|arobase)\b.{0,30}\b(dot|point)\b/;
 const WEB = /https?|www\.|:\/\/|\.(fr|com|net|org)\b|\b(dot|point)\s+(fr|com|net|org)\b/;
-/** Groupes de chiffres separes par UN seul caractere (espace, point, tiret, parenthese): « 06 12 34 56 78 », « 06.12.34.56.78 ». */
-const DIGIT_RUN = /\+?[(]?\p{Nd}+[)]?(?:[ .-][(]?\p{Nd}+[)]?)*/gu;
+/**
+ * Groupes de chiffres separes par 1 a 3 caracteres NON alphanumeriques (espace, point, tiret, barre, souligne, virgule, parenthese, leurs combinaisons: « 06. 12. 34 », « 06 . 12 »,
+ * « 06/12/34 », « 06_12_34 », « 06, 12, 34 »). Les signes d'operation (+ = × ÷ * < > ^ % ±) ne separent pas deux groupes: « 12 + 34 = 46 » reste un calcul.
+ */
+const DIGIT_RUN = /\+?[(]?\p{Nd}+[)]?(?:[^\p{L}\p{Nd}+=×÷*<>^%±−]{1,3}[(]?\p{Nd}+[)]?)*/gu;
+/** Une date complete (jj/mm/aaaa, jj.mm.aaaa, jj-mm-aaaa, annees 1000 a 2099) n'est pas un numero: retiree avant la recherche de numeros. */
+const FULL_DATE = /(?<![\p{Nd}])\p{Nd}{1,2}[/.-]\p{Nd}{1,2}[/.-](?:1\p{Nd}{3}|20\p{Nd}{2})(?![\p{Nd}])/gu;
 const POSTAL = /\b\d{1,4}\s*(?:bis|ter)?\s*,?\s*(?:rue|avenue|av|boulevard|bd|chemin|allee|impasse|place)\b|\b\d{5}\s+\p{L}{2,}/u;
 
 const digitsOf = (run: string): number => (run.match(/\p{Nd}/gu) ?? []).length;
@@ -48,16 +53,16 @@ const digitsOf = (run: string): number => (run.match(/\p{Nd}/gu) ?? []).length;
 /**
  * Premiere donnee personnelle trouvee dans `raw`, ou `null`.
  * - e-mail: `@` ou « (at) »; adresse web: `http`, `www.`, `://`, `.fr/.com/.net/.org`;
- * - telephone: dans une suite de groupes de chiffres separes par UN espace, point ou tiret, 6 chiffres ou plus (une date, une annee ou un nombre de 5 chiffres ou moins reste permis);
+ * - telephone: dans une suite de groupes de chiffres separes par 1 a 3 caracteres non alphanumeriques (hors signes d'operation), 6 chiffres ou plus (une date complete, une annee ou un nombre de 5 chiffres ou moins reste permis);
  * - nom: un pseudo, un identifiant ou un surnom de la famille, en mot entier (« leo » ne refuse pas « leopard »);
  * - adresse postale (`postal: true`, le titre): un nombre suivi de rue, avenue…, ou un code postal de 5 chiffres suivi d'un mot.
- * shortcut: un nom propre ou d'ecole n'est pas detecte; un grand nombre ecrit avec des espaces (12 000 000) est refuse (cote prudent). A revoir avec de vraies questions.
+ * shortcut: un nom propre ou d'ecole n'est pas detecte; un grand nombre ecrit avec des espaces (12 000 000) et une liste de petits nombres (« 1, 2, 3, 4, 5, 6 ») sont refuses (cote prudent). A revoir avec de vraies questions.
  */
 export function personalData(raw: string, ctx: FilterContext, opts: { postal?: boolean } = {}): FilterReason | null {
   const norm = normalizeForFilter(raw);
   if (EMAIL.test(norm)) return 'email';
   if (WEB.test(norm)) return 'web';
-  for (const m of norm.matchAll(DIGIT_RUN)) if (digitsOf(m[0]) >= 6) return 'telephone';
+  for (const m of norm.replace(FULL_DATE, ' ').matchAll(DIGIT_RUN)) if (digitsOf(m[0]) >= 6) return 'telephone';
   const words = ` ${wordsOf(norm).join(' ')} `;
   for (const n of ctx.names) {
     const w = wordsOf(normalizeForFilter(n));

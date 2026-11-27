@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { keys } from '../../../shared/ddb/keys.js';
 import { ShareItemSchema } from '../../../shared/items.js';
 import { HttpError } from '../lib/http.js';
-import type { Db } from '../pipeline/ports.js';
+import { treeDbFrom, type Db } from '../pipeline/ports.js';
 import { createShare } from './create.js';
 import { hashToken } from './ctx.js';
 import { deleteForParent, deleteMine, listForParent, listMine } from './manage.js';
@@ -210,6 +210,21 @@ describe('shares-create', () => {
       await createShare(c, student, body(five(paidIds)) as never);
       expect(await k.db.get(keys.shareRef('stu1', 2))).toBeDefined();
     });
+  });
+});
+
+describe('suppression de l\'eleve en cours (relecture #111 m2)', () => {
+  it("apres closeSharing (port treeDbFrom), une creation est refusee (403) et n'ecrit rien", async () => {
+    const { k, paidIds } = await make();
+    await treeDbFrom(k.db).closeSharing!(keys.student('fam1', 'stu1'));
+    expect(await k.db.get(keys.student('fam1', 'stu1'))).toMatchObject({ sharing: false });
+    await fails(create(k, five(paidIds)), 403);
+    expect(snapshot(k, SHARE_ONLY)).toEqual([]);
+  });
+  it('closeSharing de treeDbFrom ne cree pas un eleve absent', async () => {
+    const { k } = await make();
+    await treeDbFrom(k.db).closeSharing!(keys.student('fam1', 'inconnu'));
+    expect(await k.db.get(keys.student('fam1', 'inconnu'))).toBeUndefined();
   });
 });
 

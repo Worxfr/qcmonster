@@ -4,7 +4,7 @@ import { keys } from '../../../shared/ddb/keys.js';
 import type { HttpError } from '../lib/http.js';
 import { hashToken } from './ctx.js';
 import { deleteMine, listForParent } from './manage.js';
-import { openShare, reportShare, ReportBodySchema } from './public.js';
+import { OpenBodySchema, openShare, reportShare, ReportBodySchema } from './public.js';
 import { create, fails, make, parent, snapshot, student, untouchable } from './testkit.js';
 
 const five = (ids: string[]) => ids.slice(0, 5);
@@ -45,6 +45,14 @@ describe('shares-open', () => {
     await fails(openShare({ ...k.ctx, db: untouchable(), publicEnabled: false }, 'A'.repeat(22)), 404);
     await fails(reportShare({ ...k.ctx, db: untouchable(), publicEnabled: false }, 'A'.repeat(22), 'autre'), 404);
     await fails(reportShare({ ...k.ctx, db: untouchable() }, 'court', 'autre'), 404);
+  });
+  it('relecture #111 m4: un jeton de plus de 200 caracteres recoit le meme 404 (pas de 400), sans acces a la base', async () => {
+    const { k } = await make();
+    expect(OpenBodySchema.safeParse({ token: 'x'.repeat(300) }).success).toBe(true);
+    expect(ReportBodySchema.safeParse({ token: 'x'.repeat(300), reason: 'autre' }).success).toBe(true);
+    const e = await fails(openShare({ ...k.ctx, db: untouchable() }, 'x'.repeat(3000)), 404, 'lien_indisponible');
+    expect(e.message).toBe("Ce lien n'est plus disponible");
+    await fails(reportShare({ ...k.ctx, db: untouchable() }, 'x'.repeat(3000), 'autre'), 404, 'lien_indisponible');
   });
   it("un jeton inconnu n'ecrit RIEN (ni DAY#, ni REPORT#)", async () => {
     const { k } = await make();

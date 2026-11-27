@@ -45,6 +45,9 @@ export interface Db {
 
 /** Adaptateur vers le port de suppression en cascade de shared/delete-tree.ts (cles seules). */
 export const treeDbFrom = (db: Db): TreeDb => ({
+  async closeSharing(key) {
+    await db.update(key, { set: { sharing: false }, cond: { exists: true, eq: { sharing: true } } });
+  },
   list: async (pk, skPrefix) =>
     (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}), ...(typeof i.hash === 'string' ? { hash: i.hash } : {}), ...(typeof i.famSlot === 'number' ? { famSlot: i.famSlot } : {}), ...(typeof i.sid === 'string' ? { sid: i.sid } : {}) })),
   remove: (ks) => db.remove(ks),
