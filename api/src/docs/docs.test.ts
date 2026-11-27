@@ -58,6 +58,16 @@ describe('docs-read et docs-delete (B2)', () => {
     expect(await t.db.get({ PK: 'DOC#D1', SK: 'CLAIM#01' })).toBeUndefined();
     expect(await t.db.get({ PK: 'JOB#J1', SK: 'TEXT#1' })).toBeUndefined();
   });
+  it("ancien cours avec liens de partage (#34): la fiche (avec `pages`) part avec ses liens, SHARE#, SHAREREF# et SHARESLOT#, sans erreur de cle", async () => {
+    const t = await world();
+    const h = 'a'.repeat(64);
+    await putDoc(t, 's1', 'D1', { coursId: 'C1', sectionIndex: 0, sectionCount: 1, pages: 4, pagesConsommees: 4 });
+    await t.db.put({ PK: 'STUDENT#s1', SK: 'SHAREREF#1', docId: 'D1', hash: h, famSlot: 1 });
+    await t.db.put({ PK: `SHARE#${h}`, SK: 'META', docId: 'D1' });
+    await t.db.put({ PK: 'FAMILY#f1', SK: 'SHARESLOT#1', sid: 's1' });
+    expect((await guarded(docsDelete)(t.ctx, ev('s1', 'DELETE /docs/{docId}', { params: { docId: 'D1' } }))).statusCode).toBe(204);
+    for (const k of [{ PK: 'STUDENT#s1', SK: 'DOC#D1' }, { PK: 'STUDENT#s1', SK: 'SHAREREF#1' }, { PK: `SHARE#${h}`, SK: 'META' }, { PK: 'FAMILY#f1', SK: 'SHARESLOT#1' }]) expect(await t.db.get(k), k.SK).toBeUndefined();
+  });
   it('supprimer une fiche ne touche jamais au cours', async () => {
     const t = await world();
     await putDoc(t, 's1', 'D1', { coursId: 'C1', sectionIndex: 0, sectionCount: 1 });
