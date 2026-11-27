@@ -50,7 +50,7 @@ export const treeDbFrom = (db: Db): TreeDb => ({
   },
   list: async (pk, skPrefix) =>
     (await db.query(pk, skPrefix)).map((i) => ({ PK: i.PK, SK: i.SK, ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}), ...(typeof i.hash === 'string' ? { hash: i.hash } : {}), ...(typeof i.famSlot === 'number' ? { famSlot: i.famSlot } : {}), ...(typeof i.sid === 'string' ? { sid: i.sid } : {}) })),
-  remove: (ks) => db.remove(ks),
+  remove: (ks) => db.remove(ks.map(({ PK, SK }) => ({ PK, SK }))), // DynamoDB refuse une cle avec autre chose que PK et SK
   async mutateTest(key, fn) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const cur = await db.get(key);
@@ -301,7 +301,10 @@ export function memoryDb(shared?: Map<string, unknown>): Db & { items: Map<strin
       return list(pk, skPrefix, true);
     },
     async remove(ks) {
-      for (const k of ks) items.delete(idOf(k));
+      for (const k of ks) {
+        if (Object.keys(k).some((a) => a !== 'PK' && a !== 'SK')) throw Object.assign(new Error('The provided key element does not match the schema'), { name: 'ValidationException' }); // comme DynamoDB
+        items.delete(idOf(k));
+      }
     },
   };
 }

@@ -34,7 +34,8 @@ function assertIds(...ids: string[]): void {
 }
 
 async function removeAll(db: TreeDb, ks: Key[]): Promise<number> {
-  if (ks.length) await db.remove(ks);
+  // DynamoDB refuse (ValidationException) une cle de BatchWriteItem qui porte autre chose que PK et SK: les elements listes portent `pages`, `docId`, `docIds`...
+  if (ks.length) await db.remove(ks.map(({ PK, SK }) => ({ PK, SK })));
   return ks.length;
 }
 
@@ -271,7 +272,10 @@ export function memoryTreeDb(initial: TreeKey[], hooks: { beforeWrite?: (key: Ke
       return [...set.values()].filter((k) => k.PK === pk && (!skPrefix || k.SK.startsWith(skPrefix)));
     },
     async remove(ks) {
-      for (const k of ks) set.delete(`${k.PK}|${k.SK}`);
+      for (const k of ks) {
+        if (Object.keys(k).some((a) => a !== 'PK' && a !== 'SK')) throw Object.assign(new Error('The provided key element does not match the schema'), { name: 'ValidationException' }); // comme DynamoDB
+        set.delete(`${k.PK}|${k.SK}`);
+      }
     },
   };
 }
