@@ -36,6 +36,9 @@ const EXPECTED = [
   // contract-v1.9 (E1)
   'GET /docs/{docId}/exercices', 'POST /docs/{docId}/exercices', 'GET /exercices/{exoId}', 'POST /exercices/{exoId}/indice', 'POST /exercices/{exoId}/solution',
   'POST /exercices/{exoId}/copies', 'POST /copies/{copieId}/submit', 'GET /copies/{copieId}', 'DELETE /copies/{copieId}', 'POST /cours/{coursId}/revisions', 'GET /cours/{coursId}/revisions/{revisionId}', 'POST /cours/{coursId}/revisions/{revisionId}/cancel',
+  // contract-v1.12 (S1 #34)
+  'GET /docs/{docId}/shareable', 'POST /me/shares', 'GET /me/shares', 'DELETE /me/shares/{shareId}', 'GET /students/{sid}/shares', 'DELETE /students/{sid}/shares',
+  'DELETE /students/{sid}/shares/{shareId}', 'POST /shares/open', 'POST /shares/report',
 ];
 const ops = Object.entries(spec.paths as Record<string, Record<string, { operationId: string; responses: Record<string, unknown> }>>).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ key: `${method.toUpperCase()} ${path}`, op })),
@@ -45,12 +48,12 @@ describe('contrat OpenAPI', () => {
   it('contient exactement les routes du design (section 6)', () => {
     expect(ops.map((o) => o.key).sort()).toEqual([...EXPECTED].sort());
   });
-  it('chaque operation a un operationId unique et est protegee par JWT, sauf POST /activation (publique)', () => {
+  it('chaque operation a un operationId unique et est protegee par JWT, sauf les trois routes publiques', () => {
     const ids = ops.map((o) => o.op.operationId);
     expect(new Set(ids).size).toBe(ids.length);
     expect(spec.security).toEqual([{ bearerAuth: [] }]);
     const publicOps = ops.filter((o) => (o.op as { security?: unknown[] }).security?.length === 0).map((o) => o.key);
-    expect(publicOps).toEqual(['POST /activation']);
+    expect(publicOps).toEqual(['POST /activation', 'POST /shares/open', 'POST /shares/report']);
   });
   it.each(ops.map((o) => [o.key, o.op] as const))('%s: exemple de succes valide', async (_k, op) => {
     const deref = (await $RefParser.dereference(structuredClone(spec))) as typeof spec;
@@ -96,7 +99,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.11.0');
+    expect(spec.info.version).toBe('1.12.0');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
@@ -381,5 +384,38 @@ describe('contrat v1.6 (F10): ajout de pages a un cours', () => {
     expect(spec.components.schemas.Sentence.properties.added.type).toBe('boolean');
     // jamais dans la transcription: aucun champ `added` n'est requis, et le parent n'a aucune route nouvelle
     expect(spec.components.schemas.Sentence.required).toEqual(['id', 'text']);
+  });
+  it('contrat 1.12.0 (S1 #34): partage de QCM, additif, SharedQuiz en liste blanche', () => {
+    const Q = spec.components.schemas.SharedQuestion.properties;
+    expect(Object.keys(Q).sort()).toEqual(['answer', 'choices', 'expected', 'kind', 'prompt']);
+    expect(Object.keys(spec.components.schemas.SharedQuiz.properties).sort()).toEqual(['expiresAt', 'questions', 'subject', 'title']);
+    const forbidden = ['docId', 'questionId', 'claimId', 'sid', 'studentId', 'familyId', 'fid', 'pseudo', 'loginId', 'displayName', 'xp', 'shareId', 'token'];
+    for (const k of forbidden) {
+      expect(Object.keys(Q)).not.toContain(k);
+      expect(Object.keys(spec.components.schemas.SharedQuiz.properties)).not.toContain(k);
+    }
+    // jeton: 22 caracteres base64url, dans le corps (jamais dans le chemin)
+    expect(zodSchemas.ShareOpenRequestSchema.safeParse({ token: 'AbCdEfGhIjKlMnOpQrStUv' }).success).toBe(true);
+    for (const bad of ['court', 'AbCdEfGhIjKlMnOpQrStUv1', 'AbCdEfGhIjKlMnOpQrSt+/']) expect(zodSchemas.ShareOpenRequestSchema.safeParse({ token: bad }).success).toBe(false);
+    expect(Object.keys(spec.paths).filter((p) => p.includes('{token}'))).toEqual([]);
+    // creation: 5 a 20 questions, titre 3 a 60, duree 1, 7 ou 30 jours
+    const base = { docId: 'd1', questionIds: ['a:qcm:01', 'a:qcm:02', 'a:qcm:03', 'a:qcm:04', 'a:qcm:05'], title: 'Cours' };
+    expect(zodSchemas.ShareCreateRequestSchema.safeParse(base).success).toBe(true);
+    expect(zodSchemas.ShareCreateRequestSchema.safeParse({ ...base, questionIds: base.questionIds.slice(1) }).success).toBe(false);
+    expect(zodSchemas.ShareCreateRequestSchema.safeParse({ ...base, ttlDays: 2 }).success).toBe(false);
+    expect(zodSchemas.ShareCreateRequestSchema.safeParse({ ...base, title: 'ab' }).success).toBe(false);
+    expect(spec.components.schemas.ShareToken.pattern).toBe('^[A-Za-z0-9_-]{22}$');
+    expect(spec.components.schemas.ShareCreateRequest.properties.ttlDays.enum).toEqual([1, 7, 30]);
+    // erreurs, `sharing` facultatif, export sans jeton ni question
+    expect(spec.components.schemas.Error.properties.code.enum).toEqual(expect.arrayContaining(['titre_refuse', 'questions_non_partageables', 'plafond_partages', 'lien_indisponible']));
+    expect(spec.components.schemas.Student.required).not.toContain('sharing');
+    expect(zodSchemas.StudentUpdateRequestSchema.safeParse({ sharing: false }).success).toBe(true);
+    expect(Object.keys(spec.components.schemas.ShareExport.properties).sort()).toEqual(['count', 'createdAt', 'expiresAt', 'reads', 'state', 'title']);
+    expect(spec.components.schemas.StudentExport.allOf[1].properties.shares.items.$ref).toBe('#/components/schemas/ShareExport');
+    // le parent ne recoit ni `outdated` ni question
+    expect(Object.keys(spec.components.schemas.ShareSummary.properties)).not.toContain('outdated');
+    expect(spec.components.schemas.MyShare.allOf[1].required).toEqual(['outdated']);
+    // les deux routes publiques n'ont pas de securite et repondent 404 unique
+    for (const r of ['/shares/open', '/shares/report']) expect(spec.paths[r].post.security).toEqual([]);
   });
 });

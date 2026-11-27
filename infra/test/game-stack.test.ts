@@ -147,7 +147,8 @@ describe('Api: les routes du lot L3 pointent vers les fonctions de la stack Game
     for (const h of mine) expect(integrations).toContain(`qcm-dev-${h}`);
     const routes = Object.values(api.findResources('AWS::ApiGatewayV2::Route')) as { Properties: { RouteKey: string; AuthorizationType?: string } }[];
     expect(routes.find((r) => r.Properties.RouteKey === 'POST /activation')?.Properties.AuthorizationType).toBe('NONE');
-    expect(routes.filter((r) => r.Properties.AuthorizationType === 'NONE')).toHaveLength(1);
+    // S1 (#34): deux routes publiques de plus (ouverture et signalement d'un partage), voir infra/test/stacks.test.ts
+    expect(routes.filter((r) => r.Properties.AuthorizationType === 'NONE').map((r) => r.Properties.RouteKey).sort()).toEqual(['POST /activation', 'POST /shares/open', 'POST /shares/report']);
   });
 });
 
