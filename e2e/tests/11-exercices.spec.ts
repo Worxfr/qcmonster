@@ -50,10 +50,40 @@ for (const [label, viewport] of [['PC', { width: 1280, height: 900 }], ['mobile'
     });
     const tag = label.toLowerCase();
 
+    test('énoncé lisible: contexte, données, question (chimie), sans pointillés ni débordement', async ({ page }) => {
+      const docId = await seedDoc('physique');
+      await exoFake.set({ seed: { docId, count: 1, pick: 5 } });
+      await login(page, 'eleve');
+      await page.goto(`/#/exercice/${docId}.01`);
+      await expect(page.getByRole('heading', { name: /Absorbance/ })).toBeVisible();
+      const enonce = page.getByLabel('Énoncé');
+      await expect(enonce.getByRole('heading', { name: /Données/ })).toBeVisible();
+      await expect(enonce.getByRole('heading', { name: 'Question', exact: true })).toBeVisible();
+      await expect(enonce.locator('.enonce-datum')).toHaveCount(4);
+      await expect(enonce.locator('.enonce-q')).toContainText('Quel pourcentage de la lumière incidente');
+      await expect(enonce.locator('.enonce-ctx')).toContainText('Une solution colorée');
+      await expect(enonce.locator('.enonce-big math')).toBeVisible(); // formule de transmission sur sa ligne
+      expect(await enonce.evaluate((el) => getComputedStyle(el).borderStyle)).not.toBe('dashed');
+      await shot(page, `5-enonce-chimie-${tag}`);
+      await noOverflow(page);
+    });
+
+    test('énoncé de maths court: données et question', async ({ page }) => {
+      const docId = await seedDoc();
+      await exoFake.set({ seed: { docId, count: 1, pick: 4 } });
+      await login(page, 'eleve');
+      await page.goto(`/#/exercice/${docId}.01`);
+      const enonce = page.getByLabel('Énoncé');
+      await expect(enonce.locator('.enonce-datum')).toHaveCount(2);
+      await expect(enonce.locator('.enonce-q')).toContainText('Calcule');
+      await shot(page, `5-enonce-maths-${tag}`);
+      await noOverflow(page);
+    });
+
     test('parcours complet: énoncé, 2 indices, 2 pages, attente, retour, nouvelle tentative, solution', async ({ page }) => {
       await openExercice(page, tag);
       // énoncé avec formule rendue (MathML), sans débordement
-      await expect(page.locator('.exo-enonce math').first()).toBeVisible();
+      await expect(page.locator('.enonce math').first()).toBeVisible();
       await expect(page.getByText('Jusqu\'à 10 points')).toBeVisible();
       await shot(page, `3-enonce-${tag}`);
       await noOverflow(page);
