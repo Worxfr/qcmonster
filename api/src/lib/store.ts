@@ -153,10 +153,14 @@ export function memoryStore(): Store & { items: Map<string, Item>; failNextCommi
   };
 }
 
-const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
+const treeKey = (i: Item): TreeKey => ({ PK: i.PK, SK: i.SK, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}), ...(typeof i.hash === 'string' ? { hash: i.hash } : {}), ...(typeof i.famSlot === 'number' ? { famSlot: i.famSlot } : {}), ...(typeof i.sid === 'string' ? { sid: i.sid } : {}) });
 
 /** Adaptateur `TreeDb` (shared/delete-tree.ts) au-dessus d'un Store: pour les tests; en production on passe `dynamoTreeDb` de shared. */
 export const storeTreeDb = (store: Store): TreeDb => ({
+  async closeSharing(key) {
+    const cur = await store.get(key);
+    if (cur && cur.sharing === true) await store.commit([{ item: { ...cur, sharing: false }, when: cur.v ?? 'any' }]);
+  },
   async mutateTest(key, fn) {
     for (let attempt = 0; attempt < 5; attempt++) {
       const cur = await store.get(key);

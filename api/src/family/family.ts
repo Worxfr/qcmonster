@@ -161,7 +161,7 @@ export async function exportFamily(deps: Deps, ctx: ParentCtx, opts: ExportOptio
 /** DELETE /family: tout, y compris les utilisateurs Cognito des eleves et du parent. Sans PITR: effectif immediatement. */
 export async function deleteFamily(deps: FamilyDeps, ctx: ParentCtx): Promise<void> {
   for (const s of await deps.store.query(`FAMILY#${ctx.familyId}`, 'STUDENT#')) await purgeStudent(deps, ctx.familyId, s);
-  await deleteFamilyTree(deps.tree, ctx.familyId);
+  await deleteFamilyTree(deps.tree, ctx.familyId, { deleteShares: true }); // S1: copies publiques des liens de chaque eleve d'abord
   await deps.archives.deleteFamily(ctx.familyId); // archives d'export encore presentes (exports/<familyId>/)
   await deps.identity.deleteUser(ctx.username); // en dernier: si une etape echoue, le parent peut relancer
 }

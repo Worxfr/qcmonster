@@ -99,7 +99,7 @@ describe('contrat OpenAPI', () => {
     expect(spec.components.schemas.ScanCreateRequest.properties.contentType.description).toMatch(/application\/pdf est refuse/);
   });
   it('contrat 1.3 additif: un client 1.2 reste valide, les nouveautes sont presentes', () => {
-    expect(spec.info.version).toBe('1.12.0');
+    expect(spec.info.version).toBe('1.12.1');
     // Requetes 1.2 inchangees
     expect(zodSchemas.ScanCreateRequestSchema.safeParse({ pages: 1, contentType: 'image/jpeg' }).success).toBe(true);
     expect(zodSchemas.ConfirmRequestSchema.safeParse({ corrections: [] }).success).toBe(true);
@@ -396,7 +396,10 @@ describe('contrat v1.6 (F10): ajout de pages a un cours', () => {
     }
     // jeton: 22 caracteres base64url, dans le corps (jamais dans le chemin)
     expect(zodSchemas.ShareOpenRequestSchema.safeParse({ token: 'AbCdEfGhIjKlMnOpQrStUv' }).success).toBe(true);
-    for (const bad of ['court', 'AbCdEfGhIjKlMnOpQrStUv1', 'AbCdEfGhIjKlMnOpQrSt+/']) expect(zodSchemas.ShareOpenRequestSchema.safeParse({ token: bad }).success).toBe(false);
+    // 1.12.1 (relecture #111 m4): le corps accepte toute chaine (le handler repond 404 pour un jeton mal forme, quelle qu'en soit la longueur); seul le jeton EMIS a le motif
+    for (const bad of ['court', 'AbCdEfGhIjKlMnOpQrStUv1', 'AbCdEfGhIjKlMnOpQrSt+/', 'x'.repeat(300)]) expect(zodSchemas.ShareOpenRequestSchema.safeParse({ token: bad }).success).toBe(true);
+    expect(zodSchemas.ShareOpenRequestSchema.safeParse({ token: 5 }).success).toBe(false);
+    expect(zodSchemas.ShareCreatedSchema.safeParse({ shareId: 'a', token: 'court', expiresAt: '2026-12-08T10:00:00Z' }).success).toBe(false);
     expect(Object.keys(spec.paths).filter((p) => p.includes('{token}'))).toEqual([]);
     // creation: 5 a 20 questions, titre 3 a 60, duree 1, 7 ou 30 jours
     const base = { docId: 'd1', questionIds: ['a:qcm:01', 'a:qcm:02', 'a:qcm:03', 'a:qcm:04', 'a:qcm:05'], title: 'Cours' };

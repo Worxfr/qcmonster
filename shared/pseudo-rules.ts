@@ -30,7 +30,7 @@ const BLOCK_STARTS_SQ = BLOCK_STARTS.map(squeeze);
  * Les mots courts (moins de 4 lettres de la liste « commence par ») ne comptent que mot par mot: sinon « Tgv » ou « Ntm » colles a un autre mot seraient refuses a tort.
  * shortcut: une liste courte reste contournable (f-u-c-k avec symboles, fautes voulues); la surveillance du parent est le filet.
  */
-function hasBlockedWord(name: string): boolean {
+export function hasBlockedWord(name: string): boolean {
   const flat = stripAccents(name).toLowerCase().replace(/[0134-57]/g, (d) => LEET[d] ?? d);
   const words = flat.split(/[^a-z]+/).filter(Boolean);
   const joined = words.join('');

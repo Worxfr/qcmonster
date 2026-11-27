@@ -19,6 +19,12 @@ export interface TreeDb {
   /** `studentId` et `docId` (signalements) sont lus pour rattacher un signalement a l'eleve; les autres elements n'en portent pas. */
   list(pk: string, skPrefix?: string): Promise<TreeKey[]>;
   remove(keys: Key[]): Promise<void>;
+  /**
+   * S1 (relecture #111 m2): pose `sharing: false` sur l'element eleve `FAMILY#<fid>/STUDENT#<sid>` (sans effet s'il n'existe pas). Appele AVANT la suppression des liens d'un eleve:
+   * une creation de lien qui part pendant la suppression echoue sur la verification de l'eleve (`sharing=true`), donc aucune copie orpheline. Ecrit par BatchWriteItem (PutRequest),
+   * seul droit d'ecriture des roles de suppression. Facultatif pour les faux ports de test; tous les ports reels l'implementent (test).
+   */
+  closeSharing?(key: Key): Promise<void>;
 }
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -139,6 +145,7 @@ export async function deleteStudentTree(db: TreeDb, familyId: string, sid: strin
   assertIds(familyId, sid);
   const fam = await db.list(`FAMILY#${familyId}`);
   if (!fam.some((k) => k.SK === `STUDENT#${sid}`)) return 0;
+  if (opts.deleteShares) await db.closeSharing?.({ PK: `FAMILY#${familyId}`, SK: `STUDENT#${sid}` }); // plus aucune creation possible, PUIS les liens
   let n = opts.deleteShares ? await deleteSharesOf(db, familyId, sid) : 0; // les copies publiques AVANT tout le reste
   const docIds = new Set<string>();
   for (const k of await db.list(`STUDENT#${sid}`)) {
@@ -209,6 +216,12 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, slee
       }
       throw new Error('suppression incomplete (conflit persistant)');
     },
+    async closeSharing(key) {
+      const cur = (await client.send(new GetCommand({ TableName: table, Key: key, ConsistentRead: true }))).Item;
+      if (!cur || cur.sharing !== true) return;
+      const r = await client.send(new BatchWriteCommand({ RequestItems: { [table]: [{ PutRequest: { Item: { ...cur, sharing: false } } }] } }));
+      if (Object.keys(r.UnprocessedItems ?? {}).length) throw new Error('fermeture du partage incomplete');
+    },
     async remove(ks) {
       for (let i = 0; i < ks.length; i += 25) {
         let req: Record<string, { DeleteRequest: { Key: Key } }[]> = { [table]: ks.slice(i, i + 25).map((Key) => ({ DeleteRequest: { Key } })) };
@@ -232,6 +245,10 @@ export function memoryTreeDb(initial: TreeKey[], hooks: { beforeWrite?: (key: Ke
       return state.mutations;
     },
     get: (k) => set.get(`${k.PK}|${k.SK}`),
+    async closeSharing(key) {
+      const cur = set.get(`${key.PK}|${key.SK}`);
+      if (cur && cur.sharing === true) set.set(`${key.PK}|${key.SK}`, { ...cur, sharing: false });
+    },
     async mutateTest(key, fn) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const live = set.get(`${key.PK}|${key.SK}`);

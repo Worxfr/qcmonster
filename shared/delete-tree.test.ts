@@ -346,4 +346,49 @@ describe('S1: deleteSharesOf et option deleteShares', () => {
     expect(sent[0].input.ProjectionExpression).toMatch(/#h\b/);
     expect(sent[0].input.ExpressionAttributeNames).toEqual({ '#h': 'hash' });
   });
+  it('S1 (#111 m2): closeSharing ecrit sharing:false par BatchWriteItem (PutRequest), seulement si le partage est ouvert', async () => {
+    const sent: { name: string; input: Record<string, unknown> }[] = [];
+    const item = { PK: 'FAMILY#f1', SK: 'STUDENT#s1', statut: 'actif', sharing: true, niveau: 'seconde' };
+    const mk = (cur: unknown) => ({ send: async (c: { constructor: { name: string }; input: Record<string, unknown> }) => (sent.push({ name: c.constructor.name, input: c.input }), c.constructor.name === 'GetCommand' ? { Item: cur } : {}) }) as unknown as DynamoDBDocumentClient;
+    await dynamoTreeDb(mk(item), 'T').closeSharing!({ PK: 'FAMILY#f1', SK: 'STUDENT#s1' });
+    expect(sent.map((s) => s.name)).toEqual(['GetCommand', 'BatchWriteCommand']);
+    expect(JSON.stringify(sent[1].input)).toContain('"PutRequest"');
+    expect(JSON.stringify(sent[1].input)).toContain('"sharing":false');
+    expect(JSON.stringify(sent[1].input)).toContain('"niveau":"seconde"'); // l'element est recopie, pas ecrase
+    sent.length = 0;
+    await dynamoTreeDb(mk({ ...item, sharing: false }), 'T').closeSharing!({ PK: 'FAMILY#f1', SK: 'STUDENT#s1' });
+    await dynamoTreeDb(mk(undefined), 'T').closeSharing!({ PK: 'FAMILY#f1', SK: 'STUDENT#s1' });
+    expect(sent.map((s) => s.name)).toEqual(['GetCommand', 'GetCommand']); // rien a ecrire
+  });
+  it('tous les ports reels de suppression implementent closeSharing', () => {
+    expect(typeof dynamoTreeDb({} as DynamoDBDocumentClient, 'T').closeSharing).toBe('function');
+    expect(typeof memoryTreeDb([]).closeSharing).toBe('function');
+  });
+});
+
+describe('S1 (#111 m2): deleteStudentTree ferme le partage AVANT de supprimer les liens', () => {
+  it("ordre: closeSharing, puis la liste des references; sans l'option, jamais d'appel", async () => {
+    const mem = memoryTreeDb([keys.family('f1'), { ...keys.student('f1', 's1'), sharing: true } as never]);
+    const log: string[] = [];
+    const spy: TreeDb = { ...mem, mutateTest: mem.mutateTest, closeSharing: async (k) => (log.push('close'), mem.closeSharing!(k)), list: async (pk, p) => (log.push(`list ${pk} ${p ?? ''}`), mem.list(pk, p)), remove: async (ks) => (log.push('remove'), mem.remove(ks)) };
+    await deleteStudentTree(spy, 'f1', 's1', { deleteShares: true });
+    expect(log[0]).toBe('list FAMILY#f1 '); // controle d'appartenance
+    expect(log[1]).toBe('close');
+    expect(log.findIndex((l) => l === 'list STUDENT#s1 SHAREREF#')).toBeGreaterThan(1);
+    log.length = 0;
+    const mem2 = memoryTreeDb([keys.family('f1'), keys.student('f1', 's1')]);
+    await deleteStudentTree({ ...mem2, mutateTest: mem2.mutateTest, closeSharing: async () => void log.push('close'), list: mem2.list, remove: mem2.remove }, 'f1', 's1');
+    expect(log).toEqual([]);
+  });
+  it('une famille supprimee ferme le partage de chaque eleve', async () => {
+    const mem = memoryTreeDb([keys.family('f1'), { ...keys.student('f1', 's1'), sharing: true } as never, { ...keys.student('f1', 's2'), sharing: true } as never]);
+    const closed: string[] = [];
+    await deleteFamilyTree({ ...mem, mutateTest: mem.mutateTest, closeSharing: async (k) => void closed.push(k.SK), list: mem.list, remove: mem.remove }, 'f1', { deleteShares: true });
+    expect(closed.sort()).toEqual(['STUDENT#s1', 'STUDENT#s2']);
+  });
+  it("le port memoire pose sharing:false sur l'eleve", async () => {
+    const mem = memoryTreeDb([keys.family('f1'), { ...keys.student('f1', 's1'), sharing: true } as never]);
+    await mem.closeSharing!(keys.student('f1', 's1'));
+    expect(mem.get(keys.student('f1', 's1'))).toMatchObject({ sharing: false });
+  });
 });

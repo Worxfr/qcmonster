@@ -2175,10 +2175,12 @@ export interface components {
             reads: number;
         };
         ShareOpenRequest: {
-            token: components["schemas"]["ShareToken"];
+            /** @description Jeton du lien (forme emise: 22 caracteres base64url, voir `ShareToken`). Toute autre chaine recoit le meme `404 lien_indisponible`, sans acces a la table. */
+            token: string;
         };
         ShareReportRequest: {
-            token: components["schemas"]["ShareToken"];
+            /** @description Jeton du lien (forme emise: 22 caracteres base64url, voir `ShareToken`). Toute autre chaine recoit le meme `404 lien_indisponible`, sans acces a la table. */
+            token: string;
             /** @enum {string} */
             reason: "inapproprie" | "donnees_perso" | "autre";
         };

@@ -111,17 +111,17 @@ export const ROUTES: ReadonlyArray<RouteDef> = [
   { route: 'POST /cours/{coursId}/revisions', handler: 'revise-create', owner: 'pipeline', throttle: { rate: 1, burst: 2 } },
   { route: 'GET /cours/{coursId}/revisions/{revisionId}', handler: 'revise-get', owner: 'pipeline', throttle: { rate: 5, burst: 10 } },
   { route: 'POST /cours/{coursId}/revisions/{revisionId}/cancel', handler: 'revise-cancel', owner: 'pipeline', throttle: { rate: 1, burst: 3 } },
-  // contract-v1.12 (S1 #34): partage de QCM par lien. Squelettes 501 (`owner` change dans la PR de S1-A). `POST /shares/open` et `POST /shares/report` sont PUBLIQUES.
+  // contract-v1.12 (S1 #34): partage de QCM par lien. Fournies par S1-A (`owner: 'game'`, neuf routes, huit fonctions); fermees par SHARE_PUBLIC_ENABLED. `POST /shares/open` et `POST /shares/report` sont PUBLIQUES.
   // Limites: docs/S1-design.md section 7. La route publique saturee ne gene aucune autre route (limite par route).
-  { route: 'GET /docs/{docId}/shareable', handler: 'shares-shareable' },
-  { route: 'POST /me/shares', handler: 'shares-create', throttle: { rate: 1, burst: 3 } },
-  { route: 'GET /me/shares', handler: 'shares-list', throttle: { rate: 5, burst: 10 } },
-  { route: 'DELETE /me/shares/{shareId}', handler: 'shares-delete', throttle: { rate: 2, burst: 5 } },
-  { route: 'GET /students/{sid}/shares', handler: 'shares-parent-list', throttle: { rate: 5, burst: 10 } },
-  { route: 'DELETE /students/{sid}/shares', handler: 'shares-parent-delete', throttle: { rate: 2, burst: 5 } },
-  { route: 'DELETE /students/{sid}/shares/{shareId}', handler: 'shares-parent-delete', throttle: { rate: 2, burst: 5 } },
-  { route: 'POST /shares/open', handler: 'shares-open', public: true, throttle: { rate: 3, burst: 6 } },
-  { route: 'POST /shares/report', handler: 'shares-report', public: true, throttle: { rate: 1, burst: 3 } },
+  { route: 'GET /docs/{docId}/shareable', handler: 'shares-shareable', owner: 'game' },
+  { route: 'POST /me/shares', handler: 'shares-create', owner: 'game', throttle: { rate: 1, burst: 3 } },
+  { route: 'GET /me/shares', handler: 'shares-list', owner: 'game', throttle: { rate: 5, burst: 10 } },
+  { route: 'DELETE /me/shares/{shareId}', handler: 'shares-delete', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  { route: 'GET /students/{sid}/shares', handler: 'shares-parent-list', owner: 'game', throttle: { rate: 5, burst: 10 } },
+  { route: 'DELETE /students/{sid}/shares', handler: 'shares-parent-delete', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  { route: 'DELETE /students/{sid}/shares/{shareId}', handler: 'shares-parent-delete', owner: 'game', throttle: { rate: 2, burst: 5 } },
+  { route: 'POST /shares/open', handler: 'shares-open', owner: 'game', public: true, throttle: { rate: 3, burst: 6 } },
+  { route: 'POST /shares/report', handler: 'shares-report', owner: 'game', public: true, throttle: { rate: 1, burst: 3 } },
 ];
 
 /** Lot qui fournira chaque handler (information; `owner` reste `skeleton` tant que le lot n'a pas fusionne). */

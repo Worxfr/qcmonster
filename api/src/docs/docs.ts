@@ -113,7 +113,7 @@ export async function docsDelete(ctx: Ctx, event: APIGatewayProxyEventV2): Res {
   const { sid, doc } = await findDoc(ctx, c, pathId(event, 'docId'));
   // M1 #90: une fiche touchee par une modification ouverte de son cours n'est pas supprimee (409, aucune ecriture); les autres fiches du cours restent supprimables.
   if (await ficheLockedByRevision(ctx, sid, doc)) return fail('etat_invalide', 'Une modification est en cours');
-  const n = await deleteDocTree(treeDbFrom(ctx.db), sid, pathId(event, 'docId'), { deleteFiles: (ks) => ctx.s3.deleteKeys(ks) });
+  const n = await deleteDocTree(treeDbFrom(ctx.db), sid, pathId(event, 'docId'), { deleteFiles: (ks) => ctx.s3.deleteKeys(ks), deleteShares: { familyId: c.familyId } }); // S1: les copies publiques des liens de la fiche partent AVANT elle
   if (n === 0) return fail('introuvable', 'Introuvable');
   // Le texte du cours (TEXT#, TTL 7 jours) part avec la fiche: une suppression demandee efface aussi la transcription.
   if (typeof doc.jobId === 'string') {

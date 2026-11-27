@@ -85,12 +85,12 @@ describe('garde: chaque handler verifie l\'identite du jeton', () => {
   const dir = new URL('../handlers/', import.meta.url);
   // E1: exo-gen, copie-correct et copie-fail sont invoquees par Lambda asynchrone et Step Functions (entree sans contenu), jamais par une route: pas de jeton.
   const ASYNC = ['exo-gen.ts', 'copie-correct.ts', 'copie-fail.ts'];
-  const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts' && !ASYNC.includes(f));
+  const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'runtime.ts' && f !== 'shares-runtime.ts' && !ASYNC.includes(f));
   it('20 handlers, tous relies a authOf ou requireAdmin (sauf l\'activation publique)', () => {
-    expect(files).toHaveLength(29); // 20 + 9 handlers E1 de la pile Game
+    expect(files).toHaveLength(37); // 20 + 9 handlers E1 + 8 handlers du partage (S1) de la pile Game
     for (const f of files) {
       const src = readFileSync(new URL(f, dir), 'utf8');
-      if (f === 'activation-post.ts') expect(src).not.toMatch(/authOf/); // route sans JWT
+      if (f === 'activation-post.ts' || f === 'shares-open.ts' || f === 'shares-report.ts') expect(src, f).not.toMatch(/authOf/); // routes sans JWT
       else if (f === 'admin-invitations.ts') expect(src).toMatch(/requireAdmin\(/); // groupe `admin` du jeton
       else expect(src, f).toMatch(/authOf\(/);
     }

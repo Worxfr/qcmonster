@@ -219,9 +219,9 @@ export const StudentShareListSchema = z.object({ "shares": z.array(z.object({ "s
 
 export const ShareExportSchema = z.object({ "title": z.string().max(60), "count": z.number().int().gte(5).lte(20), "createdAt": z.string().datetime({ offset: true }), "expiresAt": z.string().datetime({ offset: true }), "state": z.enum(["actif","suspendu"]).describe("`suspendu`: 3 signalements recus. L'expiration se lit sur `expiresAt`."), "reads": z.number().int().gte(0) }).describe("Un lien dans l'export. Ni jeton, ni copie, ni question.");
 
-export const ShareOpenRequestSchema = z.object({ "token": z.string().regex(new RegExp("^[A-Za-z0-9_-]{22}$")).describe("Jeton de 128 bits en base64url (22 caracteres). Jamais stocke (seul son hache SHA-256 l'est), renvoye une seule fois a la creation.") });
+export const ShareOpenRequestSchema = z.object({ "token": z.string().max(3000).describe("Jeton du lien (forme emise: 22 caracteres base64url, voir `ShareToken`). Toute autre chaine recoit le meme `404 lien_indisponible`, sans acces a la table.") });
 
-export const ShareReportRequestSchema = z.object({ "token": z.string().regex(new RegExp("^[A-Za-z0-9_-]{22}$")).describe("Jeton de 128 bits en base64url (22 caracteres). Jamais stocke (seul son hache SHA-256 l'est), renvoye une seule fois a la creation."), "reason": z.enum(["inapproprie","donnees_perso","autre"]) });
+export const ShareReportRequestSchema = z.object({ "token": z.string().max(3000).describe("Jeton du lien (forme emise: 22 caracteres base64url, voir `ShareToken`). Toute autre chaine recoit le meme `404 lien_indisponible`, sans acces a la table."), "reason": z.enum(["inapproprie","donnees_perso","autre"]) });
 
 export const SharedQuestionSchema = z.object({ "kind": z.enum(["qcm","gap"]), "prompt": z.string().max(1000), "choices": z.array(z.string().max(300)).min(4).max(4).optional(), "answer": z.number().int().gte(0).lte(3).optional(), "expected": z.string().max(300).optional() }).describe("Liste blanche: aucun identifiant de fiche, de question, d'affirmation, d'eleve ou de famille. `qcm`: `choices` et `answer`. `gap`: `expected` (compare avec `normalizeGap`).");
 

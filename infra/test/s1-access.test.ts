@@ -42,7 +42,7 @@ const covers = (key: string, p: Partition) => key !== '*' && key === `${p}*`;
  * (retirer alors la ligne). Pour failJob et append, « pas de suppression des partages » repose donc sur le CODE (option absente, test d'appelants ci-dessous), pas sur IAM.
  */
 const KNOWN_TABLE_WIDE = (env: Env) => [`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`];
-const NEW_ROLE_KEY: Record<ShareRole, string> = { shareMake: 'shareMake', shareManage: 'shareManage', sharePublic: 'sharePublic' };
+const NEW_ROLE_KEY: Record<ShareRole, string> = { shareMake: 'shareMake', shareManage: 'shareManage', sharePublic: 'sharePublic', shareRead: 'shareRead', shareView: 'shareView' };
 const DELETE_ROLE_NAME = (env: Env, r: DeleteRole) => ({ delete: `qcm-${env}-pipeline-api-delete-role`, cours: `qcm-${env}-pipeline-api-cours-role`, admin: `qcm-${env}-game-admin-role` })[r];
 
 function index(env: Env) {
@@ -79,7 +79,9 @@ function shareActions(stmts: Stmt[]): Map<string, string[]> {
 for (const env of ENVS) {
   describe(`S1-D (${env}): droits synthetises du partage de QCM`, () => {
     const { stmtsOfRole, roleOfFn } = index(env);
-    const stmts = (role: string) => { const s = stmtsOfRole.get(role); expect(s, `role ${role} introuvable dans le gabarit`).toBeDefined(); return s!.filter((x) => x.Effect === 'Allow'); };
+    const stmts = (role: string) => { const s = stmtsOfRole.get(role); expect(s, `role ${role} introuvable dans le gabarit`).toBeDefined(); return s!.filter((x) => x.Effect === 'Allow' && !acts(x).every((a) => /^logs:/.test(a))); };
+    // S1-A: les fonctions ecrivent leurs journaux; ces instructions-la ne portent que CreateLogStream et PutLogEvents, jamais sur `*`.
+    const logStmts = (role: string) => stmtsOfRole.get(role)!.filter((x) => acts(x).some((a) => /^logs:/.test(a)));
 
     for (const role of Object.keys(NEW_ROLE_KEY) as ShareRole[]) {
       it(`${role}: exactement les droits de shared/share-access.ts (verbes et partitions, dans les deux sens), sans joker`, () => {
@@ -99,6 +101,47 @@ for (const env of ENVS) {
         for (const [a, parts] of wanted) expect([...granted.get(a)!].sort(), `${name}: partitions de ${a}`).toEqual([...parts].sort());
       });
     }
+
+    for (const role of Object.keys(NEW_ROLE_KEY) as ShareRole[]) {
+      it(`${role}: les journaux de ses fonctions seulement (CreateLogStream, PutLogEvents), jamais de ressource *`, () => {
+        const ls = logStmts(`qcm-${env}-game-${NEW_ROLE_KEY[role]}-role`);
+        expect(ls.length).toBeGreaterThan(0);
+        for (const st of ls) {
+          expect(acts(st).sort()).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
+          expect(JSON.stringify(st.Resource)).not.toMatch(/"\*"/);
+        }
+      });
+    }
+
+    // S1-A, obligation 3: le role de CHAQUE fonction deployee possede tous les droits que son handler declare (et celui qu'il n'a pas declare lui manque).
+    it('chaque fonction du partage tourne sous le role que shared/share-access.ts lui donne, et ce role possede tous ses droits', () => {
+      for (const [name, h] of Object.entries(SHARE_HANDLERS)) {
+        const role = roleOfFn.get(`qcm-${env}-${name}`);
+        expect(role, `${name}: fonction introuvable dans les gabarits`).toBe(`qcm-${env}-game-${NEW_ROLE_KEY[h.role]}-role`);
+        const s = stmts(role!);
+        for (const v of VERBS) {
+          for (const p of h.access[v]) {
+            const ok = s.some((st) => acts(st).includes(SHARE_DDB_ACTIONS[v]) && (leadingOf(st) ?? []).includes(`${p}*`));
+            expect(ok, `${name}: ${SHARE_DDB_ACTIONS[v]} sur ${p} manque au role ${role}`).toBe(true);
+          }
+        }
+      }
+    });
+
+    it('S1-A (#111 m5): shareRead et shareView sont en LECTURE SEULE (GetItem, Query); shareView jamais DOC#; seuls shareMake, shareManage et sharePublic ecrivent', () => {
+      for (const r of ['shareRead', 'shareView']) {
+        const s = stmts(`qcm-${env}-game-${r}-role`);
+        expect(s.flatMap(acts).sort(), r).toEqual(['dynamodb:GetItem', 'dynamodb:Query']);
+      }
+      for (const st of stmts(`qcm-${env}-game-shareView-role`)) expect(leadingOf(st)!.some((k) => covers(k, 'DOC#'))).toBe(false);
+      for (const st of stmts(`qcm-${env}-game-shareRead-role`)) expect(leadingOf(st)!.some((k) => covers(k, 'SHARE#'))).toBe(false); // le choix des questions ne lit jamais une copie publique
+      expect(shareAccessOf('shareManage').batch.length).toBeGreaterThan(0); // la suppression reste a shareManage
+      const handlersOf = (role: string) => Object.entries(SHARE_HANDLERS).filter(([, h]) => h.role === role).map(([n]) => n).sort();
+      expect(handlersOf('shareRead')).toEqual(['shares-shareable']);
+      expect(handlersOf('shareView')).toEqual(['shares-list', 'shares-parent-list']);
+      expect(handlersOf('shareManage')).toEqual(['shares-delete', 'shares-parent-delete']);
+      expect(handlersOf('shareMake')).toEqual(['shares-create']);
+    });
 
     it('les handlers du partage sont les huit de la conception; chaque role nouveau porte au moins un handler', () => {
       expect(Object.keys(SHARE_HANDLERS).sort()).toEqual(['shares-create', 'shares-delete', 'shares-list', 'shares-open', 'shares-parent-delete', 'shares-parent-list', 'shares-report', 'shares-shareable']);
@@ -137,8 +180,9 @@ for (const env of ENVS) {
       });
     }
 
-    it('RECIPROQUE: parmi tous les roles de toutes les stacks, seuls les six roles declares atteignent SHARE#; manage, play, pipeline et revise n\'ont rien', () => {
-      const allowed = new Set<string>([...Object.keys(NEW_ROLE_KEY).map((k) => `qcm-${env}-game-${k}-role`), ...(['delete', 'cours', 'admin'] as const).map((r) => DELETE_ROLE_NAME(env, r))]);
+    it('RECIPROQUE: parmi tous les roles de toutes les stacks, seuls les six roles declares (hors shareRead) atteignent SHARE#; manage, play, pipeline et revise n\'ont rien', () => {
+      const allowed = new Set<string>([...Object.keys(NEW_ROLE_KEY).filter((k) => k !== 'shareRead').map((k) => `qcm-${env}-game-${k}-role`), // shareRead (choix des questions) ne lit jamais SHARE#
+         ...(['delete', 'cours', 'admin'] as const).map((r) => DELETE_ROLE_NAME(env, r))]);
       const reaching = [...stmtsOfRole.keys()].filter((n) => shareActions(stmtsOfRole.get(n)!).size > 0);
       expect(reaching.filter((n) => !allowed.has(n)).sort(), 'role non declare qui atteint SHARE# (hors ecart connu)').toEqual(KNOWN_TABLE_WIDE(env).sort());
       for (const n of KNOWN_TABLE_WIDE(env)) expect(stmtsOfRole.get(n)!.some((st) => st.Effect === 'Allow' && acts(st).some((a) => DATA.test(a)) && leadingOf(st) === undefined), `${n}: l'ecart connu n'existe plus, retirer la ligne`).toBe(true);
@@ -196,5 +240,15 @@ describe('S1-D: appelants de deleteDocTree et des autres suppressions en cascade
   });
 });
 
-// S1-A (docs/S1-design.md section 15): exiger `deleteShares` dans les quatre fichiers de SHARE_DELETE_CALLERS quand leurs handlers passent l'option.
-it.todo('S1-A: docs.ts, cours.ts, students.ts et family.ts passent l\'option deleteShares (un oubli laisserait des copies publiques apres suppression)');
+// S1-A (docs/S1-design.md section 15, relecture #107 I1): les quatre fichiers de SHARE_DELETE_CALLERS PASSENT l'option `deleteShares` a la fonction annoncee. Un oubli laisserait
+// des copies publiques lisibles apres la suppression de la fiche, du cours, de l'eleve ou de la famille.
+describe('S1-A: les quatre appelants passent l\'option deleteShares', () => {
+  for (const [h, c] of Object.entries(SHARE_DELETE_CALLERS)) {
+    it(`${h} (${c.file}): ${c.tree}(...) avec deleteShares`, () => {
+      const s = sources.find((x) => x.rel === c.file);
+      expect(s, `${c.file} introuvable`).toBeDefined();
+      const call = new RegExp(`\\b${c.tree}\\s*\\([^;]*\\bdeleteShares\\b`, 's');
+      expect(s!.code, `${h}: ${c.tree} sans deleteShares`).toMatch(call);
+    });
+  }
+});
