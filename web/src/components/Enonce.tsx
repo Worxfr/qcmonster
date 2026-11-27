@@ -2,6 +2,15 @@ import { useMemo } from 'react';
 import { isBigFormula, parseEnonce, type Sentence } from '../enonce';
 import { Formula, Rich } from './Math';
 
+/** Une valeur longue (nombre puis unite) passe sur deux lignes: `symbole = nombre` puis l'unite, pour ne pas etre coupee sur mobile. */
+function splitUnit(tex: string): [string, string?] {
+  const eq = tex.indexOf('=');
+  const m = tex.length > 30 ? /(?:\\[ ,;]\s*)*\\mathrm\{/.exec(tex.slice(eq)) : null;
+  if (!m || eq < 0 || m.index === 0) return [tex];
+  const at = eq + m.index;
+  return [tex.slice(0, at).trim(), tex.slice(at).replace(/^(?:\\[ ,;]\s*)+/, '').trim()];
+}
+
 /** Une phrase; une formule longue qui la termine passe sur sa propre ligne, en grand. */
 function Phrase({ s }: { s: Sentence }) {
   const last = s[s.length - 1];
@@ -33,7 +42,7 @@ export function Enonce({ text }: { text: string }) {
             {e.donnees.map((d, i) => (
               <div key={i} className="enonce-datum">
                 {d.label && <dt>{d.label}</dt>}
-                <dd><Formula tex={d.tex} /></dd>
+                <dd>{(([v, u]) => <><Formula tex={v} />{u && <span className="enonce-unit"><Formula tex={u} /></span>}</>)(splitUnit(d.tex))}</dd>
               </div>
             ))}
           </dl>

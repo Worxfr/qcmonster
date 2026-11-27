@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { dataFormula, parseEnonce } from './enonce';
 
-const CHIMIE = 'Une solution colorée est placée dans une cuve de trajet optique $l = 1{,}0\\ \\mathrm{cm}$. Sa concentration vaut $c = 2{,}0\\times10^{-5}\\ \\mathrm{mol\\cdot L^{-1}}$.\nLe coefficient d\'absorption molaire vaut $\\varepsilon_{450} = 1{,}2\\times10^{4}\\ \\mathrm{L\\cdot mol^{-1}\\cdot cm^{-1}}$ à 450 nm et $\\varepsilon_{650} = 3{,}0\\times10^{3}\\ \\mathrm{L\\cdot mol^{-1}\\cdot cm^{-1}}$ à 650 nm. On rappelle la loi de Beer-Lambert $A = \\varepsilon\\, l\\, c$. Quel pourcentage de la lumière incidente à 650 nm est absorbé ?';
 const plain = (s: { text?: string; math?: string }[]) => s.map((x) => x.text ?? `$${x.math}$`).join('');
 
+const CHIMIE = 'Une solution colorée est placée dans une cuve de trajet optique $l = 1{,}0\\ \\mathrm{cm}$. Sa concentration vaut $c = 2{,}0\\times10^{-5}\\ \\mathrm{mol\\cdot L^{-1}}$.\nLe coefficient d\'absorption molaire vaut $\\varepsilon(450\\ \\mathrm{nm}) = 2{,}5\\times10^{4}\\ \\mathrm{L\\cdot mol^{-1}\\cdot cm^{-1}}$ à 450 nm et $\\varepsilon(650\\ \\mathrm{nm}) = 3{,}0\\times10^{3}\\ \\mathrm{L\\cdot mol^{-1}\\cdot cm^{-1}}$ à 650 nm. On rappelle la loi de Beer-Lambert $A = \\varepsilon\\, l\\, c$. Quel pourcentage de la lumière incidente à 650 nm est absorbé ?';
 describe('dataFormula', () => {
   it('reconnaît symbole = valeur unité', () => {
     expect(dataFormula('l = 1{,}0\\ \\mathrm{cm}')).toBe(true);
     expect(dataFormula('c = 2{,}0\\times10^{-5}\\ \\mathrm{mol\\cdot L^{-1}}')).toBe(true);
     expect(dataFormula('m = 0{,}2\\ \\mathrm{kg}')).toBe(true);
+    expect(dataFormula('\\varepsilon(450\\ \\mathrm{nm}) = 2{,}5\\times10^{4}\\ \\mathrm{L\\cdot mol^{-1}}')).toBe(true);
   });
   it('refuse une relation ou une définition', () => {
     expect(dataFormula('E_c = \\dfrac{1}{2} m v^2')).toBe(false);
@@ -25,7 +26,7 @@ describe('parseEnonce', () => {
     expect(e).not.toBeNull();
     expect(e.questions).toHaveLength(1);
     expect(plain(e.questions[0])).toBe('Quel pourcentage de la lumière incidente à 650 nm est absorbé ?');
-    expect(e.donnees.map((d) => d.tex.split('=')[0].trim())).toEqual(['l', 'c', '\\varepsilon_{450}', '\\varepsilon_{650}']);
+    expect(e.donnees.map((d) => d.tex.split('=')[0].trim())).toEqual(['l', 'c', '\\varepsilon(450\\ \\mathrm{nm})', '\\varepsilon(650\\ \\mathrm{nm})']);
     expect(e.donnees.map((d) => d.label)).toEqual(['Trajet optique', 'Concentration', "Coefficient d'absorption molaire (à 450 nm)", "Coefficient d'absorption molaire (à 650 nm)"]);
     expect(e.contexte.map(plain)[0]).toBe('Une solution colorée est placée dans une cuve.');
     // la phrase de contexte garde son texte, la loi de Beer-Lambert n'est pas une donnée
@@ -35,12 +36,32 @@ describe('parseEnonce', () => {
   it('énoncé de maths court: contexte, données, question', () => {
     const e = parseEnonce('Un triangle $ABC$ est rectangle en $A$ avec $AB = 6$ et $AC = 8$.\nCalcule $BC$.')!;
     expect(e.donnees.map((d) => d.tex)).toEqual(['AB = 6', 'AC = 8']);
+    expect(e.contexte.map(plain)).toEqual(['Un triangle $ABC$ est rectangle en $A$.']); // les valeurs ne sont pas en double dans le contexte
     expect(e.questions.map(plain)).toEqual(['Calcule $BC$.']);
   });
   it('sans verbe clair devant la valeur: pas de nom inventé, la phrase reste en contexte', () => {
     const e = parseEnonce('Une balle de masse $m = 0{,}2\\ \\mathrm{kg}$ roule à $v = 3\\ \\mathrm{m/s}$.\nCalcule son énergie.')!;
     expect(e.donnees.every((d) => d.label === undefined)).toBe(true);
     expect(plain(e.contexte[0])).toContain('roule à');
+  });
+  it('numérotation « 1. 2. 3. »: aucun numéro orphelin dans le contexte', () => {
+    const e = parseEnonce('Soit $f(x) = 3x - 5$.\n1. Calcule $f(4)$.\n2. Trouve $x$.\n3. Trace la courbe.')!;
+    expect(e.contexte.map(plain)).toEqual(['Soit $f(x) = 3x - 5$.']);
+    expect(e.questions.map(plain)).toEqual(['Calcule $f(4)$.', 'Trouve $x$.', 'Trace la courbe.']);
+    expect(parseEnonce('1. Calcule $f(4)$.\n2) Trouve $x$.')!.contexte).toEqual([]);
+  });
+  it('deux données de même symbole restent distinguables', () => {
+    const e = parseEnonce('Les durées valent $t = 2\\ \\mathrm{h}$ et $t = 1\\ \\mathrm{h}$. Calcule leur somme.')!;
+    expect(e.donnees).toHaveLength(2);
+    expect(new Set(e.donnees.map((d) => d.label)).size).toBe(2);
+  });
+  it('une phrase qui ne se coupe pas proprement reste entière, sans doublon de ses valeurs', () => {
+    const e = parseEnonce('Un train roule pendant $t = 2\\ \\mathrm{h}$ puis $t = 1\\ \\mathrm{h}$. Calcule la durée.')!;
+    expect(e.donnees).toHaveLength(0);
+    expect(plain(e.contexte[0])).toContain('roule pendant');
+  });
+  it('un point après un nombre en fin de phrase coupe bien la phrase', () => {
+    expect(parseEnonce('Il y a 3. Calcule la somme demandée ici.')!.questions).toHaveLength(1);
   });
   it('plusieurs questions, numérotation retirée du texte', () => {
     const e = parseEnonce('Soit $f(x) = 3x - 5$.\n1. Calcule $f(4)$.\n2) Trouve le nombre $x$ tel que $f(x) = 7$.')!;

@@ -62,6 +62,8 @@ for (const [label, viewport] of [['PC', { width: 1280, height: 900 }], ['mobile'
       await expect(enonce.locator('.enonce-datum')).toHaveCount(4);
       await expect(enonce.locator('.enonce-q')).toContainText('Quel pourcentage de la lumière incidente');
       await expect(enonce.locator('.enonce-ctx')).toContainText('Une solution colorée');
+      await expect(enonce.locator('.enonce-datum').nth(2)).toContainText('à 450 nm'); // ε(450 nm) est bien une donnée
+      await expect(enonce.locator('.enonce-ctx')).not.toContainText('2,5'); // et n'est plus en double dans le contexte
       await expect(enonce.locator('.enonce-big math')).toBeVisible(); // formule de transmission sur sa ligne
       expect(await enonce.evaluate((el) => getComputedStyle(el).borderStyle)).not.toBe('dashed');
       await shot(page, `5-enonce-chimie-${tag}`);
@@ -76,7 +78,34 @@ for (const [label, viewport] of [['PC', { width: 1280, height: 900 }], ['mobile'
       const enonce = page.getByLabel('Énoncé');
       await expect(enonce.locator('.enonce-datum')).toHaveCount(2);
       await expect(enonce.locator('.enonce-q')).toContainText('Calcule');
+      await expect(enonce.locator('.enonce-ctx')).toContainText('Un triangle');
+      await expect(enonce.locator('.enonce-ctx')).not.toContainText('6'); // AB = 6 n'est que dans les données
       await shot(page, `5-enonce-maths-${tag}`);
+      await noOverflow(page);
+    });
+
+    test('énoncé numéroté 1. 2. 3.: trois questions, aucun numéro orphelin dans le contexte', async ({ page }) => {
+      const docId = await seedDoc();
+      await exoFake.set({ seed: { docId, count: 1, pick: 6 } });
+      await login(page, 'eleve');
+      await page.goto(`/#/exercice/${docId}.01`);
+      const enonce = page.getByLabel('Énoncé');
+      await expect(enonce.locator('.enonce-qs > li')).toHaveCount(3);
+      await expect(enonce.locator('.enonce-ctx p').filter({ hasText: /^\s*\d{1,2}[.)]\s*$/ })).toHaveCount(0);
+      await expect(enonce.locator('.enonce-ctx p')).toHaveCount(1);
+      await shot(page, `5-enonce-multi-${tag}`);
+      await noOverflow(page);
+    });
+
+    test('énoncé sans consigne ni valeur: un seul bloc (repli), sans pointillés', async ({ page }) => {
+      const docId = await seedDoc();
+      await exoFake.set({ seed: { docId, count: 1, pick: 7 } });
+      await login(page, 'eleve');
+      await page.goto(`/#/exercice/${docId}.01`);
+      const enonce = page.getByLabel('Énoncé');
+      await expect(enonce).toHaveClass(/enonce-plain/);
+      await expect(enonce.locator('.enonce-data, .enonce-q')).toHaveCount(0);
+      await shot(page, `5-enonce-repli-${tag}`);
       await noOverflow(page);
     });
 

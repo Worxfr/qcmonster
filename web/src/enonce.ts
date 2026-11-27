@@ -31,8 +31,9 @@ export function dataFormula(m: string): boolean {
   const parts = m.split('=');
   if (parts.length !== 2) return false;
   const lhs = parts[0].trim();
+  const lhsLen = lhs.replace(UNIT_WRAP, '').replace(/\\[ ,;:!]|\s/g, '').length; // sans unites ni espaces: `\varepsilon(450\ \mathrm{nm})` compte 19
   const rhs = parts[1].replace(UNIT_WRAP, '').replace(/\\(?:times|cdot|pm|approx|sim|%|[,;:! ])/g, '').replace(/[\d\s.,{}^+\-−~%]/g, '');
-  return lhs.length > 0 && lhs.length <= 24 && /\d/.test(parts[1]) && !/\\(?:frac|dfrac|sum|int)/.test(lhs) && rhs === '' && !/\\ne|\\le|\\ge/.test(m);
+  return lhsLen > 0 && lhsLen <= 24 && /\d/.test(parts[1]) && !/\\(?:frac|dfrac|sum|int)/.test(lhs) && rhs === '' && !/\\ne|\\le|\\ge/.test(m);
 }
 
 /** Formule longue ou a fraction: affichee sur sa propre ligne quand elle termine une phrase. */
@@ -40,13 +41,13 @@ export const isBigFormula = (m: string): boolean => /\\(?:d?frac|sum|int|sqrt|li
 
 const plainOf = (s: Sentence): string => s.map((x) => ('text' in x ? x.text : ' ')).join('').replace(/\s+/g, ' ').trim();
 
-/** Phrases (hors formules): coupe apres `. ? !` suivi d'une majuscule, et a chaque saut de ligne. */
+/** Phrases (hors formules): coupe apres `. ? !` suivi d'une majuscule, et a chaque saut de ligne, mais jamais juste apres un numero de liste (`1.`). */
 function sentences(segs: Segment[]): Sentence[] {
   const math: string[] = [];
   const flat = segs.map((s) => ('text' in s ? s.text : `${OPEN}${math.push(s.math) - 1}${CLOSE}`)).join('');
   const out: Sentence[] = [];
   for (const line of flat.split(/\n+/)) {
-    for (const piece of line.split(/(?<=[.?!…])\s+(?=[A-ZÀ-ÝÉ«"(\d]|\uE000)/u)) {
+    for (const piece of line.split(/(?<=[.?!…])(?<!^\d{1,2}[.)])\s+(?=[A-ZÀ-ÝÉ«"(\d]|\uE000)/u)) {
       const cleaned = piece.replace(LEAD_NUM, '').trim();
       if (!cleaned) continue;
       const rebuilt: Sentence = [];
@@ -76,33 +77,89 @@ function cutLabel(buf: string): { label?: string; rest: string } | undefined {
   return m ? { label: cap(m[2]), rest: m[1] } : undefined;
 }
 
-/** Une phrase qui ne contient que des valeurs `symbole = valeur`: elle est decoupee en contexte (reste) et lignes de donnees. `undefined`: on la garde telle quelle. */
-function splitData(s: Sentence): { rest: string[]; data: Donnee[] } | undefined {
-  const items: { buf: string; tex: string }[] = [];
-  let buf = '';
+const CONNECTOR_END = /(?:^|\s)(?:avec|et|ou|où|puis|soit)\s*$|[,;:]\s*$/i;
+const hasMath = (b: Sentence): boolean => b.some((x) => 'math' in x);
+
+/**
+ * Une phrase dont les valeurs `symbole = valeur` sortent en lignes de donnees. Elle reste en contexte SANS ces valeurs:
+ * le texte restant garde ses mots, sauf les mots de liaison de fin (« avec », « et », « vaut »...) et ceux qui deviennent le nom de la grandeur.
+ * `undefined` si la phrase ne se coupe pas proprement: elle reste alors entiere en contexte, valeurs comprises (pas de doublon).
+ */
+function splitData(s: Sentence): { rest: Sentence; data: Donnee[] } | undefined {
+  const items: { buf: Sentence; tex: string }[] = [];
+  let buf: Sentence = [];
   for (const x of s) {
-    if ('text' in x) buf += x.text;
-    else if (dataFormula(x.math)) { items.push({ buf, tex: x.math }); buf = ''; } else return undefined;
+    if ('math' in x && dataFormula(x.math)) { items.push({ buf, tex: x.math }); buf = []; } else buf.push(x);
   }
   if (items.length === 0) return undefined;
-  const data: Donnee[] = [];
-  const rest: string[] = [];
+  const rest: Sentence = [];
+  const addRest = (seg: Sentence) => { if (rest.length) rest.push({ text: ' ' }); rest.push(...seg); };
   const base: (string | undefined)[] = [];
   const qual: (string | undefined)[] = items.map(() => undefined);
-  const tail = QUALIF.exec(buf);
-  if (tail) qual[items.length - 1] = tail[1].trim();
-  else if (buf.replace(/[\s.,;:]/g, '')) rest.push(buf.trim());
+  const textOf = (b: Sentence) => plainOf(b);
+  const trimConnector = (b: Sentence): Sentence | undefined => { // retire un mot de liaison final; sans liaison et avec un mot ensuite: pas sur
+    const out = b.slice();
+    const last = out[out.length - 1];
+    if (!last || 'math' in last) return out;
+    if (!CONNECTOR_END.test(last.text) && /\S/.test(last.text)) return undefined;
+    out[out.length - 1] = { text: last.text.replace(CONNECTOR_END, '').replace(/\s+$/, '') };
+    return out;
+  };
+
+  if (!hasMath(buf)) {
+    const tail = QUALIF.exec(textOf(buf));
+    if (tail) qual[items.length - 1] = tail[1].trim();
+    else if (buf.length && /[\p{L}\d]/u.test(textOf(buf))) addRest([{ text: textOf(buf).replace(/^[\s.,;:]+|[\s]+$/g, '') }]);
+  } else addRest(buf);
+
   for (let i = 0; i < items.length; i++) {
-    const q = i > 0 ? QUALIF.exec(items[i].buf) : null;
-    if (q) { qual[i - 1] = q[1].trim(); base[i] = qual[i - 1] !== undefined ? base[i - 1] : undefined; continue; }
-    if (i > 0 && !items[i].buf.replace(/\b(?:et|ou)\b|[\s.,;:]/gi, '')) { base[i] = undefined; continue; }
-    const c = cutLabel(items[i].buf);
-    if (!c) return undefined;
+    const b = items[i].buf;
+    const t = textOf(b);
+    const q = i > 0 && !hasMath(b) ? QUALIF.exec(t) : null;
+    if (q) { qual[i - 1] = q[1].trim(); base[i] = base[i - 1]; continue; }
+    if (i > 0 && !hasMath(b) && !t.replace(/\b(?:et|ou)\b|[\s.,;:]/gi, '')) { base[i] = undefined; continue; }
+    if (hasMath(b)) { // des formules non-donnees dans le texte qui precede: il reste en contexte, sans nom de grandeur
+      const c = trimConnector(b);
+      if (!c) return undefined;
+      if (i === 0) rest.length = 0;
+      addRest(c);
+      base[i] = undefined;
+      continue;
+    }
+    const c = cutLabel(t);
+    if (!c) {
+      // aucun nom sur: seuls des mots de liaison de fin sont admis (« Un triangle ... avec »)
+      const tc = trimConnector(b);
+      if (!tc || !CONNECTOR_END.test(t)) return undefined;
+      addRest(tc);
+      base[i] = undefined;
+      continue;
+    }
     base[i] = c.label;
-    if (c.rest) rest.push(c.rest + '.');
+    if (c.rest) addRest([{ text: c.rest }]);
   }
-  items.forEach((it, i) => data.push({ ...(base[i] ? { label: base[i] + (qual[i] ? ` (${qual[i]})` : '') } : {}), tex: it.tex }));
+  if (rest.length) {
+    const last = rest[rest.length - 1];
+    if ('text' in last && !/[.?!…]\s*$/.test(last.text)) rest.push({ text: '.' });
+    else if ('math' in last) rest.push({ text: '.' });
+  }
+  const data = items.map((it, i): Donnee => ({ ...(base[i] ? { label: base[i] + (qual[i] ? ` (${qual[i]})` : '') } : {}), tex: it.tex }));
   return { rest, data };
+}
+
+/** Deux donnees de meme symbole sans noms differents restent distinguables: numerotees. */
+function distinguish(d: Donnee[]): Donnee[] {
+  const sym = (x: Donnee) => x.tex.split('=')[0].replace(/\s/g, '');
+  const group = new Map<string, Donnee[]>();
+  for (const x of d) group.set(sym(x), [...(group.get(sym(x)) ?? []), x]);
+  const seen = new Map<string, number>();
+  return d.map((x) => {
+    const g = group.get(sym(x))!;
+    if (g.length < 2 || (g.every((y) => y.label) && new Set(g.map((y) => y.label)).size === g.length)) return x;
+    const n = (seen.get(sym(x)) ?? 0) + 1;
+    seen.set(sym(x), n);
+    return { ...x, label: `${x.label ?? 'Valeur'} n°${n}` };
+  });
 }
 
 export function parseEnonce(raw: string): Enonce | null {
@@ -123,17 +180,16 @@ export function parseEnonce(raw: string): Enonce | null {
       const sp = splitData(s);
       if (sp) {
         donnees.push(...sp.data);
-        for (const r of sp.rest) contexte.push([{ text: r }]);
+        if (sp.rest.length) contexte.push(sp.rest);
         return;
       }
-      contexte.push(s);
-      for (const x of s) if ('math' in x && dataFormula(x.math)) donnees.push({ tex: x.math });
+      contexte.push(s); // phrase gardee entiere, ses valeurs aussi: jamais en double dans la liste
     });
 
     // rien de plus clair a montrer: on laisse l'affichage d'un seul bloc
     if (questions.length === 0 && donnees.length === 0) return null;
     if (donnees.length > MAX_DATA) return null; // trop de valeurs pour une liste lisible
-    return { contexte, donnees, questions };
+    return { contexte, donnees: distinguish(donnees), questions };
   } catch {
     return null;
   }
