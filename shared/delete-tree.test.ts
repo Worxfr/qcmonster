@@ -16,6 +16,25 @@ const seed = () => [
   keys.passage('p1'), keys.cost('dev', '2026-12'),
 ];
 
+describe('cles de suppression (DynamoDB refuse une cle avec autre chose que PK et SK)', () => {
+  it('fiche, cours et eleve portant pages/docId/docIds: aucune cle ne porte un autre attribut', async () => {
+    const mk = () => memoryTreeDb([
+      { ...keys.student('f1', 's1') }, { ...keys.family('f1') },
+      { ...keys.doc('s1', 'd1'), pages: 4, docId: 'd1' }, keys.claim('d1', 1),
+      { ...keys.cours('s1', 'c1'), pages: 4 }, keys.coursText('s1', 'c1', 1),
+      { ...keys.job('s1', 'j1'), pages: 4, docIds: ['d1'] }, keys.text('j1', 1),
+    ]);
+    const a = mk();
+    expect(await deleteDocTree(a, 's1', 'd1')).toBeGreaterThan(0);
+    expect(a.keys().some((x) => x.SK === 'DOC#d1' || x.PK === 'DOC#d1')).toBe(false);
+    const b = mk();
+    expect(await deleteCoursTree(b, 's1', 'c1', { jobId: 'j1' })).toBe(3);
+    const c = mk();
+    expect(await deleteStudentTree(c, 'f1', 's1')).toBeGreaterThan(0);
+    expect(c.keys().filter((x) => x.PK.startsWith('STUDENT#'))).toEqual([]);
+  });
+});
+
 describe('suppression en cascade', () => {
   it('deleteDocTree efface fiche, affirmations, verdicts, QCM et trous, rien d\'autre', async () => {
     const db = memoryTreeDb(seed());

@@ -301,7 +301,10 @@ export function memoryDb(shared?: Map<string, unknown>): Db & { items: Map<strin
       return list(pk, skPrefix, true);
     },
     async remove(ks) {
-      for (const k of ks) items.delete(idOf(k));
+      for (const k of ks) {
+        if (Object.keys(k).some((a) => a !== 'PK' && a !== 'SK')) throw Object.assign(new Error('The provided key element does not match the schema'), { name: 'ValidationException' }); // comme DynamoDB
+        items.delete(idOf(k));
+      }
     },
   };
 }
