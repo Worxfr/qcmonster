@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import katex from 'katex';
 import { isSafeFormula, sanitizeFormulaBlock, sanitizeLatex, splitMath } from '../../../shared/latex';
 
@@ -31,7 +31,8 @@ export function Formula({ tex, display = false }: { tex: string; display?: boole
 
 /** Texte avec formules `$...$`: le texte est rendu par React (echappe), les formules par KaTeX. `formula`: tout le texte est du LaTeX (bloc `formule`). */
 // Le filtre est celui du serveur (`shared/latex.ts`), reapplique ici quelle que soit la provenance du texte (defense en profondeur).
-export function Rich({ text, formula = false }: { text: string; formula?: boolean }) {
+// `tail`: marque collee au dernier mot (ou a la derniere formule), jamais seule en debut de ligne.
+export function Rich({ text, formula = false, tail }: { text: string; formula?: boolean; tail?: ReactNode }) {
   if (formula) {
     const src = sanitizeFormulaBlock(text);
     return src === undefined ? <code className="math-fallback">{text}</code> : <Formula tex={src} display />;
@@ -39,7 +40,13 @@ export function Rich({ text, formula = false }: { text: string; formula?: boolea
   const seg = splitMath(sanitizeLatex(text)) ?? [{ text }];
   return (
     <>
-      {seg.map((s, i) => ('text' in s ? <span key={i}>{s.text}</span> : <Formula key={i} tex={s.math} />))}
+      {seg.map((s, i) => {
+        const last = i === seg.length - 1;
+        if (!('text' in s)) return last && tail ? <span key={i} className="nw"><Formula tex={s.math} />{tail}</span> : <Formula key={i} tex={s.math} />;
+        if (!last || !tail) return <span key={i}>{s.text}</span>;
+        const m = /^([\s\S]*?)(\S*)$/.exec(s.text) ?? [s.text, '', ''];
+        return <span key={i}>{m[1]}<span className="nw">{m[2]}{tail}</span></span>;
+      })}
     </>
   );
 }

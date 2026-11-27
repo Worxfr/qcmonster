@@ -69,8 +69,6 @@ textarea { resize: vertical; }
 
 .pill { display: inline-block; border-radius: 999px; padding: .1rem .65rem; font-weight: 800; font-size: .85rem; margin-right: .3rem; }
 .pill-ok { background: var(--ok-bg); color: var(--ok); } .pill-bad { background: var(--bad-bg); color: var(--bad); } .pill-warn { background: var(--warn-bg); color: var(--warn); }
-.claim { border-left: 6px solid var(--line); padding: .4rem .8rem; border-radius: 4px; }
-.claim-verifiee { border-color: #22c55e; } .claim-erreur { border-color: #ef4444; } .claim-non_verifiable { border-color: #f97316; }
 .sources { padding-left: 1.1rem; } .sources a { color: var(--brand); font-weight: 700; }
 blockquote { margin: .2rem 0 .6rem; padding-left: .7rem; border-left: 3px solid var(--line); color: var(--muted); font-size: .92rem; }
 
@@ -201,7 +199,6 @@ fieldset { border: 2px solid var(--line); border-radius: 12px; padding: .5rem; m
 .btn-small { min-height: 44px; }
 .pick-hit { display: grid; place-items: center; min-width: 48px; min-height: 48px; flex: none; cursor: pointer; }
 .pick-hit .pick { margin: 0; }
-.claim .link { margin-right: 1rem; }
 .cancel-ask { scroll-margin-bottom: 6rem; }
 
 /* #74: en-tete du dossier ouvert (renommer, supprimer sans quitter la liste) */

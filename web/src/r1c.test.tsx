@@ -74,12 +74,14 @@ describe('fiche: paragraphes, rappel, figures', () => {
     expect(within(recall).getByText('non vérifié')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Une cellule' })).toBeInTheDocument();
     expect(document.querySelector('.card math')).not.toBeNull();
-    expect(document.querySelector('.claim.focus')).toHaveTextContent('Une cellule a 1 noyau.');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Non vérifiable');
+    expect(screen.getByRole('button', { name: /Une cellule a 1 noyau/ })).toHaveAttribute('aria-expanded', 'true');
   });
   it('fiche ancienne: le résumé seul', async () => {
     routes['GET /docs/D1'] = () => json({ ...doc, body: undefined, recall: undefined, figures: undefined });
     open('#/doc/D1');
-    expect(await screen.findByText('Résumé ancien.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /En 1665, Hooke observe des cellules/ })).toBeInTheDocument(); // texte continu fait des affirmations
+    expect(screen.queryByText('Résumé ancien.')).toBeNull();
     expect(screen.queryByRole('region', { name: 'À retenir' })).toBeNull();
   });
 });

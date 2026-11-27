@@ -256,7 +256,8 @@ test.describe('Cours coloré, fiche, export (R1-C)', () => {
     await page.getByRole('checkbox', { name: 'Montrer la vérification' }).check();
     await page.locator('a.mk-erreur').click();
     await expect(page).toHaveURL(/#\/doc\/D1\/c2/);
-    await expect(page.locator('.claim.focus')).toContainText('Le noyau contient l\'ADN');
+    await expect(page.getByRole('dialog')).toContainText('Erreur');
+    await expect(page.getByRole('button', { name: /Le noyau contient l'ADN/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('cours sur mobile', async ({ page }) => {

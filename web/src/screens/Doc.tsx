@@ -1,16 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../app-context';
 import { FolderSelect, useFolders } from '../components/FolderSelect';
-import { Card, ErrorBox, Loading, Pill } from '../components/ui';
-import { safeUrl } from '../game';
+import { Card, ErrorBox, Loading } from '../components/ui';
 import { errMsg, useLoad } from '../hooks';
 import { go } from '../router';
 import { folderError } from './Folders';
 import { SizePicker } from './Practice';
-import type { Claim } from '../types';
 import { Rich } from '../components/Math';
 import { hasExercices } from '../exo';
+import { FicheText } from './FicheText';
 import { FigureView } from './confirm/FigureCard';
 import './confirm/confirm.css';
 
@@ -55,16 +54,7 @@ export function DocView({ id, claimId }: { id: string; claimId?: string }) {
   return (
     <>
       <Card title={doc.title}>
-        {doc.body?.length ? (
-          <div className="fiche-body">
-            {doc.body.map((p, i) => (
-              <div key={i}>
-                {p.heading && <h3><Rich text={p.heading} /></h3>}
-                <p><Rich text={p.text} /></p>
-              </div>
-            ))}
-          </div>
-        ) : <p><Rich text={doc.summary} /></p>}
+        <FicheText doc={doc} docId={id} focusClaimId={claimId} />
         {doc.figures?.map((f) => <FigureView key={f.figureId} figure={f} />)}
         {doc.recall?.length ? (
           <section className="recall" aria-labelledby="recall-h">
@@ -85,12 +75,6 @@ export function DocView({ id, claimId }: { id: string; claimId?: string }) {
         <button className="btn btn-big" onClick={() => go(`/quiz/${encodeURIComponent(id)}${size === 10 ? '' : `?size=${size}`}`)}>🎮 S'entraîner</button>
       </Card>
       <FolderCard docId={id} initial={doc.folderId ?? ''} />
-      <Card title="Ce que dit ta fiche">
-        <p className="muted">Chaque affirmation est contrôlée avec des sources. Clique pour les lire.</p>
-        <ul className="list">
-          {doc.claims.map((c) => <ClaimItem key={c.claimId} docId={id} claim={c} focus={c.claimId === claimId} />)}
-        </ul>
-      </Card>
       <Card title="Fini de lire ?">
         {read ? (
           <p role="status" className="ok">{read.xp > 0 ? `✓ Bien lu ! +${read.xp} XP.` : "✓ C'est noté. Les points de lecture de cette fiche sont déjà pris aujourd'hui."}</p>
@@ -137,66 +121,5 @@ function FolderCard({ docId, initial }: { docId: string; initial: string }) {
       {msg && <p role="status" className="ok">{msg}</p>}
       {err && <p role="alert" className="error">{err}</p>}
     </Card>
-  );
-}
-
-function ClaimItem({ docId, claim, focus }: { docId: string; claim: Claim; focus?: boolean }) {
-  const [open, setOpen] = useState(!!focus);
-  const li = useRef<HTMLLIElement>(null);
-  useEffect(() => { if (focus) li.current?.scrollIntoView?.({ block: 'center' }); }, [focus]);
-  const [report, setReport] = useState(false);
-  const [comment, setComment] = useState('');
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    try {
-      await api.report(docId, comment.trim(), claim.claimId);
-      setMsg('Merci ! Ton parent va regarder ton signalement.');
-      setReport(false);
-      setComment('');
-    } catch (x) {
-      setErr(errMsg(x));
-    }
-  }
-
-  return (
-    <li ref={li} className={`claim claim-${claim.status}${focus ? ' focus' : ''}`}>
-      <p><Pill status={claim.status} /> <Rich text={claim.text} /></p>
-      {claim.aRisque && <p className="muted">⚠️ Sujet sensible : demande aussi à ton professeur.</p>}
-      {claim.sources.length > 0 && (
-        <>
-          <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? 'Cacher' : 'Voir'} les sources ({claim.sources.length})
-          </button>
-          {open && (
-            <ul className="sources">
-              {claim.sources.map((s) => {
-                const href = safeUrl(s.url);
-                return (
-                  <li key={s.passageId}>
-                    {href ? <a href={href} target="_blank" rel="noopener noreferrer">{s.titre} <span className="muted">({s.site})</span></a> : <span>{s.titre} ({s.site})</span>}
-                    <blockquote>{s.extrait}</blockquote>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-      )}
-      {msg && <p role="status" className="ok">{msg}</p>}
-      {report ? (
-        <form onSubmit={send} className="stack">
-          <label>Qu'est-ce qui est faux ?
-            <textarea rows={2} value={comment} maxLength={500} required onChange={(e) => setComment(e.target.value)} />
-          </label>
-          <ErrorBox message={err} />
-          <button className="btn btn-small">Envoyer</button>
-        </form>
-      ) : (
-        <button className="link" onClick={() => setReport(true)}>Signaler une erreur</button>
-      )}
-    </li>
   );
 }
