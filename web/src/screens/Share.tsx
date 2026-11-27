@@ -38,7 +38,7 @@ export function ShareCreate({ docId }: { docId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<(ShareCreated & { title: string }) | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'ok' | 'ko' | null>(null);
 
   if (list.loading) return <Loading />;
   if (!list.data) return <Card title="Partager des questions"><p role="alert" className="error">{list.error}</p><a className="link" href={`#/doc/${encodeURIComponent(docId)}`}>‹ Retour à la fiche</a></Card>;
@@ -71,7 +71,8 @@ export function ShareCreate({ docId }: { docId: string }) {
         <Card title="Ton lien est prêt 🎉">
           <p>« {made.title} » est partagé jusqu’au <strong>{dayLabel(made.expiresAt)}</strong>.</p>
           <p><input readOnly aria-label="Lien à partager" value={url} onFocus={(e) => e.target.select()} /></p>
-          <button className="btn" onClick={() => { void navigator.clipboard?.writeText(url); setCopied(true); }}>{copied ? '✓ Copié' : 'Copier le lien'}</button>
+          <button className="btn" onClick={() => { void (navigator.clipboard?.writeText(url) ?? Promise.reject(new Error('indisponible'))).then(() => setCopied('ok'), () => setCopied('ko')); }}>{copied === 'ok' ? '✓ Copié' : 'Copier le lien'}</button>
+          {copied === 'ko' && <p role="status" className="notice">La copie n’a pas marché. Sélectionne le lien ci-dessus et copie-le à la main.</p>}
           <p className="notice">Copie-le maintenant : on ne peut pas te le montrer une deuxième fois. Pour partager à nouveau, crée un nouveau lien.</p>
           <p className="muted">Celui qui a le lien joue sans compte et ne gagne aucun point. Tu peux supprimer le lien quand tu veux.</p>
         </Card>

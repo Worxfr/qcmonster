@@ -61,8 +61,8 @@ export function ShareParent({ student: s }: { student: Student }) {
           : 'Fermé par défaut. Si tu l’actives, ton enfant peut créer des liens vers des questions qu’il a déjà réussies. Tu peux les supprimer à tout moment.'}
       </p>
       <ErrorBox message={error} />
-      {l.loading && !l.data && <Loading />}
-      {l.error && !l.data && <p role="alert" className="error">{l.error}</p>}
+      {on && l.loading && !l.data && <Loading />}
+      {on && l.error && !l.data && <p role="alert" className="error">{l.error}</p>}
       {l.data?.purgePending && (
         <p className="notice" role="status">
           Le partage est coupé, mais des liens existent encore.{' '}

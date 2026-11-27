@@ -5,7 +5,7 @@ import * as rules from '../../shared/share-rules';
 
 // S1 #34 (lot S1-W): le site du partage. Drapeau VITE_SHARE_ENABLED ferme par defaut. API simulee par un routeur local.
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
-type Call = { url: string; method: string; body: unknown };
+type Call = { url: string; method: string; body: unknown; credentials?: RequestCredentials };
 let calls: Call[] = [];
 let routes: Record<string, (c: Call) => Response | undefined> = {};
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     const method = init?.method ?? 'GET';
-    const c = { url, method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body };
+    const c = { url, method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body, credentials: init?.credentials };
     calls.push(c);
     const path = url.replace(/^https?:\/\/[^/]+/, '');
     const fn = routes[`${method} ${path}`];
@@ -116,6 +116,22 @@ describe('eleve: creer un lien', () => {
     expect(screen.getByText(/on ne peut pas te le montrer une deuxième fois/)).toBeInTheDocument();
     const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/me/shares'))!;
     expect(post.body).toEqual({ docId: 'D1', questionIds: ['D1:qcm:0', 'D1:qcm:1', 'D1:qcm:2', 'D1:qcm:3', 'D1:qcm:4'], title: 'Revision SVT', ttlDays: 7 });
+  });
+  it('« Copié » seulement si le presse-papiers réussit', async () => {
+    routes['GET /docs/D1/shareable'] = () => json(shareable(5));
+    routes['POST /me/shares'] = () => json({ shareId: 'SH1', token: TOKEN, expiresAt: T1 }, 201);
+    const writeText = vi.fn().mockRejectedValue(new Error('refuse'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await app('#/partager/D1');
+    for (const b of await screen.findAllByRole('checkbox')) await userEvent.click(b);
+    await userEvent.type(screen.getByLabelText(/Titre du QCM/), 'Mon titre');
+    await userEvent.click(screen.getByRole('button', { name: /Créer le lien/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Copier le lien' }));
+    expect(await screen.findByText(/La copie n’a pas marché/)).toBeInTheDocument();
+    expect(screen.queryByText('✓ Copié')).toBeNull();
+    writeText.mockResolvedValue(undefined);
+    await userEvent.click(screen.getByRole('button', { name: 'Copier le lien' }));
+    expect(await screen.findByText('✓ Copié')).toBeInTheDocument();
   });
   it('21e question refusee: 20 au plus', async () => {
     routes['GET /docs/D1/shareable'] = () => json(shareable(22));
@@ -236,6 +252,7 @@ describe('page publique /p', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toMatch(/\/shares\/open$/);
     expect(calls[0].body).toEqual({ token: TOKEN });
+    expect(calls[0].credentials).toBe('omit'); // aucun cookie envoye a la route publique
     expect(calls.some((c) => /cognito|\/me/.test(c.url))).toBe(false);
     expect(screen.getByText(/non relu par un enseignant/)).toBeInTheDocument();
     expect(sessionStorage.length + localStorage.length).toBe(0);
