@@ -82,7 +82,7 @@ describe.each(['dev', 'prod'] as Env[])('GameStack (%s)', (env) => {
 
   it('moindre privilege: ressources nommees, jamais de joker, rien sur Bedrock, roles distincts du traitement', () => {
     const byRole = statementsByRole(t);
-    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'archive', 'copieDelete', 'copieStart', 'invite', 'loginId', 'manage', 'play', 'progress', 'read', 'readDocs', 'shareMake', 'shareManage', 'sharePublic'].map((k) => `qcm-${env}-game-${k}-role`).sort());
+    expect(Object.keys(byRole).sort()).toEqual(['account', 'activation', 'admin', 'archive', 'copieDelete', 'copieStart', 'invite', 'loginId', 'manage', 'play', 'progress', 'read', 'readDocs', 'shareMake', 'shareManage', 'sharePublic', 'shareRead', 'shareView'].map((k) => `qcm-${env}-game-${k}-role`).sort());
     for (const [role, stmts] of Object.entries(byRole)) {
       expect(processingRoleNames(env)).not.toContain(role);
       for (const s of stmts) {

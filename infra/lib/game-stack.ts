@@ -15,7 +15,7 @@ export interface GameStackProps extends StackProps {
   envName: Env;
 }
 
-type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId' | 'copieStart' | 'copieDelete' | 'shareMake' | 'shareManage' | 'sharePublic';
+type RoleKey = 'read' | 'readDocs' | 'progress' | 'archive' | 'play' | 'account' | 'manage' | 'admin' | 'activation' | 'invite' | 'loginId' | 'copieStart' | 'copieDelete' | 'shareMake' | 'shareManage' | 'sharePublic' | 'shareRead' | 'shareView';
 interface HandlerDef {
   name: string;
   role: RoleKey;
@@ -69,11 +69,11 @@ export const GAME_HANDLERS: ReadonlyArray<HandlerDef> = [
   // Ecart au design (qui le mettait dans `play`): `play` n'a pas DeleteItem, par choix. Role dedie: DeleteItem STUDENT# et DeleteObject copies/*.
   { name: 'copie-delete', role: 'copieDelete', needs: ['SCANS_BUCKET'] },
   // contract-v1.12 (S1-A, #34): partage de QCM par lien, huit fonctions pour neuf routes. Roles: shared/share-access.ts (SHARE_HANDLERS, source unique). Ferme par defaut (SHARE_PUBLIC_ENABLED).
-  { name: 'shares-shareable', role: 'shareMake', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-shareable', role: 'shareRead', needs: ['SHARE_PUBLIC_ENABLED'] },
   { name: 'shares-create', role: 'shareMake', needs: ['SHARE_PUBLIC_ENABLED'] },
-  { name: 'shares-list', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-list', role: 'shareView', needs: ['SHARE_PUBLIC_ENABLED'] },
   { name: 'shares-delete', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
-  { name: 'shares-parent-list', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
+  { name: 'shares-parent-list', role: 'shareView', needs: ['SHARE_PUBLIC_ENABLED'] },
   { name: 'shares-parent-delete', role: 'shareManage', needs: ['SHARE_PUBLIC_ENABLED'] },
   { name: 'shares-open', role: 'sharePublic', needs: ['SHARE_PUBLIC_ENABLED'] },
   { name: 'shares-report', role: 'sharePublic', needs: ['SHARE_PUBLIC_ENABLED'] },
@@ -179,6 +179,9 @@ export class GameStack extends Stack {
       shareMake: shareStatements('shareMake', tableArn),
       shareManage: shareStatements('shareManage', tableArn),
       sharePublic: shareStatements('sharePublic', tableArn),
+      // S1-A (relecture #111 m5): lecture seule. `shareRead`: choix des questions (lit les cles de reponse, n'ecrit rien). `shareView`: listes de l'eleve et du parent (jamais DOC#, jamais d'ecriture).
+      shareRead: shareStatements('shareRead', tableArn),
+      shareView: shareStatements('shareView', tableArn),
     };
 
     const roles = {} as Record<RoleKey, iam.Role>;

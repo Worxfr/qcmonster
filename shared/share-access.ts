@@ -19,20 +19,21 @@ export interface ShareAccess {
 }
 const A = (a: Partial<ShareAccess>): ShareAccess => ({ get: [], query: [], put: [], update: [], check: [], batch: [], ...a });
 
-/** Les trois roles NOUVEAUX (game-stack.ts). Les roles existants ne recoivent qu'une instruction `SHARE#*` separee (voir SHARE_DELETE_CALLERS). */
-export type ShareRole = 'shareMake' | 'shareManage' | 'sharePublic';
+/** Les cinq roles NOUVEAUX (game-stack.ts). S1-A (relecture #111 m5): `shareRead` (shares-shareable) et `shareView` (listes) sont en LECTURE SEULE (GetItem, Query), separes de `shareMake` et `shareManage` qui ecrivent.
+ * Les trois premiers viennent de S1-D. Les roles existants ne recoivent qu'une instruction `SHARE#*` separee (voir SHARE_DELETE_CALLERS). */
+export type ShareRole = 'shareMake' | 'shareManage' | 'sharePublic' | 'shareRead' | 'shareView';
 
 export const SHARE_HANDLERS: Record<string, { role: ShareRole; access: ShareAccess }> = {
   // Choix des questions: lit l'eleve et la famille (`activeStudent`, `callerOf`), la fiche et ses questions (cles de reponse) et les `ATT#` (ce que l'eleve connait). N'ecrit rien.
-  'shares-shareable': { role: 'shareMake', access: A({ get: ['STUDENT#', 'FAMILY#', 'DOC#'], query: ['STUDENT#', 'FAMILY#', 'DOC#'] }) },
+  'shares-shareable': { role: 'shareRead', access: A({ get: ['STUDENT#', 'FAMILY#', 'DOC#'], query: ['STUDENT#', 'FAMILY#', 'DOC#'] }) },
   // Creation: une transaction de six elements. `put`: copie SHARE#<hache>/META, SHAREREF# (STUDENT#), SHARESLOT# (FAMILY#); `update`: SHAREJ# (STUDENT#);
   // ConditionCheckItem: element eleve (FAMILY#: `sharing`, statut) et fiche (STUDENT#). Un echec ne laisse rien (une seule transaction).
   'shares-create': { role: 'shareMake', access: A({ get: ['STUDENT#', 'FAMILY#', 'DOC#'], query: ['STUDENT#', 'FAMILY#', 'DOC#'], put: ['SHARE#', 'STUDENT#', 'FAMILY#'], update: ['STUDENT#'], check: ['FAMILY#', 'STUDENT#'] }) },
   // Liste de l'eleve: ses references (STUDENT#), `rev` de la fiche (STUDENT#), lectures et signalements de chaque lien (SHARE#: Query). Jamais DOC#.
-  'shares-list': { role: 'shareManage', access: A({ get: ['STUDENT#', 'FAMILY#', 'SHARE#'], query: ['STUDENT#', 'FAMILY#', 'SHARE#'] }) },
+  'shares-list': { role: 'shareView', access: A({ get: ['STUDENT#', 'FAMILY#', 'SHARE#'], query: ['STUDENT#', 'FAMILY#', 'SHARE#'] }) },
   // Revocation d'un lien: la copie d'abord (SHARE#), puis la reference (STUDENT#) et l'emplacement famille (FAMILY#). BatchWriteItem seulement.
   'shares-delete': { role: 'shareManage', access: A({ get: ['STUDENT#', 'FAMILY#', 'SHARE#'], query: ['STUDENT#', 'FAMILY#', 'SHARE#'], batch: ['SHARE#', 'STUDENT#', 'FAMILY#'] }) },
-  'shares-parent-list': { role: 'shareManage', access: A({ get: ['STUDENT#', 'FAMILY#', 'SHARE#'], query: ['STUDENT#', 'FAMILY#', 'SHARE#'] }) },
+  'shares-parent-list': { role: 'shareView', access: A({ get: ['STUDENT#', 'FAMILY#', 'SHARE#'], query: ['STUDENT#', 'FAMILY#', 'SHARE#'] }) },
   // Purge parent, rejouable: `deleteSharesOf` (liste les references et les emplacements, supprime copies puis references puis emplacements).
   'shares-parent-delete': { role: 'shareManage', access: A({ get: ['STUDENT#', 'FAMILY#', 'SHARE#'], query: ['STUDENT#', 'FAMILY#', 'SHARE#'], batch: ['SHARE#', 'STUDENT#', 'FAMILY#'] }) },
   // Route PUBLIQUE: lit META (GetItem), met a jour `META.reports`, `META.state` et le compteur `DAY#` (UpdateItem conditionnel), ecrit `REPORT#` (PutItem). Aucun Query, aucune autre partition.

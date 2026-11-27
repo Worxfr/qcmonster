@@ -42,7 +42,7 @@ const covers = (key: string, p: Partition) => key !== '*' && key === `${p}*`;
  * (retirer alors la ligne). Pour failJob et append, « pas de suppression des partages » repose donc sur le CODE (option absente, test d'appelants ci-dessous), pas sur IAM.
  */
 const KNOWN_TABLE_WIDE = (env: Env) => [`qcm-${env}-pipeline-role`, `qcm-${env}-pipeline-trigger-role`];
-const NEW_ROLE_KEY: Record<ShareRole, string> = { shareMake: 'shareMake', shareManage: 'shareManage', sharePublic: 'sharePublic' };
+const NEW_ROLE_KEY: Record<ShareRole, string> = { shareMake: 'shareMake', shareManage: 'shareManage', sharePublic: 'sharePublic', shareRead: 'shareRead', shareView: 'shareView' };
 const DELETE_ROLE_NAME = (env: Env, r: DeleteRole) => ({ delete: `qcm-${env}-pipeline-api-delete-role`, cours: `qcm-${env}-pipeline-api-cours-role`, admin: `qcm-${env}-game-admin-role` })[r];
 
 function index(env: Env) {
@@ -128,6 +128,21 @@ for (const env of ENVS) {
       }
     });
 
+    it('S1-A (#111 m5): shareRead et shareView sont en LECTURE SEULE (GetItem, Query); shareView jamais DOC#; seuls shareMake, shareManage et sharePublic ecrivent', () => {
+      for (const r of ['shareRead', 'shareView']) {
+        const s = stmts(`qcm-${env}-game-${r}-role`);
+        expect(s.flatMap(acts).sort(), r).toEqual(['dynamodb:GetItem', 'dynamodb:Query']);
+      }
+      for (const st of stmts(`qcm-${env}-game-shareView-role`)) expect(leadingOf(st)!.some((k) => covers(k, 'DOC#'))).toBe(false);
+      for (const st of stmts(`qcm-${env}-game-shareRead-role`)) expect(leadingOf(st)!.some((k) => covers(k, 'SHARE#'))).toBe(false); // le choix des questions ne lit jamais une copie publique
+      expect(shareAccessOf('shareManage').batch.length).toBeGreaterThan(0); // la suppression reste a shareManage
+      const handlersOf = (role: string) => Object.entries(SHARE_HANDLERS).filter(([, h]) => h.role === role).map(([n]) => n).sort();
+      expect(handlersOf('shareRead')).toEqual(['shares-shareable']);
+      expect(handlersOf('shareView')).toEqual(['shares-list', 'shares-parent-list']);
+      expect(handlersOf('shareManage')).toEqual(['shares-delete', 'shares-parent-delete']);
+      expect(handlersOf('shareMake')).toEqual(['shares-create']);
+    });
+
     it('les handlers du partage sont les huit de la conception; chaque role nouveau porte au moins un handler', () => {
       expect(Object.keys(SHARE_HANDLERS).sort()).toEqual(['shares-create', 'shares-delete', 'shares-list', 'shares-open', 'shares-parent-delete', 'shares-parent-list', 'shares-report', 'shares-shareable']);
       for (const role of Object.keys(NEW_ROLE_KEY)) expect(Object.values(SHARE_HANDLERS).some((h) => h.role === role), role).toBe(true);
@@ -165,8 +180,9 @@ for (const env of ENVS) {
       });
     }
 
-    it('RECIPROQUE: parmi tous les roles de toutes les stacks, seuls les six roles declares atteignent SHARE#; manage, play, pipeline et revise n\'ont rien', () => {
-      const allowed = new Set<string>([...Object.keys(NEW_ROLE_KEY).map((k) => `qcm-${env}-game-${k}-role`), ...(['delete', 'cours', 'admin'] as const).map((r) => DELETE_ROLE_NAME(env, r))]);
+    it('RECIPROQUE: parmi tous les roles de toutes les stacks, seuls les six roles declares (hors shareRead) atteignent SHARE#; manage, play, pipeline et revise n\'ont rien', () => {
+      const allowed = new Set<string>([...Object.keys(NEW_ROLE_KEY).filter((k) => k !== 'shareRead').map((k) => `qcm-${env}-game-${k}-role`), // shareRead (choix des questions) ne lit jamais SHARE#
+         ...(['delete', 'cours', 'admin'] as const).map((r) => DELETE_ROLE_NAME(env, r))]);
       const reaching = [...stmtsOfRole.keys()].filter((n) => shareActions(stmtsOfRole.get(n)!).size > 0);
       expect(reaching.filter((n) => !allowed.has(n)).sort(), 'role non declare qui atteint SHARE# (hors ecart connu)').toEqual(KNOWN_TABLE_WIDE(env).sort());
       for (const n of KNOWN_TABLE_WIDE(env)) expect(stmtsOfRole.get(n)!.some((st) => st.Effect === 'Allow' && acts(st).some((a) => DATA.test(a)) && leadingOf(st) === undefined), `${n}: l'ecart connu n'existe plus, retirer la ligne`).toBe(true);
