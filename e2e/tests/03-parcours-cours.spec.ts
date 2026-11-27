@@ -65,9 +65,10 @@ test.describe('Parcours complet: scan, relecture, fiches, jeu, dossiers, parent,
   test('fiche: affirmations vérifiées, sources, lecture et points', async () => {
     await page.getByRole('button', { name: /La photosynthèse/ }).first().click();
     await expect(page.getByRole('heading', { name: 'La photosynthèse' }).first()).toBeVisible();
-    await expect(page.getByText('Vérifié').first()).toBeVisible();
-    await page.getByRole('button', { name: /Voir les sources/ }).first().click();
-    await expect(page.getByRole('link', { name: /Page de test|\(/ }).first()).toBeVisible();
+    await page.getByRole('button', { name: /vérifié, ouvrir les sources/ }).first().click();
+    await expect(page.getByRole('dialog').getByText('Vérifié')).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('link', { name: /Page de test|\(/ }).first()).toBeVisible();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: "✓ J'ai tout lu" }).click();
     await expect(page.getByRole('status').filter({ hasText: /Bien lu|C'est noté/ })).toBeVisible();
     if (isMock) await expect(page.getByRole('status').filter({ hasText: '+10 XP' })).toBeVisible();

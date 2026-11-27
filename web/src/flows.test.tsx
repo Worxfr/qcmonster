@@ -126,8 +126,8 @@ describe('parcours eleve contre l\'API simulee', () => {
   it('fiche: pastilles, sources cliquables, signalement', async () => {
     const { user, view } = await enter('eleve');
     await goTo('/doc/d1');
+    await user.click((await screen.findAllByRole('button', { name: /vérifié, ouvrir les sources/ }))[0]);
     expect(await screen.findByText('Vérifié')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Voir les sources/ }));
     const link = screen.getByRole('link', { name: /Photosynthese/ });
     expect(link).toHaveAttribute('href', 'https://fr.wikipedia.org/wiki/Photosynth%C3%A8se');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
