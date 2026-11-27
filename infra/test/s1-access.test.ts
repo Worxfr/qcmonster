@@ -195,3 +195,6 @@ describe('S1-D: appelants de deleteDocTree et des autres suppressions en cascade
     }
   });
 });
+
+// S1-A (docs/S1-design.md section 15): exiger `deleteShares` dans les quatre fichiers de SHARE_DELETE_CALLERS quand leurs handlers passent l'option.
+it.todo('S1-A: docs.ts, cours.ts, students.ts et family.ts passent l\'option deleteShares (un oubli laisserait des copies publiques apres suppression)');
