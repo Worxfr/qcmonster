@@ -43,6 +43,10 @@ describe('buildParas', () => {
     expect(p[1].plain).toBe('libre');
     expect(p[2].heading).toBe('Autres points contrôlés');
   });
+  it('affirmation citée par deux paragraphes: première occurrence seulement; paragraphe entièrement répété omis', () => {
+    const p = buildParas({ summary: 's', claims, body: [{ text: 'a', claimIds: ['c1', 'c2'] }, { text: 'b', claimIds: ['c2', 'c3'] }, { text: 'c', claimIds: ['c1'] }] } as never);
+    expect(p.map((q) => q.claims.map((c) => c.claimId))).toEqual([['c1', 'c2'], ['c3'], ['c4', 'c5']]);
+  });
   it('ancien format: un seul paragraphe fait des affirmations; sans affirmation, le résumé', () => {
     expect(buildParas({ summary: 's', claims } as never)).toHaveLength(1);
     expect(buildParas({ summary: 'seul', claims: [] } as never)).toEqual([{ key: 'p0', claims: [], plain: 'seul' }]);
@@ -99,6 +103,23 @@ describe('fiche en texte continu', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(/Vérifié/);
     await user.click(document.body);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('source dont l\'URL est javascript: affichée en texte, sans lien', async () => {
+    doc.claims = [claim('c1', 'La cellule est l\'unité du vivant.', 'verifiee', [{ ...src, url: 'javascript:alert(1)', titre: 'Piège' }])];
+    doc.body = [{ text: 'x', claimIds: ['c1'] }];
+    const user = userEvent.setup();
+    open('#/doc/D1');
+    await user.click(await screen.findByRole('button', { name: /unité du vivant/ }));
+    const dlg = screen.getByRole('dialog');
+    expect(within(dlg).getByText(/Piège/)).toBeInTheDocument();
+    expect(within(dlg).queryByRole('link')).toBeNull();
+    expect(dlg.querySelector('a')).toBeNull();
+  });
+
+  it('légende: ✓, ? et ✗ expliqués', async () => {
+    open('#/doc/D1');
+    expect(await screen.findByText(/erreur\./)).toBeInTheDocument();
   });
 
   it('ancien format (sans body): texte continu à partir des affirmations, même interaction', async () => {

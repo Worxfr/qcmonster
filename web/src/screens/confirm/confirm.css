@@ -276,3 +276,4 @@ sup.seg-mark { vertical-align: super; font-size: .85em; font-weight: 900; margin
   .fiche-backdrop { display: block; position: fixed; inset: 0; z-index: 29; background: rgba(148, 163, 184, .35); }
   .fiche-pop { position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important; width: auto !important; max-height: 65vh; border-width: 4px 0 0; border-radius: 22px 22px 0 0; padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom)); }
 }
+.nw { white-space: nowrap; }

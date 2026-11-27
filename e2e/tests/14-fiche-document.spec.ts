@@ -25,13 +25,14 @@ const CLAIMS = [
   c('c6', 'Le cytoplasme est un gel où flottent les organites.', 'non_verifiable'),
   c('c7', 'On observe les cellules avec un microscope optique ou électronique.', 'verifiee', 5),
   c('c8', 'Robert Hooke a utilisé le mot « cellule » en 1665.', 'non_verifiable'),
+  c('c9', 'Pour convertir, on utilise toujours la relation $1\\ \\mu m = 10^{-6}\\ m = 0{,}000001\\ m$', 'erreur'),
 ];
 const LONG = {
   docId: 'D1', title: 'La cellule', subject: 'svt', topic: 'La cellule', createdAt: '2026-12-01T10:00:00Z', summary: 'Résumé.',
   body: [
     { heading: 'L\'unité du vivant', text: 'x', claimIds: ['c1', 'c2', 'c3'] },
     { heading: 'Les tailles et les formes', text: 'x', claimIds: ['c4', 'c5', 'c6'] },
-    { heading: 'Observer', text: 'x', claimIds: ['c7', 'c8'] },
+    { heading: 'Observer', text: 'x', claimIds: ['c7', 'c8', 'c9', 'c1'] }, // c1 cité deux fois: affiché une seule fois
   ],
   recall: [{ kind: 'definition', text: 'La cellule est la plus petite unité du vivant.', claimId: 'c1', verified: true }, { kind: 'date', text: 'Robert Hooke a utilisé le mot « cellule » en 1665.', claimId: 'c8', verified: false }],
   claims: CLAIMS,
@@ -59,8 +60,8 @@ test.describe('Fiche en texte continu', () => {
       await page.goto('/#/doc/D1');
       await expect(page.getByRole('heading', { name: 'Observer' })).toBeVisible();
       await expect(page.getByText(/Voir les sources/)).toHaveCount(0);
-      await expect(page.locator('.seg')).toHaveCount(8);
-      await expect(page.locator('.fiche-body math')).toHaveCount(1);
+      await expect(page.locator('.seg')).toHaveCount(9);
+      await expect(page.locator('.fiche-body math')).toHaveCount(2);
       await shot(page, `fiche-longue-${v.name}`);
       const seg = page.getByRole('button', { name: /micromètres/ });
       await seg.click();
@@ -95,11 +96,31 @@ test.describe('Fiche en texte continu', () => {
       await shot(page, `fiche-courte-${v.name}`);
       doc = OLD;
       await page.reload();
-      await expect(page.locator('.seg')).toHaveCount(8);
+      await expect(page.locator('.seg')).toHaveCount(9);
       await expect(page.locator('.fiche-body > div')).toHaveCount(1);
       await shot(page, `fiche-ancienne-${v.name}`);
     });
   }
+
+  test('la marque ✓ ? ✗ ne reste jamais seule en début de ligne (largeurs 320 à 420)', async ({ page }) => {
+    doc = LONG;
+    await page.goto('/#/doc/D1');
+    await expect(page.locator('.seg')).toHaveCount(9);
+    for (let w = 320; w <= 420; w += 10) {
+      await page.setViewportSize({ width: w, height: 780 });
+      const orphans = await page.evaluate(() => [...document.querySelectorAll('.seg sup.seg-mark')].filter((sup) => {
+        const seg = sup.parentElement!;
+        const r = document.createRange();
+        r.setStartBefore(seg.firstChild!);
+        r.setEndBefore(sup);
+        const rects = [...r.getClientRects()].filter((x) => x.width > 0);
+        const last = rects[rects.length - 1];
+        const m = sup.getBoundingClientRect();
+        return !last || m.top > last.bottom - 2; // la marque est sur une ligne sous le dernier texte
+      }).length);
+      expect(orphans, `largeur ${w}`).toBe(0);
+    }
+  });
 
   test('clavier: Tab atteint un segment, Entrée ouvre, Tab va dans la surimpression', async ({ page }) => {
     doc = LONG;

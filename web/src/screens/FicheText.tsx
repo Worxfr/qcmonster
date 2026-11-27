@@ -22,7 +22,9 @@ export function buildParas(doc: Pick<Doc, 'body' | 'claims' | 'summary'>): Para[
   const used = new Set<string>();
   const out: Para[] = [];
   (doc.body ?? []).forEach((p, i) => {
-    const claims = [...new Set(p.claimIds ?? [])].map((id) => byId.get(id)).filter((c): c is Claim => !!c);
+    const cited = [...new Set(p.claimIds ?? [])].map((id) => byId.get(id)).filter((c): c is Claim => !!c);
+    const claims = cited.filter((c) => !used.has(c.claimId)); // une affirmation citee par deux paragraphes: premiere occurrence seulement
+    if (cited.length && !claims.length) return; // tout y est deja affiche plus haut
     claims.forEach((c) => used.add(c.claimId));
     out.push(claims.length ? { key: `p${i}`, heading: p.heading, claims } : { key: `p${i}`, heading: p.heading, claims: [], plain: p.text });
   });
@@ -114,7 +116,8 @@ export function FicheText({ doc, docId, focusClaimId }: { doc: Doc; docId: strin
     <div className="fiche-doc" ref={root}>
       <p className="fiche-legend muted">
         <span className="seg-mark seg-mark-verifiee" aria-hidden="true">✓</span> vérifié{' '}
-        <span className="seg-mark seg-mark-non_verifiable" aria-hidden="true">?</span> non vérifiable.
+        <span className="seg-mark seg-mark-non_verifiable" aria-hidden="true">?</span> non vérifiable{' '}
+        <span className="seg-mark seg-mark-erreur" aria-hidden="true">✗</span> erreur.
         {' '}Touche une phrase colorée pour voir les sources.
       </p>
       <div className="fiche-body">
@@ -141,9 +144,7 @@ export function FicheText({ doc, docId, focusClaimId }: { doc: Doc; docId: strin
                       onClick={() => toggle(key, c)}
                       onKeyDown={(e) => onKey(e, key, c)}
                     >
-                      <Rich text={c.text} />
-                      <sup className={`seg-mark seg-mark-${c.status}`} aria-hidden="true">{MARK[c.status]}</sup>
-                      <span className="sr-only"> ({SR[c.status]}, ouvrir les sources)</span>
+                      <Rich text={c.text} tail={<><sup className={`seg-mark seg-mark-${c.status}`} aria-hidden="true">{MARK[c.status]}</sup><span className="sr-only">({SR[c.status]}, ouvrir les sources)</span></>} />
                     </span>
                   </span>
                 );
