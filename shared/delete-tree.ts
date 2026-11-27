@@ -5,7 +5,9 @@ import type { Key } from './ddb/keys.js';
 import { recount, type TestLine } from './tests-history.js';
 
 /** Port minimal: liste les cles d'une partition (avec prefixe de SK facultatif) et supprime des cles. */
-export type TreeKey = Key & { studentId?: string; docId?: string; docIds?: string[]; /** E1: nombre de pages d'une COPIE#, pour deduire les cles S3 exactes. */ pages?: number };
+export type TreeKey = Key & { studentId?: string; docId?: string; docIds?: string[]; /** E1: nombre de pages d'une COPIE#, pour deduire les cles S3 exactes. */ pages?: number;
+  /** S1: `SHAREREF#` porte `hash` (cle de la copie publique `SHARE#<hash>`), `famSlot` (emplacement famille) et `docId`; `SHARESLOT#` porte `sid`. */
+  hash?: string; famSlot?: number; sid?: string };
 /** Resultat de `mutateTest`: supprimer l'element, le garder tel quel, ou l'ecrire reecrit. */
 export type TestMutation = 'supprimer' | 'garder' | Record<string, unknown>;
 export interface TreeDb {
@@ -35,15 +37,17 @@ async function removeAll(db: TreeDb, ks: Key[]): Promise<number> {
  * Controle d'appartenance: si la fiche n'est pas liee a l'eleve (`STUDENT#<sid>` / `DOC#<docId>`), ne supprime RIEN et renvoie 0
  * (un handler qui passe un docId pris dans l'URL ne peut pas effacer la fiche d'un autre eleve).
  */
-export async function deleteDocTree(db: TreeDb, sid: string, docId: string, opts: { garderTests?: boolean; /** E1: supprime ces cles S3 EXACTES (images de copie) AVANT toute suppression DynamoDB (S3 d'abord: interrompue, la reprise retrouve les elements). */ deleteFiles?: (keys: string[]) => Promise<void> } = {}): Promise<number> {
+export async function deleteDocTree(db: TreeDb, sid: string, docId: string, opts: { garderTests?: boolean; /** S1 (#34): supprime AVANT TOUT (copies publiques, puis references et emplacements) les liens de cette fiche. DESACTIVE par defaut: failJob, append et les roles du pipeline ne l'activent jamais. */ deleteShares?: { familyId: string }; /** E1: supprime ces cles S3 EXACTES (images de copie) AVANT toute suppression DynamoDB (S3 d'abord: interrompue, la reprise retrouve les elements). */ deleteFiles?: (keys: string[]) => Promise<void> } = {}): Promise<number> {
   assertIds(sid, docId);
   const link = (await db.list(`STUDENT#${sid}`, `DOC#${docId}`)).filter((k) => k.SK === `DOC#${docId}`);
   if (link.length === 0) return 0;
+  // S1: la copie PUBLIQUE d'abord. Si sa suppression echoue, l'erreur remonte et RIEN d'autre n'est supprime (jamais de copie orpheline lisible sans sa fiche).
+  let n = opts.deleteShares ? await deleteSharesOf(db, opts.deleteShares.familyId, sid, { docId }) : 0;
   // E1: copies de cette fiche (images a supprimer, cles exactes deduites de `pages`) et progressions des exercices (EXOP#). EXO# part avec DOC#<docId>.
   const copies = (await db.list(`STUDENT#${sid}`, 'COPIE#')).filter((k) => k.docId === docId);
   const files = copies.flatMap((k) => Array.from({ length: Math.min(3, Math.max(0, k.pages ?? 0)) }, (_, i) => `copies/${sid}/${k.SK.slice('COPIE#'.length)}/p${i + 1}`));
   if (files.length && opts.deleteFiles) await opts.deleteFiles(files);
-  let n = await removeAll(db, await db.list(`DOC#${docId}`));
+  n += await removeAll(db, await db.list(`DOC#${docId}`));
   n += await removeAll(db, [...copies, ...(await db.list(`STUDENT#${sid}`, `EXOP#${docId}:`))].map(({ PK, SK }) => ({ PK, SK })));
   // Historique des tests (H1, decision P2): les passages sur cette fiche partent avec elle (`docId` est porte par chaque element TEST#).
   // Q1: un passage sur plusieurs fiches (`docIds` de 2 fiches ou plus) perd seulement les lignes de cette fiche; les autres passages partent comme avant.
@@ -55,6 +59,24 @@ export async function deleteDocTree(db: TreeDb, sid: string, docId: string, opts
   }
   n += await removeAll(db, link);
   return n;
+}
+
+const HASH = /^[0-9a-f]{64}$/;
+/**
+ * S1 (#34): supprime les liens de partage d'un eleve (`filter.docId`: ceux d'une seule fiche). ORDRE: les copies publiques `SHARE#<hache>` (META, DAY#, REPORT#) d'abord, puis
+ * les references `SHAREREF#` de l'eleve, puis ses emplacements famille `SHARESLOT#` (seulement ceux dont `sid` est cet eleve: un emplacement libere puis reutilise par un
+ * frere n'est jamais supprime). Rejouable: une reference sans copie se supprime sans erreur. Une copie dont la reference a deja disparu n'est plus atteignable (son `ttl` la purge).
+ * N'est appelee que par l'option `deleteShares` des fonctions ci-dessous, activee par docs-delete, cours-delete (`fiches=supprimer`), students-delete, family-admin et shares-parent-delete.
+ */
+export async function deleteSharesOf(db: TreeDb, familyId: string, sid: string, filter: { docId?: string } = {}): Promise<number> {
+  assertIds(familyId, sid);
+  if (filter.docId !== undefined) assertIds(filter.docId);
+  const refs = (await db.list(`STUDENT#${sid}`, 'SHAREREF#')).filter((k) => /^SHAREREF#[1-5]$/.test(k.SK) && (filter.docId === undefined || k.docId === filter.docId));
+  if (refs.length === 0 && filter.docId !== undefined) return 0;
+  let n = 0;
+  for (const hash of new Set(refs.map((r) => r.hash).filter((h): h is string => typeof h === 'string' && HASH.test(h)))) n += await removeAll(db, (await db.list(`SHARE#${hash}`)).map(({ PK, SK }) => ({ PK, SK })));
+  const slots = (await db.list(`FAMILY#${familyId}`, 'SHARESLOT#')).filter((k) => /^SHARESLOT#([1-9]|10)$/.test(k.SK) && k.sid === sid && (filter.docId === undefined || refs.some((r) => `SHARESLOT#${r.famSlot}` === k.SK)));
+  return n + (await removeAll(db, [...refs, ...slots].map(({ PK, SK }) => ({ PK, SK }))));
 }
 
 /** Passage multi-fiches sans la fiche `docId`: ses lignes partent, les compteurs sont recalcules; plus aucune ligne = le passage disparait (section 7). */
@@ -113,11 +135,11 @@ const isFamilyStudentItem = (k: Key & { studentId?: string }, sid: string): bool
  * Ne fait rien (renvoie 0) si l'eleve n'appartient pas a la famille. Ne touche ni Cognito ni S3 ni PASSAGE#/CLAIMCACHE#
  * (partages): le handler (L3) supprime l'utilisateur Cognito.
  */
-export async function deleteStudentTree(db: TreeDb, familyId: string, sid: string): Promise<number> {
+export async function deleteStudentTree(db: TreeDb, familyId: string, sid: string, opts: { /** S1: supprime d'abord tous les liens de l'eleve. Desactive par defaut. */ deleteShares?: boolean } = {}): Promise<number> {
   assertIds(familyId, sid);
   const fam = await db.list(`FAMILY#${familyId}`);
   if (!fam.some((k) => k.SK === `STUDENT#${sid}`)) return 0;
-  let n = 0;
+  let n = opts.deleteShares ? await deleteSharesOf(db, familyId, sid) : 0; // les copies publiques AVANT tout le reste
   const docIds = new Set<string>();
   for (const k of await db.list(`STUDENT#${sid}`)) {
     if (k.SK.startsWith('DOC#')) {
@@ -138,11 +160,11 @@ export async function deleteStudentTree(db: TreeDb, familyId: string, sid: strin
 }
 
 /** Famille: tous ses eleves, puis ce qui reste sous FAMILY#. */
-export async function deleteFamilyTree(db: TreeDb, familyId: string): Promise<number> {
+export async function deleteFamilyTree(db: TreeDb, familyId: string, opts: { /** S1: voir deleteStudentTree. Desactive par defaut. */ deleteShares?: boolean } = {}): Promise<number> {
   assertIds(familyId);
   let n = 0;
   const fam = await db.list(`FAMILY#${familyId}`);
-  for (const k of fam.filter((x) => x.SK.startsWith('STUDENT#'))) n += await deleteStudentTree(db, familyId, k.SK.slice(8));
+  for (const k of fam.filter((x) => x.SK.startsWith('STUDENT#'))) n += await deleteStudentTree(db, familyId, k.SK.slice(8), opts);
   n += await removeAll(db, await db.list(`FAMILY#${familyId}`));
   return n;
 }
@@ -158,12 +180,13 @@ export function dynamoTreeDb(client: DynamoDBDocumentClient, table: string, slee
             TableName: table,
             KeyConditionExpression: skPrefix ? 'PK = :p AND begins_with(SK, :s)' : 'PK = :p',
             ExpressionAttributeValues: skPrefix ? { ':p': pk, ':s': skPrefix } : { ':p': pk },
-            ProjectionExpression: 'PK, SK, studentId, docId, docIds, pages',
+            ProjectionExpression: 'PK, SK, studentId, docId, docIds, pages, #h, famSlot, sid', // `hash` est un mot reserve de DynamoDB
+            ExpressionAttributeNames: { '#h': 'hash' },
             ExclusiveStartKey: start,
             ConsistentRead: true, // un element ecrit juste avant ne doit pas echapper a une suppression (RGPD)
           }),
         );
-        for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}) });
+        for (const i of r.Items ?? []) out.push({ PK: i.PK as string, SK: i.SK as string, ...(typeof i.studentId === 'string' ? { studentId: i.studentId } : {}), ...(typeof i.docId === 'string' ? { docId: i.docId } : {}), ...(typeof i.pages === 'number' ? { pages: i.pages } : {}), ...(Array.isArray(i.docIds) ? { docIds: i.docIds as string[] } : {}), ...(typeof i.hash === 'string' ? { hash: i.hash } : {}), ...(typeof i.famSlot === 'number' ? { famSlot: i.famSlot } : {}), ...(typeof i.sid === 'string' ? { sid: i.sid } : {}) });
         start = r.LastEvaluatedKey;
       } while (start);
       return out;

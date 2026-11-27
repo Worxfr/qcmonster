@@ -1,7 +1,7 @@
 import { BatchWriteCommand, QueryCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { describe, expect, it } from 'vitest';
 import { keys } from './ddb/keys.js';
-import { deleteCoursTree, deleteDocTree, deleteFamilyTree, deleteStudentTree, dynamoTreeDb, memoryTreeDb } from './delete-tree.js';
+import { deleteCoursTree, deleteDocTree, deleteFamilyTree, deleteSharesOf, deleteStudentTree, dynamoTreeDb, memoryTreeDb, type TreeDb, type TreeKey } from './delete-tree.js';
 
 const k = (PK: string, SK: string) => ({ PK, SK });
 const seed = () => [
@@ -234,5 +234,116 @@ describe('Q1: effacement d\'un passage multi-fiches', () => {
     await deleteFamilyTree(db2, 'f1');
     expect(db2.keys().filter((x) => x.SK.startsWith('TEST#'))).toEqual([]);
     expect(db2.mutations).toBe(0);
+  });
+});
+
+// S1 (#34, docs/S1-design.md section 8): les liens de partage partent avec la fiche, l'eleve ou la famille, la copie publique AVANT le reste, et seulement si l'option est passee.
+describe('S1: deleteSharesOf et option deleteShares', () => {
+  const H = (c: string) => c.repeat(64);
+  const share = (c: string) => [k(`SHARE#${H(c)}`, 'META'), k(`SHARE#${H(c)}`, 'DAY#2026-12-01'), k(`SHARE#${H(c)}`, 'REPORT#r1')];
+  const ref = (sid: string, n: number, docId: string, c: string, famSlot: number): TreeKey => ({ ...keys.shareRef(sid, n), docId, hash: H(c), famSlot });
+  const slot = (n: number, sid: string): TreeKey => ({ ...keys.shareSlot('f1', n), sid });
+  const seedS = (): TreeKey[] => [
+    ...seed(), keys.doc('s1', 'd3'), keys.qcm('d3', 1),
+    ref('s1', 1, 'd1', 'a', 1), ref('s1', 2, 'd1', 'b', 2), ref('s1', 3, 'd3', 'c', 3), slot(1, 's1'), slot(2, 's1'), slot(3, 's1'),
+    ...share('a'), ...share('b'), ...share('c'),
+    ref('s2', 1, 'd2', 'd', 4), slot(4, 's2'), ...share('d'), // le frere: jamais touche par les suppressions de s1
+  ];
+  const left = (db: { keys: () => { PK: string; SK: string }[] }) => db.keys().map((x) => `${x.PK}|${x.SK}`);
+  const spy = (db: TreeDb & { keys: () => { PK: string; SK: string }[] }) => {
+    const calls: string[] = [];
+    return { calls, db: { ...db, list: async (pk: string, sk?: string) => (calls.push(`list ${pk} ${sk ?? ''}`), db.list(pk, sk)), remove: async (ks: { PK: string; SK: string }[]) => (calls.push(...ks.map((x) => `remove ${x.PK}`)), db.remove(ks)), keys: db.keys } };
+  };
+
+  it('fiche supprimee avec 2 liens: plus aucun SHARE# de ces liens, ni SHAREREF# ni SHARESLOT#; le lien d\'une autre fiche et le frere restent (comptes avant/apres)', async () => {
+    const db = memoryTreeDb(seedS());
+    const before = db.keys().length;
+    const n = await deleteDocTree(db, 's1', 'd1', { deleteShares: { familyId: 'f1' } });
+    expect(before - db.keys().length).toBe(n);
+    const l = left(db).join('\n');
+    expect(l).not.toMatch(new RegExp(`SHARE#(${H('a')}|${H('b')})|STUDENT#s1\\|SHAREREF#[12]\\b|SHARESLOT#[12]\\b|DOC#d1`));
+    for (const keep of [`SHARE#${H('c')}|META`, 'STUDENT#s1|SHAREREF#3', 'FAMILY#f1|SHARESLOT#3', `SHARE#${H('d')}|META`, 'STUDENT#s2|SHAREREF#1', 'FAMILY#f1|SHARESLOT#4']) expect(l, keep).toContain(keep);
+  });
+  it('option ABSENTE (failJob, append): aucune lecture ni ecriture sur SHARE#, SHAREREF# ni SHARESLOT#, liens intacts', async () => {
+    const mem = memoryTreeDb(seedS());
+    const before = left(mem).filter((x) => /SHARE/.test(x)).sort();
+    const { calls, db } = spy(mem);
+    await deleteDocTree(db, 's1', 'd1');
+    await deleteCoursTree(db, 's1', 'c9');
+    await deleteStudentTree(db, 'f1', 's1');
+    await deleteFamilyTree(db, 'f1');
+    // deleteStudentTree et deleteFamilyTree sans option emportent STUDENT#s1 en bloc (SHAREREF# compris, comme tout element de la partition): ce qu'on exclut, c'est tout acces EXPLICITE aux partages
+    expect(calls.filter((c) => /SHARE#|SHARESLOT|SHAREREF/.test(c)), 'acces aux partages sans option').toEqual([]);
+    expect(before.length).toBeGreaterThan(0);
+  });
+  it('deleteDocTree seul, sans option: les liens de la fiche restent', async () => {
+    const db = memoryTreeDb(seedS());
+    await deleteDocTree(db, 's1', 'd1');
+    expect(left(db)).toContain(`SHARE#${H('a')}|META`);
+    expect(left(db)).toContain('STUDENT#s1|SHAREREF#1');
+  });
+  it('cours supprime avec garder: les fiches et leurs liens restent (deleteCoursTree ne touche jamais aux partages)', async () => {
+    const db = memoryTreeDb([...seedS(), keys.cours('s1', 'c1')]);
+    await deleteCoursTree(db, 's1', 'c1');
+    expect(left(db).filter((x) => /SHARE/.test(x))).toHaveLength(left(memoryTreeDb(seedS())).filter((x) => /SHARE/.test(x)).length);
+  });
+  it('cours supprime avec supprimer: deleteDocTree est appele avec l\'option pour chaque fiche', async () => {
+    const db = memoryTreeDb(seedS());
+    for (const d of ['d1', 'd3']) await deleteDocTree(db, 's1', d, { deleteShares: { familyId: 'f1' } });
+    expect(left(db).filter((x) => /SHARE#[0-9a-f]{64}\|/.test(x) && !x.includes(H('d')))).toEqual([]);
+    expect(left(db).filter((x) => /SHAREREF|SHARESLOT/.test(x)).sort()).toEqual(['FAMILY#f1|SHARESLOT#4', 'STUDENT#s2|SHAREREF#1']);
+  });
+  it('eleve supprime: tous ses liens, copies comprises; le frere et ses liens restent', async () => {
+    const db = memoryTreeDb(seedS());
+    await deleteStudentTree(db, 'f1', 's1', { deleteShares: true });
+    const l = left(db).join('\n');
+    expect(l).not.toMatch(new RegExp(`SHARE#(${H('a')}|${H('b')}|${H('c')})|SHARESLOT#[123]\\b|STUDENT#s1`));
+    expect(l).toContain(`SHARE#${H('d')}|REPORT#r1`);
+    expect(l).toContain('FAMILY#f1|SHARESLOT#4');
+  });
+  it('famille supprimee: plus aucun SHARE# ni elements de la famille (copies de TOUS les eleves)', async () => {
+    const db = memoryTreeDb(seedS());
+    await deleteFamilyTree(db, 'f1', { deleteShares: true });
+    expect(left(db).filter((x) => /SHARE/.test(x))).toEqual([]);
+  });
+  it('est idempotent et rejouable apres un echec au milieu: la reprise finit le travail, rien d\'orphelin', async () => {
+    const mem = memoryTreeDb(seedS());
+    let fail = true;
+    const flaky: TreeDb = { ...mem, list: mem.list, mutateTest: mem.mutateTest, remove: async (ks) => { if (fail && ks.some((x) => x.PK.startsWith('STUDENT#'))) { fail = false; throw new Error('panne'); } return mem.remove(ks); } };
+    await expect(deleteSharesOf(flaky, 'f1', 's1')).rejects.toThrow('panne'); // copies supprimees, references encore la
+    expect(left(mem).filter((x) => /SHARE#[0-9a-f]{64}\|/.test(x) && !x.includes(H('d')))).toEqual([]);
+    expect(left(mem)).toContain('STUDENT#s1|SHAREREF#1');
+    expect(await deleteSharesOf(flaky, 'f1', 's1')).toBe(6); // 3 references + 3 emplacements
+    expect(await deleteSharesOf(flaky, 'f1', 's1')).toBe(0);
+  });
+  it('ECHEC de la suppression d\'une copie: l\'erreur remonte, la fiche et ses references restent (aucune copie orpheline)', async () => {
+    const mem = memoryTreeDb(seedS());
+    const bad: TreeDb = { ...mem, list: mem.list, mutateTest: mem.mutateTest, remove: async (ks) => { if (ks.some((x) => x.PK.startsWith('SHARE#'))) throw new Error('panne copie'); return mem.remove(ks); } };
+    const before = mem.keys().length;
+    await expect(deleteDocTree(bad, 's1', 'd1', { deleteShares: { familyId: 'f1' } })).rejects.toThrow('panne copie');
+    expect(mem.keys()).toHaveLength(before);
+  });
+  it('un jeton de hachage invalide dans une reference ne supprime pas d\'autre partition; la reference part quand meme', async () => {
+    const mem = memoryTreeDb([...seedS(), { ...keys.shareRef('s1', 4), docId: 'd1', hash: 'FAMILY#f1', famSlot: 9 }]);
+    await deleteSharesOf(mem, 'f1', 's1');
+    expect(left(mem)).toContain('FAMILY#f1|META');
+    expect(left(mem)).not.toContain('STUDENT#s1|SHAREREF#4');
+  });
+  it('emplacement libere puis reutilise par un frere: jamais supprime par la suppression de s1', async () => {
+    const mem = memoryTreeDb([...seedS(), ref('s1', 4, 'd1', 'e', 4)]); // la reference de s1 pointe l\'emplacement 4, qui est maintenant a s2
+    await deleteSharesOf(mem, 'f1', 's1', { docId: 'd1' });
+    expect(left(mem)).toContain('FAMILY#f1|SHARESLOT#4');
+  });
+  it('identifiants invalides refuses', async () => {
+    await expect(deleteSharesOf(memoryTreeDb([]), 'f1', 'a#b')).rejects.toThrow(RangeError);
+    await expect(deleteSharesOf(memoryTreeDb([]), 'f1', 's1', { docId: '' })).rejects.toThrow(RangeError);
+  });
+  it('dynamoTreeDb: la projection porte `hash` par un alias (mot reserve) avec famSlot et sid', async () => {
+    const sent: { input: Record<string, unknown> }[] = [];
+    const client = { send: async (c: { input: Record<string, unknown> }) => (sent.push(c), { Items: [{ PK: 'STUDENT#s1', SK: 'SHAREREF#1', hash: H('a'), famSlot: 2, docId: 'd1' }] }) } as unknown as DynamoDBDocumentClient;
+    const r = await dynamoTreeDb(client, 'T').list('STUDENT#s1', 'SHAREREF#');
+    expect(r[0]).toMatchObject({ hash: H('a'), famSlot: 2 });
+    expect(sent[0].input.ProjectionExpression).toMatch(/#h\b/);
+    expect(sent[0].input.ExpressionAttributeNames).toEqual({ '#h': 'hash' });
   });
 });
