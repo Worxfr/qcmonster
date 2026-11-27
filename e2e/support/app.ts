@@ -111,7 +111,7 @@ export function bigFile(mb: number): string {
 
 /** Pilotage de l'automate d'exercices (E1, mode mock seulement). Horloge simulee: aucune attente reelle. */
 export const exoFake = {
-  async set(opts: { skewMs?: number; nextDay?: boolean; quota?: boolean; illisible?: number; tooShort?: boolean; seed?: { docId: string; count: number; xpPaye?: number } }) {
+  async set(opts: { skewMs?: number; nextDay?: boolean; quota?: boolean; illisible?: number; tooShort?: boolean; seed?: { docId: string; count: number; xpPaye?: number; pick?: number } }) {
     if (isMock) await post('/__test/exo', opts);
   },
   /** Fait passer les 60 s apres l'ouverture de l'exercice (sinon `trop_tot`). */

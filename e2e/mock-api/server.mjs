@@ -377,6 +377,9 @@ const EXO_ENONCES = [
   ['Énergie cinétique', 'Une balle de masse $m = 0{,}2\\ \\mathrm{kg}$ roule à $v = 3\\ \\mathrm{m/s}$.\nCalcule son énergie cinétique $E_c = \\dfrac{1}{2} m v^2$.'],
   ['Pourcentage', 'Un article coûte 40 €. Son prix augmente de $15\\ \\%$.\nCalcule le nouveau prix.'],
   ['Théorème de Pythagore', 'Un triangle $ABC$ est rectangle en $A$ avec $AB = 6$ et $AC = 8$.\nCalcule $BC$.'],
+  ['Absorbance et loi de Beer-Lambert', 'Une solution colorée est placée dans une cuve de trajet optique $l = 1{,}0\\ \\mathrm{cm}$. Sa concentration vaut $c = 2{,}0\\times10^{-5}\\ \\mathrm{mol\\cdot L^{-1}}$.\nLe coefficient d\'absorption molaire vaut $\\varepsilon(450\\ \\mathrm{nm}) = 2{,}5\\times10^{4}\\ \\mathrm{L\\cdot mol^{-1}\\cdot cm^{-1}}$ à 450 nm et $\\varepsilon(650\\ \\mathrm{nm}) = 3{,}0\\times10^{3}\\ \\mathrm{L\\cdot mol^{-1}\\cdot cm^{-1}}$ à 650 nm. On rappelle la loi de Beer-Lambert : $A = \\varepsilon\\, l\\, c$ et la transmission $T = \\dfrac{I}{I_0} = 10^{-A}$.\nQuel pourcentage de la lumière incidente à 650 nm est absorbé ?'],
+  ['Une fonction en trois questions', 'Soit $f(x) = 3x - 5$.\n1. Calcule $f(4)$.\n2. Trouve le nombre $x$ tel que $f(x) = 7$.\n3. Trace la courbe de $f$ sur l\'intervalle $[0\\,;\\,5]$.'],
+  ['Observer le ciel', 'Observe le ciel pendant une journée entière et note les changements de couleur que tu vois. Un texte sans valeur chiffrée ni consigne reconnue reste un seul bloc.'],
 ];
 function newExo() {
   return { exos: [], copies: [], skew: 0, day: 1, seq: 0, pagesUsed: 0, correctionsToday: 0, genToday: new Map(), flags: { illisible: 0, quota: false, tooShort: false } };
@@ -393,9 +396,9 @@ const exoPublic = (x) => {
     indicesVus: x.indicesDonnes.length, indicesTotal: 3, indicesDonnes: x.indicesDonnes, nbCopies: x.nbCopies, copiesRestantes: Math.max(0, 3 - x.nbCopies), solutionVue: x.solutionVue,
   };
 };
-function addExo(docId, etat = 'prete') {
+function addExo(docId, etat = 'prete', pick) {
   const k = S.exo.exos.filter((x) => x.docId === docId).length;
-  const [titre, enonce] = EXO_ENONCES[k % EXO_ENONCES.length];
+  const [titre, enonce] = EXO_ENONCES[(pick ?? k) % EXO_ENONCES.length];
   const x = { exoId: `${docId}.${String(k + 1).padStart(2, '0')}`, docId, etat, polls: 0, titre, enonce, indicesDonnes: [], lastHintAt: 0, openedAt: 0, nbCopies: 0, xpPaye: 0, solutionVue: false, hints: ['Pense à la formule qui relie les grandeurs.', "Regarde les unités : sont-elles les mêmes partout ?", 'Écris chaque calcul sur une ligne, puis vérifie le résultat.'] };
   S.exo.exos.push(x);
   return x;
@@ -521,7 +524,7 @@ function exoTest(b) {
   if (b.quota !== undefined) E.flags.quota = !!b.quota;
   if (b.illisible !== undefined) E.flags.illisible = Number(b.illisible);
   if (b.tooShort !== undefined) E.flags.tooShort = !!b.tooShort;
-  if (b.seed) for (let i = 0; i < b.seed.count; i++) { const x = addExo(b.seed.docId); if (b.seed.xpPaye && i === 0) { x.xpPaye = b.seed.xpPaye; x.meilleurMilli = 600; } }
+  if (b.seed) for (let i = 0; i < b.seed.count; i++) { const x = addExo(b.seed.docId, 'prete', b.seed.pick); if (b.seed.xpPaye && i === 0) { x.xpPaye = b.seed.xpPaye; x.meilleurMilli = 600; } }
   return { exos: E.exos.map((x) => x.exoId), copies: E.copies.length };
 }
 

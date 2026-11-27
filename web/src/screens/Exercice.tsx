@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { api, uploadScan } from '../api';
+import { Enonce } from '../components/Enonce';
 import { Rich } from '../components/Math';
 import { Bar, Card, ErrorBox, Loading } from '../components/ui';
 import { checkPhoto, exoError, EXO_WAIT_MS, MAX_PAGES_COPIE, pointsLeft, triesText } from '../exo';
@@ -103,7 +104,7 @@ function Body({ exo, setExo }: { exo: Exo; setExo: (e: Exo) => void }) {
           <span className="chip">⭐ {exo.solutionVue ? 'Plus de points (solution vue)' : `Jusqu'à ${now} points`}</span>
           <span className="chip chip-soft">📝 {triesText(exo.copiesRestantes)}</span>
         </p>
-        <div className="exo-enonce" aria-label="Énoncé"><Rich text={exo.enonce ?? ''} /></div>
+        <Enonce text={exo.enonce ?? ''} />
       </Card>
 
       <Card title="Un coup de pouce ?">
