@@ -108,12 +108,12 @@ test.describe('Fiche en texte continu', () => {
     await expect(page.locator('.seg')).toHaveCount(9);
     for (let w = 320; w <= 420; w += 10) {
       await page.setViewportSize({ width: w, height: 780 });
-      const orphans = await page.evaluate(() => [...document.querySelectorAll('.seg sup.seg-mark')].filter((sup) => {
+      const orphans = await page.evaluate(() => Array.from(document.querySelectorAll('.seg sup.seg-mark')).filter((sup) => {
         const seg = sup.parentElement!;
         const r = document.createRange();
         r.setStartBefore(seg.firstChild!);
         r.setEndBefore(sup);
-        const rects = [...r.getClientRects()].filter((x) => x.width > 0);
+        const rects = Array.from(r.getClientRects()).filter((x) => x.width > 0);
         const last = rects[rects.length - 1];
         const m = sup.getBoundingClientRect();
         return !last || m.top > last.bottom - 2; // la marque est sur une ligne sous le dernier texte
